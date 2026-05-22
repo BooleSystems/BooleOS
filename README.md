@@ -1,15 +1,13 @@
 NullOS
 An experimental operating system built entirely with AI assistance — testing the limits of what AI can generate.
 
+```
   _   _       _ _  ___  ____  
-
  | \ | |_   _| | |/ _ \/ ___| 
-
  |  \| | | | | | | | | \___ \ 
-
  | |\  | |_| | | | |_| |___) |
-
  |_| \_|\__,_|_|_|\___/|____/ 
+```
 
  NullOS v0.0.1 - Experimental AI-generated OS
 
