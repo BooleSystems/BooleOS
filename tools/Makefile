@@ -29,7 +29,6 @@ ISO_DIR = $(BUILD)/iso
 # -m32             : gera código 32-bit (Multiboot2 entra em protected mode 32-bit)
 # -ffreestanding   : sem libc, sem runtime padrão
 # -fno-stack-protector : sem canary (não temos libc pra suportar)
-# -nostdlib        : não linka stdlib
 # -O2              : otimização razoável
 # -Wall -Wextra    : warnings
 CFLAGS  = -m32 \
@@ -38,7 +37,6 @@ CFLAGS  = -m32 \
            -fno-stack-protector \
            -fno-builtin \
            -nostdlib \
-           -nostdinc \
            -O2 \
            -Wall \
            -Wextra \
