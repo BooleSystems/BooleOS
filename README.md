@@ -10,7 +10,7 @@
  |_| \_|\__,_|_|_|\___/|____/ 
 
  NullOS v0.0.1 - Experimental AI-generated OS
- Fase 0: Boot
+ Stage 0: Boot
 ```
 
 ## What is this?
