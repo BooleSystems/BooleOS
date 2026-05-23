@@ -1,4 +1,4 @@
-	// nullos/kernel/main.c
+// nullos/kernel/main.c
 // kmain() — Fase 1: GDT + IDT + PIC + Timer + Teclado
 
 #include <stdint.h>
@@ -6,8 +6,8 @@
 #include "gdt.h"
 #include "idt.h"
 #include "pic.h"
-#include "timer.h"
-#include "keyboard.h"
+#include "timer.c"
+#include "keyboard.c"
 
 #define MULTIBOOT2_MAGIC 0x36d76289
 
@@ -71,22 +71,22 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     print_ok();
 
     // IDT
-print_tag("[IDT]  ");
-vga_puts("Instalando 256 vetores... ");
-idt_init();
-print_ok();
+    print_tag("[IDT]  ");
+    vga_puts("Instalando 256 vetores... ");
+    idt_init();
+    print_ok();
 
     // Timer
-print_tag("[TIMER]");
-vga_puts("PIT @ 100 Hz... ");
-timer_init(100);
-print_ok();
+    print_tag("[TIMER]");
+    vga_puts("PIT @ 100 Hz... ");
+    timer_init(100);
+    print_ok();
 
     // Teclado
-print_tag("[KB]   ");
-vga_puts("PS/2 keyboard IRQ1... ");
-keyboard_init();
-print_ok();
+    print_tag("[KB]   ");
+    vga_puts("PS/2 keyboard IRQ1... ");
+    keyboard_init();
+    print_ok();
 
     // Habilita interrupções
     print_tag("[CPU]  ");
@@ -117,3 +117,5 @@ hang:
     __asm__ volatile ("cli");
     for (;;) __asm__ volatile ("hlt");
 }
+#include "timer.c"
+#include "keyboard.c"
