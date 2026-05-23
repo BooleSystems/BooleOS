@@ -24,7 +24,7 @@ This is not meant to be a production OS. It's an experiment.
 | Phase | Description | Status |
 |-------|-------------|--------|
 | 0 | Bootloader + VGA output | ✅ Done |
-| 1 | GDT, IDT, Interrupts | 🔄 Next |
+| 1 | GDT, IDT, Interrupts | 🔄 In progress |
 | 2 | Memory management (PMM + VMM) | ⏳ Planned |
 | 3 | Processes + scheduler | ⏳ Planned |
 | 4 | Filesystem + VFS | ⏳ Planned |
