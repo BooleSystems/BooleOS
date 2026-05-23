@@ -9,8 +9,8 @@
  | |\  | |_| | | | |_| |___) |
  |_| \_|\__,_|_|_|\___/|____/ 
 
- NullOS v0.0.1 - Experimental AI-generated OS
- Stage 0: Boot
+ NullOS v0.1.0 - Experimental AI-generated OS
+ Phase 1: GDT + IDT + Interrupts
 ```
 
 ## What is this?
@@ -24,8 +24,8 @@ This is not meant to be a production OS. It's an experiment.
 | Phase | Description | Status |
 |-------|-------------|--------|
 | 0 | Bootloader + VGA output | ✅ Done |
-| 1 | GDT, IDT, Interrupts | 🔄 In progress |
-| 2 | Memory management (PMM + VMM) | ⏳ Planned |
+| 1 | GDT, IDT, PIC, Timer, Keyboard | ✅ Done |
+| 2 | Memory management (PMM + VMM) | 🔄 Next |
 | 3 | Processes + scheduler | ⏳ Planned |
 | 4 | Filesystem + VFS | ⏳ Planned |
 | 5 | Syscalls + userland | ⏳ Planned |
@@ -95,12 +95,19 @@ qemu-system-x86_64 \
 ```
 nullos/
 ├── boot/
-│   ├── boot.asm       # Multiboot2 entry point (Assembly)
-│   └── linker.ld      # Linker script
+│   ├── boot.asm         # Multiboot2 entry point (Assembly)
+│   └── linker.ld        # Linker script
 ├── kernel/
-│   ├── main.c         # kmain()
+│   ├── main.c           # kmain()
+│   ├── gdt.c/h          # Global Descriptor Table
+│   ├── gdt_flush.asm    # GDT flush (Assembly)
+│   ├── idt.c/h          # Interrupt Descriptor Table
+│   ├── isr.asm          # ISR/IRQ stubs (Assembly)
+│   ├── pic.c/h          # PIC 8259 remapping
+│   ├── timer.c/h        # PIT timer @ 100Hz
+│   ├── keyboard.c/h     # PS/2 keyboard driver
 │   └── drivers/
-│       └── vga.c      # VGA text mode 80x25 driver
+│       └── vga.c/h      # VGA text mode 80x25
 ├── tools/
 │   ├── Makefile
 │   └── grub.cfg
@@ -118,6 +125,10 @@ nullos/
 | **Testing** | QEMU |
 | **Cross-compiler** | x86_64-elf-gcc |
 | **AI** | Claude (Anthropic) |
+
+## Community Edition
+
+Want to contribute? Check out [NullOS CE](https://github.com/felipe-jr/NullOS-CE) — a fork open to human contributions.
 
 ## License
 
