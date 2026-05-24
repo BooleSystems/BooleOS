@@ -145,19 +145,19 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     pmm_dump();
 
     // VMM
-    //print_tag("[VMM]  ");
-    //vga_puts("Ativando paginacao...\n");
-    //vmm_init();
-    //print_tag("       ");
-    //print_ok();
-    //vmm_dump();
+    print_tag("[VMM]  ");
+    vga_puts("Ativando paginacao...\n");
+    vmm_init();
+    print_tag("       ");
+    print_ok();
+    vmm_dump();
 
     // Heap
-    //print_tag("[HEAP] ");
-    //vga_puts("Inicializando kmalloc...\n");
-    //heap_init();
-    //print_tag("       ");
-    //print_ok();
+    print_tag("[HEAP] ");
+    vga_puts("Inicializando kmalloc...\n");
+    heap_init();
+    print_tag("       ");
+    print_ok();
 
     print_separator();
 
