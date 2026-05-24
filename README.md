@@ -9,8 +9,8 @@
  | |\  | |_| | | | |_| |___) |
  |_| \_|\__,_|_|_|\___/|____/ 
 
- NullOS v0.1.0 - Experimental AI-generated OS
- Phase 1: GDT + IDT + Interrupts
+ NullOS v0.2.0 - Experimental AI-generated OS
+ Phase 2: Memory Management
 ```
 
 ## What is this?
@@ -25,7 +25,8 @@ This is not meant to be a production OS. It's an experiment.
 |-------|-------------|--------|
 | 0 | Bootloader + VGA output | ✅ Done |
 | 1 | GDT, IDT, PIC, Timer, Keyboard | ✅ Done |
-| 2 | Memory management (PMM + VMM) | 🔄 Next |
+| 2 | Physical Memory Manager (PMM) | ✅ Done |
+| 2b | VMM + Heap (kmalloc/kfree) | 🔄 In progress |
 | 3 | Processes + scheduler | ⏳ Planned |
 | 4 | Filesystem + VFS | ⏳ Planned |
 | 5 | Syscalls + userland | ⏳ Planned |
@@ -106,6 +107,10 @@ nullos/
 │   ├── pic.c/h          # PIC 8259 remapping
 │   ├── timer.c/h        # PIT timer @ 100Hz
 │   ├── keyboard.c/h     # PS/2 keyboard driver
+│   ├── memory/
+│   │   ├── pmm.c/h      # Physical Memory Manager (bitmap)
+│   │   ├── vmm.c/h      # Virtual Memory Manager (paging)
+│   │   └── heap.c/h     # Kernel heap (kmalloc/kfree)
 │   └── drivers/
 │       └── vga.c/h      # VGA text mode 80x25
 ├── tools/
