@@ -26,8 +26,8 @@ This is not meant to be a production OS. It's an experiment.
 | 0 | Bootloader + VGA output | ✅ Done |
 | 1 | GDT, IDT, PIC, Timer, Keyboard | ✅ Done |
 | 2 | Physical Memory Manager (PMM) | ✅ Done |
-| 2b | VMM + Heap (kmalloc/kfree) | 🔄 In progress |
-| 3 | Processes + scheduler | ⏳ Planned |
+| 2b | VMM + Heap (kmalloc/kfree) | ✅ Done |
+| 3 | Processes + scheduler | 🔄 In progress |
 | 4 | Filesystem + VFS | ⏳ Planned |
 | 5 | Syscalls + userland | ⏳ Planned |
 | 6 | Shell (nullsh) | ⏳ Planned |
