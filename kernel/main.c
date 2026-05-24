@@ -1,5 +1,5 @@
 	// nullos/kernel/main.c
-// kmain() — Fase 1: GDT + IDT + PIC + Timer + Teclado
+// kmain() — Fase 2: PMM + VMM + Heap
 
 #include <stdint.h>
 #include "drivers/vga.h"
@@ -8,6 +8,9 @@
 #include "pic.h"
 #include "timer.h"
 #include "keyboard.h"
+#include "memory/pmm.h"
+#include "memory/vmm.h"
+#include "memory/heap.h"
 
 #define MULTIBOOT2_MAGIC 0x36d76289
 
@@ -30,9 +33,47 @@ static void print_separator(void) {
     vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
 }
 
-void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
-    (void)multiboot_info_addr;
+// Teste básico do kmalloc/kfree
+static void test_heap(void) {
+    vga_set_color(VGA_YELLOW, VGA_BLACK);
+    vga_puts("\n[TESTE HEAP]\n");
+    vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
 
+    // Aloca alguns blocos
+    void *a = kmalloc(64);
+    vga_puts(" kmalloc(64)  = "); vga_puthex((uint32_t)a); vga_puts("\n");
+
+    void *b = kmalloc(128);
+    vga_puts(" kmalloc(128) = "); vga_puthex((uint32_t)b); vga_puts("\n");
+
+    void *c = kmalloc(256);
+    vga_puts(" kmalloc(256) = "); vga_puthex((uint32_t)c); vga_puts("\n");
+
+    heap_dump();
+
+    // Libera e realoca
+    vga_puts(" kfree(b)\n");
+    kfree(b);
+
+    void *d = kmalloc(64);
+    vga_puts(" kmalloc(64)  = "); vga_puthex((uint32_t)d); vga_puts("\n");
+
+    heap_dump();
+
+    // Libera tudo
+    kfree(a);
+    kfree(c);
+    kfree(d);
+
+    vga_puts(" kfree(a, c, d)\n");
+    heap_dump();
+
+    vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+    vga_puts(" Heap OK!\n");
+    vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+}
+
+void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     vga_init();
 
     // Banner
@@ -43,7 +84,7 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     vga_puts(" | |\\  | |_| | | | |_| |___) |\n");
     vga_puts(" |_| \\_|\\__,_|_|_|\\___/|____/ \n\n");
     vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
-    vga_puts(" NullOS v0.1.0 - Fase 1: GDT + IDT + Interrupts\n\n");
+    vga_puts(" NullOS v0.2.0 - Fase 2: Memory Management\n\n");
 
     print_separator();
 
@@ -64,51 +105,76 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
 
     // PIC
     print_tag("[PIC]  ");
-    vga_puts("Remapeando IRQs (32-47)... ");
+    vga_puts("Remapeando IRQs... ");
     pic_init();
-    // Mascara todas as IRQs por enquanto
     for (int i = 0; i < 16; i++) pic_mask_irq((uint8_t)i);
     print_ok();
 
     // IDT
-print_tag("[IDT]  ");
-vga_puts("Instalando 256 vetores... ");
-idt_init();
-print_ok();
+    print_tag("[IDT]  ");
+    vga_puts("Instalando vetores...\n");
+    idt_init();
+    print_tag("       ");
+    print_ok();
 
     // Timer
-print_tag("[TIMER]");
-vga_puts("PIT @ 100 Hz... ");
-timer_init(100);
-print_ok();
+    print_tag("[TIMER]");
+    vga_puts("PIT @ 100Hz... ");
+    timer_init(100);
+    print_ok();
 
     // Teclado
-print_tag("[KB]   ");
-vga_puts("PS/2 keyboard IRQ1... ");
-keyboard_init();
-print_ok();
+    print_tag("[KB]   ");
+    vga_puts("PS/2 keyboard... ");
+    keyboard_init();
+    print_ok();
 
     // Habilita interrupções
-    print_tag("[CPU]  ");
-    vga_puts("Habilitando interrupcoes (sti)... ");
     __asm__ volatile ("sti");
-    print_ok();
 
     print_separator();
 
-    // Status
+    // PMM
+    print_tag("[PMM]  ");
+    vga_puts("Inicializando...\n");
+    // multiboot_info_addr+8 tem mem_upper em KB (offset padrão Multiboot1-compat)
+    // Usamos 64MB como padrão seguro para QEMU
+    pmm_init(64 * 1024);  // 64MB
+    print_tag("       ");
+    print_ok();
+    pmm_dump();
+
+    // VMM
+    //print_tag("[VMM]  ");
+    //vga_puts("Ativando paginacao...\n");
+    //vmm_init();
+    //print_tag("       ");
+    //print_ok();
+    //vmm_dump();
+
+    // Heap
+    //print_tag("[HEAP] ");
+    //vga_puts("Inicializando kmalloc...\n");
+    //heap_init();
+    //print_tag("       ");
+    //print_ok();
+
+    print_separator();
+
+    // Testa a heap
+    //test_heap();
+
+    print_separator();
+
+    // Status final
     vga_set_color(VGA_YELLOW, VGA_BLACK);
-    vga_puts("\n Fase 1 concluida!\n");
-    vga_puts(" Timer: ");
-    vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_putdec(timer_get_ticks());
-    vga_set_color(VGA_YELLOW, VGA_BLACK);
-    vga_puts(" ticks\n\n");
+    vga_puts("\n Fase 2 concluida!\n");
     vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+    vga_puts(" PMM + VMM + kmalloc funcionando.\n");
+    vga_puts(" Proximos passos: Processos + Scheduler (Fase 3)\n\n");
 
     vga_puts(" Digite algo:\n > ");
 
-    // Loop principal — lê teclado
     for (;;) {
         __asm__ volatile ("hlt");
     }

@@ -1,8 +1,8 @@
-# nullos/tools/Makefile — Fase 1
+# nullos/tools/Makefile — Fase 2
 
-CC      = x86_64-elf-gcc
-LD      = x86_64-elf-ld
-ASM     = nasm
+CC  = x86_64-elf-gcc
+LD  = x86_64-elf-ld
+ASM = nasm
 
 ROOT    = ..
 BUILD   = $(ROOT)/build
@@ -36,6 +36,9 @@ C_SRCS   = $(ROOT)/kernel/main.c \
             $(ROOT)/kernel/pic.c \
             $(ROOT)/kernel/timer.c \
             $(ROOT)/kernel/keyboard.c \
+            $(ROOT)/kernel/memory/pmm.c \
+            $(ROOT)/kernel/memory/vmm.c \
+            $(ROOT)/kernel/memory/heap.c \
             $(ROOT)/kernel/drivers/vga.c
 
 ASM_OBJS = $(patsubst $(ROOT)/%.asm, $(BUILD)/%.o, $(ASM_SRCS))
@@ -56,6 +59,7 @@ all: dirs $(KERNEL_ISO)
 dirs:
 	@mkdir -p $(BUILD)/boot
 	@mkdir -p $(BUILD)/kernel/drivers
+	@mkdir -p $(BUILD)/kernel/memory
 	@mkdir -p $(ISO_DIR)/boot/grub
 
 $(BUILD)/%.o: $(ROOT)/%.asm
