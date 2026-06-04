@@ -1,5 +1,5 @@
 	// nullos/kernel/main.c
-// kmain() — Fase 2: PMM + VMM + Heap
+// kmain() - Fase 3: Processes + Scheduler
 
 #include <stdint.h>
 #include "drivers/vga.h"
@@ -11,6 +11,7 @@
 #include "memory/pmm.h"
 #include "memory/vmm.h"
 #include "memory/heap.h"
+#include "scheduler.h"
 
 #define MULTIBOOT2_MAGIC 0x36d76289
 
@@ -33,8 +34,35 @@ static void print_separator(void) {
     vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
 }
 
-// Teste básico do kmalloc/kfree
-static void test_heap(void) {
+static void heartbeat_task(void *arg) {
+    (void)arg;
+    static uint32_t beats = 0;
+
+    vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+    vga_puts("[task:heartbeat] beat ");
+    vga_putdec(++beats);
+    vga_puts("\n");
+    vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+
+    scheduler_sleep_current(100);
+}
+
+static void heap_watch_task(void *arg) {
+    (void)arg;
+    static uint32_t samples = 0;
+
+    vga_set_color(VGA_YELLOW, VGA_BLACK);
+    vga_puts("[task:heap-watch] sample ");
+    vga_putdec(++samples);
+    vga_puts("\n");
+    vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+    heap_dump();
+
+    scheduler_sleep_current(250);
+}
+
+// Teste basico do kmalloc/kfree
+static void __attribute__((unused)) test_heap(void) {
     vga_set_color(VGA_YELLOW, VGA_BLACK);
     vga_puts("\n[TESTE HEAP]\n");
     vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
@@ -74,6 +102,7 @@ static void test_heap(void) {
 }
 
 void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
+    (void)multiboot_info_addr;
     vga_init();
 
     // Banner
@@ -84,7 +113,7 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     vga_puts(" | |\\  | |_| | | | |_| |___) |\n");
     vga_puts(" |_| \\_|\\__,_|_|_|\\___/|____/ \n\n");
     vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
-    vga_puts(" NullOS v0.2.0 - Fase 2: Memory Management\n\n");
+    vga_puts(" NullOS v0.3.0 - Fase 3: Processes + Scheduler\n\n");
 
     print_separator();
 
@@ -161,6 +190,16 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
 
     print_separator();
 
+    print_tag("[SCHED]");
+    vga_puts("Inicializando scheduler... ");
+    scheduler_init();
+    scheduler_spawn("heartbeat", heartbeat_task, 0);
+    scheduler_spawn("heap-watch", heap_watch_task, 0);
+    print_ok();
+    scheduler_dump();
+
+    print_separator();
+
     // Testa a heap
     //test_heap();
 
@@ -168,14 +207,16 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
 
     // Status final
     vga_set_color(VGA_YELLOW, VGA_BLACK);
-    vga_puts("\n Fase 2 concluida!\n");
+    vga_puts("\n Fase 3 iniciada!\n");
     vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
     vga_puts(" PMM + VMM + kmalloc funcionando.\n");
-    vga_puts(" Proximos passos: Processos + Scheduler (Fase 3)\n\n");
+    vga_puts(" Scheduler cooperativo rodando tarefas do kernel.\n");
+    vga_puts(" Proximos passos: troca de contexto e processos isolados.\n\n");
 
     vga_puts(" Digite algo:\n > ");
 
     for (;;) {
+        scheduler_run_once();
         __asm__ volatile ("hlt");
     }
 

@@ -1,4 +1,4 @@
-# nullos/tools/Makefile — Fase 2
+# nullos/tools/Makefile - Fase 3
 
 CC  = x86_64-elf-gcc
 LD  = x86_64-elf-ld
@@ -36,6 +36,8 @@ C_SRCS   = $(ROOT)/kernel/main.c \
             $(ROOT)/kernel/pic.c \
             $(ROOT)/kernel/timer.c \
             $(ROOT)/kernel/keyboard.c \
+            $(ROOT)/kernel/process.c \
+            $(ROOT)/kernel/scheduler.c \
             $(ROOT)/kernel/memory/pmm.c \
             $(ROOT)/kernel/memory/vmm.c \
             $(ROOT)/kernel/memory/heap.c \

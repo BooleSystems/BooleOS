@@ -2,6 +2,7 @@
 #include "timer.h"
 #include "idt.h"
 #include "pic.h"
+#include "scheduler.h"
 #include <stdint.h>
 
 #define PIT_CMD     0x43
@@ -18,6 +19,7 @@ static inline void outb(uint16_t port, uint8_t val) {
 static void timer_callback(uint32_t int_no) {
     (void)int_no;
     ticks++;
+    scheduler_tick(ticks);
 }
 
 void timer_init(uint32_t freq_hz) {
