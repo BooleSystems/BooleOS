@@ -118,17 +118,33 @@ void *kmalloc(size_t size) {
         cur = cur->next;
     }
 
-    // Sem bloco livre — expande a heap
+    // Sem bloco livre — expande a heap e anexa o novo espaco a lista.
+    uint32_t old_end = heap_end;
     if (!heap_expand(size + HEADER_SIZE)) return 0;
 
-    // Recria bloco no final
-    block_header_t *new_block = (block_header_t *)(heap_end - PAGE_SIZE);
+    block_header_t *new_block = (block_header_t *)old_end;
     new_block->magic = MAGIC_FREE;
-    new_block->size  = PAGE_SIZE - HEADER_SIZE;
+    new_block->size  = heap_end - old_end - HEADER_SIZE;
     new_block->next  = 0;
     new_block->prev  = 0;
 
-    // Tenta alocar de novo
+    block_header_t *tail = heap_start_ptr;
+    while (tail && tail->next)
+        tail = tail->next;
+
+    if (!tail) {
+        heap_start_ptr = new_block;
+    } else {
+        tail->next = new_block;
+        new_block->prev = tail;
+
+        if (tail->magic == MAGIC_FREE) {
+            tail->size += HEADER_SIZE + new_block->size;
+            tail->next = 0;
+        }
+    }
+
+    // Tenta alocar de novo agora que o bloco expandido esta encadeado.
     return kmalloc(size);
 }
 

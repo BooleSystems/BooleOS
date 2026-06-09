@@ -10,9 +10,9 @@ SECTIONS
     . = 0x100000;
 
     /* Header Multiboot2 — precisa estar nos primeiros 32KB do arquivo */
-    .multiboot2 :
+    .multiboot2 : ALIGN(8)
     {
-        *(.multiboot2)
+        KEEP(*(.multiboot2))
     }
 
     /* Código */

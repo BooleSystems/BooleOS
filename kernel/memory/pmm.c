@@ -82,7 +82,7 @@ void pmm_init(uint32_t mem_upper) {
     pmm_mark_free(0x100000, (total_pages - 256) * PAGE_SIZE);
 
     vga_puts("   pmm: [3] marcando regioes usadas\n");
-    pmm_mark_used(0x100000, 0x10000);
+    pmm_mark_used(0x100000, 0x300000);
     pmm_mark_used(0x200000, 0x3000);
     pmm_mark_used(0x0F0000, 0x10000);
 

@@ -4,8 +4,27 @@
 #include <stdint.h>
 
 static process_t process_table[PROCESS_MAX];
+static uint8_t process_stacks[PROCESS_MAX][PROCESS_STACK_SIZE] __attribute__((aligned(16)));
 static process_t *current_process = 0;
 static uint32_t next_pid = 1;
+
+static uint32_t *stack_push(uint32_t *stack, uint32_t value) {
+    stack--;
+    *stack = value;
+    return stack;
+}
+
+static uint32_t build_initial_stack(void *stack_mem, uint32_t stack_size, void (*bootstrap)(void)) {
+    uint32_t *stack = (uint32_t *)((uint8_t *)stack_mem + stack_size);
+
+    stack = stack_push(stack, (uint32_t)bootstrap);
+    stack = stack_push(stack, 0);
+    stack = stack_push(stack, 0);
+    stack = stack_push(stack, 0);
+    stack = stack_push(stack, 0);
+
+    return (uint32_t)stack;
+}
 
 static void copy_name(char *dst, const char *src) {
     uint32_t i = 0;
@@ -27,6 +46,9 @@ void process_init(void) {
         process_table[i].state = PROCESS_UNUSED;
         process_table[i].entry = 0;
         process_table[i].arg = 0;
+        process_table[i].esp = 0;
+        process_table[i].stack = 0;
+        process_table[i].stack_size = 0;
         process_table[i].wake_tick = 0;
         process_table[i].ticks_run = 0;
         process_table[i].runs = 0;
@@ -36,8 +58,8 @@ void process_init(void) {
     next_pid = 1;
 }
 
-process_t *process_spawn(const char *name, process_entry_t entry, void *arg) {
-    if (!entry)
+process_t *process_spawn(const char *name, process_entry_t entry, void *arg, void (*bootstrap)(void)) {
+    if (!entry || !bootstrap)
         return 0;
 
     for (uint32_t i = 0; i < PROCESS_MAX; i++) {
@@ -45,9 +67,13 @@ process_t *process_spawn(const char *name, process_entry_t entry, void *arg) {
         if (process->state == PROCESS_UNUSED) {
             process->pid = next_pid++;
             copy_name(process->name, name);
+
             process->state = PROCESS_READY;
             process->entry = entry;
             process->arg = arg;
+            process->stack = process_stacks[i];
+            process->stack_size = PROCESS_STACK_SIZE;
+            process->esp = build_initial_stack(process->stack, process->stack_size, bootstrap);
             process->wake_tick = 0;
             process->ticks_run = 0;
             process->runs = 0;
@@ -70,6 +96,13 @@ process_t *process_current(void) {
 
 void process_set_current(process_t *process) {
     current_process = process;
+}
+
+void process_exit(process_t *process) {
+    if (!process || process->state == PROCESS_UNUSED)
+        return;
+
+    process->state = PROCESS_ZOMBIE;
 }
 
 void process_sleep(process_t *process, uint32_t now, uint32_t ticks) {
@@ -103,7 +136,7 @@ void process_dump(void) {
     vga_set_color(VGA_CYAN, VGA_BLACK);
     vga_puts("[PROC] ");
     vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
-    vga_puts("PID  STATE     RUNS  NAME\n");
+    vga_puts("PID  STATE     RUNS  ESP       NAME\n");
 
     for (uint32_t i = 0; i < PROCESS_MAX; i++) {
         process_t *process = &process_table[i];
@@ -116,6 +149,8 @@ void process_dump(void) {
         vga_puts(process_state_name(process->state));
         vga_puts("    ");
         vga_putdec(process->runs);
+        vga_puts("    ");
+        vga_puthex(process->esp);
         vga_puts("    ");
         vga_puts(process->name);
         vga_puts("\n");

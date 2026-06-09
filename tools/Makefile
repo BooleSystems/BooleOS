@@ -1,7 +1,7 @@
 # nullos/tools/Makefile - Fase 3
 
-CC  = x86_64-elf-gcc
-LD  = x86_64-elf-ld
+CC  = i686-elf-gcc
+LD  = i686-elf-ld
 ASM = nasm
 
 ROOT    = ..
@@ -28,7 +28,8 @@ LDFLAGS  = -m elf_i386 \
 
 ASM_SRCS = $(ROOT)/boot/boot.asm \
             $(ROOT)/kernel/gdt_flush.asm \
-            $(ROOT)/kernel/isr.asm
+            $(ROOT)/kernel/isr.asm \
+            $(ROOT)/kernel/context_switch.asm
 
 C_SRCS   = $(ROOT)/kernel/main.c \
             $(ROOT)/kernel/gdt.c \
@@ -82,7 +83,7 @@ $(KERNEL_ISO): $(KERNEL_ELF)
 	@echo "  ISO  $@"
 	@cp $(KERNEL_ELF) $(ISO_DIR)/boot/nullos.elf
 	@cp $(ROOT)/tools/grub.cfg $(ISO_DIR)/boot/grub/grub.cfg
-	grub-mkrescue -o $@ $(ISO_DIR) 2>/dev/null
+	grub-mkrescue -o $@ $(ISO_DIR)
 	@echo "  OK"
 
 run: $(KERNEL_ISO)

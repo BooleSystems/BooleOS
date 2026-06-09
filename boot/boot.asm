@@ -9,7 +9,7 @@ bits 32
 MB2_MAGIC       equ 0xE85250D6
 MB2_ARCH        equ 0           ; i386 protected mode
 MB2_HEADER_LEN  equ (mb2_header_end - mb2_header)
-MB2_CHECKSUM    equ -(MB2_MAGIC + MB2_ARCH + MB2_HEADER_LEN)
+MB2_CHECKSUM    equ 0x100000000 - (MB2_MAGIC + MB2_ARCH + MB2_HEADER_LEN)
 
 STACK_SIZE      equ 0x4000      ; 16 KB de stack
 

@@ -1,6 +1,6 @@
 # NullOS
 
-> An experimental operating system built entirely with AI assistance — testing the limits of what AI can generate.
+> A bare-metal x86 (32-bit) operating system written from scratch in C99 and x86 Assembly.
 
 ```
   _   _       _ _  ___  ____  
@@ -9,144 +9,84 @@
  | |\  | |_| | | | |_| |___) |
  |_| \_|\__,_|_|_|\___/|____/ 
 
- NullOS v0.3.0 - Experimental AI-generated OS
- Phase 3: Processes + Scheduler
+ NullOS v0.3.0 - Phase 3: Processes + Scheduler
 ```
 
-## What is this?
+## Overview
 
-NullOS is a hobby operating system written from scratch in C and x86 Assembly. The twist: every single line of code is generated with AI assistance. This project exists to answer one question: **how far can AI go when building something as complex as an OS?**
+NullOS is an experimental operating system for the x86 architecture. It aims to implement a complete OS stack, including memory management, multitasking, a virtual file system, and eventually a graphical user interface. The project is built using a cross-compiler toolchain and is designed to boot via GRUB using the Multiboot2 specification.
 
-This is not meant to be a production OS. It's an experiment.
-
-## Current status
+## Project Roadmap
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| 0 | Bootloader + VGA output | ✅ Done |
-| 1 | GDT, IDT, PIC, Timer, Keyboard | ✅ Done |
-| 2 | Physical Memory Manager (PMM) | ✅ Done |
-| 2b | VMM + Heap (kmalloc/kfree) | ✅ Done |
-| 3a | Kernel process table + cooperative scheduler | ✅ Done |
-| 3b | Context switching + isolated processes | 🔄 In progress |
-| 4 | Filesystem + VFS | ⏳ Planned |
-| 5 | Syscalls + userland | ⏳ Planned |
-| 6 | Shell (nullsh) | ⏳ Planned |
-| 7 | Basic networking | ⏳ Planned |
-| 8 | GUI | ⏳ Planned |
-| 9 | User applications | ⏳ Planned |
+| **0** | Bootloader + VGA text output | ✅ Done |
+| **1** | GDT, IDT, PIC, Timer, Keyboard | ✅ Done |
+| **2** | Physical Memory Manager (PMM) | ✅ Done |
+| **2b** | Virtual Memory Manager (VMM) + Kernel Heap | ✅ Done |
+| **3a** | Kernel process table + cooperative scheduler | ✅ Done |
+| **3b** | Context switching + isolated processes | 🔄 In Progress |
+| **4** | Filesystem + VFS | ⏳ Planned |
+| **5** | Syscalls + Userland | ⏳ Planned |
+| **6** | Shell (nullsh) | ⏳ Planned |
+| **7** | Basic Networking | ⏳ Planned |
+| **8** | Graphical User Interface (GUI) | ⏳ Planned |
+| **9** | User Applications | ⏳ Planned |
 
-## Architecture
+## Project Structure
 
+```text
+boot/           - Bootloader entry point and linker scripts
+  ├── boot.asm  - Multiboot2 header and early initialization
+  └── linker.ld - Kernel memory layout
+kernel/         - Core kernel source code
+  ├── main.c    - Kernel entry point
+  ├── memory/   - PMM, VMM, and Heap management
+  ├── drivers/  - VGA text driver
+  └── ...       - GDT, IDT, PIC, Keyboard, Scheduler, etc.
+tools/          - Build scripts and configuration files
+  ├── Makefile  - Build system instructions
+  ├── grub.cfg  - GRUB bootloader configuration
+  ├── docker_build.sh - Environment-agnostic build script
+  └── run_qemu.sh     - Helper script to launch QEMU
+build/          - Compilation artifacts (git-ignored)
+docs/           - Technical documentation and setup guides
 ```
-┌─────────────────────────────────────┐
-│         User Applications           │  nullpad, nullfm, nullterm
-├─────────────────────────────────────┤
-│         Core Apps + GUI             │  nullsh, nullcomp, wm
-├─────────────────────────────────────┤
-│      libnull (standard library)     │  no libc dependency
-├─────────────────────────────────────┤
-│        System Services              │  init, netd, logd
-├─────────────────────────────────────┤
-│          NullKernel                 │  proc, sched, pmm, vmm, vfs, ipc
-├─────────────────────────────────────┤
-│           Hardware                  │  x86_64, VGA, PS/2, ATA
-└─────────────────────────────────────┘
-```
 
-## Building
+## Getting Started
 
-### Dependencies
+### Prerequisites
+
+To build and run NullOS, you will need:
+- **Docker**: For the consistent cross-compilation environment.
+- **QEMU**: To emulate the x86 hardware.
+- **Bash**: To run the build and helper scripts.
+
+### Building NullOS
+
+The recommended way to build NullOS is via Docker to avoid toolchain issues.
 
 ```bash
-# Fedora
-sudo dnf install -y nasm xorriso qemu-system-x86 docker
-
-# Start Docker
-sudo systemctl start docker
-sudo usermod -aG docker $USER
+# Build the kernel and generate a bootable ISO
+bash tools/docker_build.sh
 ```
 
-### Build with Docker (recommended)
+### Running NullOS
+
+Once the build is complete, you can launch the OS using QEMU:
 
 ```bash
-git clone https://github.com/TheShannonDev/NullOS.git
-cd NullOS
-
-docker run -it --rm -u root -v $(pwd):/nullos:z randomdude/gcc-cross-x86_64-elf
-
-# Inside the container:
-apt-get install -y nasm grub-pc-bin grub-common xorriso mtools -q
-cd /nullos/tools && make
-exit
+qemu-system-i386 -cdrom build/nullos.iso -m 512M -vga std -serial stdio
 ```
 
-### Run in QEMU
+## Technical Specifications
 
-```bash
-qemu-system-x86_64 \
-  -cdrom build/nullos.iso \
-  -m 256M \
-  -no-reboot \
-  -no-shutdown \
-  -display sdl
-```
-
-## Project structure
-
-```
-nullos/
-├── boot/
-│   ├── boot.asm         # Multiboot2 entry point (Assembly)
-│   └── linker.ld        # Linker script
-├── kernel/
-│   ├── main.c           # kmain()
-│   ├── gdt.c/h          # Global Descriptor Table
-│   ├── gdt_flush.asm    # GDT flush (Assembly)
-│   ├── idt.c/h          # Interrupt Descriptor Table
-│   ├── isr.asm          # ISR/IRQ stubs (Assembly)
-│   ├── pic.c/h          # PIC 8259 remapping
-│   ├── timer.c/h        # PIT timer @ 100Hz
-│   ├── keyboard.c/h     # PS/2 keyboard driver
-│   ├── process.c/h      # Kernel process table
-│   ├── scheduler.c/h    # Cooperative scheduler
-│   ├── memory/
-│   │   ├── pmm.c/h      # Physical Memory Manager (bitmap)
-│   │   ├── vmm.c/h      # Virtual Memory Manager (paging)
-│   │   └── heap.c/h     # Kernel heap (kmalloc/kfree)
-│   └── drivers/
-│       └── vga.c/h      # VGA text mode 80x25
-├── tools/
-│   ├── Makefile
-│   └── grub.cfg
-└── docs/
-    └── setup.md
-```
-
-## Tech stack
-
-| | |
-|-|-|
-| **Language** | C99 + x86 Assembly (NASM) |
-| **Target** | x86 32-bit (Multiboot2) |
-| **Bootloader** | GRUB2 |
-| **Testing** | QEMU |
-| **Cross-compiler** | x86_64-elf-gcc |
-| **AI** | AI-generated and AI-assisted development |
-
-## Scheduler
-
-Phase 3 now includes a small kernel task system:
-
-- Fixed-size process table for kernel tasks
-- Round-robin cooperative scheduler
-- Timer-driven sleeping and wakeups
-- Demo heartbeat and heap-watch tasks started from `kmain()`
-
-## Community Edition
-
-Want to contribute? Check out [NullOS CE](https://github.com/felipe-jr/NullOS-CE) — a fork open to human contributions.
+- **Architecture**: x86 (32-bit, i686-elf)
+- **Standard**: C99 / GNU99
+- **Boot Protocol**: Multiboot2
+- **Toolchain**: i686-elf-gcc, NASM
+- **Target Platform**: Bare-metal (Generic x86 PC)
 
 ## License
 
-MIT
+This project is licensed under the MIT License.
