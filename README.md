@@ -9,7 +9,7 @@
  | |\  | |_| | | | |_| |___) |
  |_| \_|\__,_|_|_|\___/|____/ 
 
- NullOS v0.3.0 - Phase 3: Processes + Scheduler
+ NullOS v0.4.0 - Phase 3b: Context Switch + Exception Handlers
 ```
 
 ## Overview
@@ -25,7 +25,7 @@ NullOS is an experimental operating system for the x86 architecture. It aims to 
 | **2** | Physical Memory Manager (PMM) | ✅ Done |
 | **2b** | Virtual Memory Manager (VMM) + Kernel Heap | ✅ Done |
 | **3a** | Kernel process table + cooperative scheduler | ✅ Done |
-| **3b** | Context switching + isolated processes | 🔄 In Progress |
+| **3b** | Context switching + per-process CR3 + exception handlers | ✅ Done |
 | **4** | Filesystem + VFS | ⏳ Planned |
 | **5** | Syscalls + Userland | ⏳ Planned |
 | **6** | Shell (nullsh) | ⏳ Planned |
