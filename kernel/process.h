@@ -27,6 +27,9 @@ typedef struct process {
     uint32_t esp;
     void *stack;
     uint32_t stack_size;
+    uint32_t cr3;
+    void *user_stack;
+    uint32_t user_esp;
     uint32_t wake_tick;
     uint32_t ticks_run;
     uint32_t runs;

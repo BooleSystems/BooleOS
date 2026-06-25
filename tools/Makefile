@@ -32,11 +32,13 @@ ASM_SRCS = $(ROOT)/boot/boot.asm \
             $(ROOT)/kernel/context_switch.asm
 
 C_SRCS   = $(ROOT)/kernel/main.c \
+            $(ROOT)/kernel/serial.c \
             $(ROOT)/kernel/gdt.c \
             $(ROOT)/kernel/idt.c \
             $(ROOT)/kernel/pic.c \
             $(ROOT)/kernel/timer.c \
             $(ROOT)/kernel/keyboard.c \
+            $(ROOT)/kernel/tss.c \
             $(ROOT)/kernel/process.c \
             $(ROOT)/kernel/scheduler.c \
             $(ROOT)/kernel/memory/pmm.c \

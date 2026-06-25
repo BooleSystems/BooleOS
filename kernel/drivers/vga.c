@@ -3,6 +3,7 @@
 // O buffer VGA fica em 0xB8000. Cada célula = 2 bytes: [atributo | char]
 
 #include "vga.h"
+#include "../serial.h"
 #include <stdint.h>
 #include <stddef.h>
 
@@ -132,6 +133,7 @@ void vga_putchar(char c) {
         vga_scroll();
     }
 
+    serial_putchar(c);
     vga_update_cursor();
 }
 

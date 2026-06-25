@@ -3,6 +3,7 @@
 // Define os segmentos de memória do sistema (código/dados, ring 0/3)
 
 #include "gdt.h"
+#include "tss.h"
 #include <stdint.h>
 
 // ============================================================
@@ -73,6 +74,14 @@ void gdt_init(void) {
     // Dados do usuário: ring 3, leitura/escrita
     gdt_set_entry(GDT_USER_DATA,   0, 0xFFFFFFFF, 0xF2, 0xCF);
 
+    // TSS
+    tss_init(SEG_KERNEL_DATA, 0);
+    uint32_t tss_addr = tss_get_addr();
+    gdt_set_entry(GDT_TSS, tss_addr, sizeof(tss_entry_t), 0x89, 0x40);
+
     // Carrega a GDT e recarrega segmentos
     gdt_flush((uint32_t)&gdt_ptr);
+
+    // Carrega o seletor do TSS
+    __asm__ volatile("ltr %%ax" : : "a" (SEG_TSS));
 }

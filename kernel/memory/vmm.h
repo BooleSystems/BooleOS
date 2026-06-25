@@ -24,6 +24,15 @@ void vmm_unmap_page(uint32_t virt);
 // Retorna endereço físico mapeado a um virtual (ou 0 se não mapeado)
 uint32_t vmm_get_phys(uint32_t virt);
 
+// Retorna o diretório de páginas do kernel (físico)
+uint32_t vmm_get_kernel_directory(void);
+
+// Cria um novo diretório de páginas clonando o mapeamento do kernel
+uint32_t vmm_create_directory(void);
+
+// Troca o diretório de páginas atual
+void vmm_switch_directory(uint32_t cr3);
+
 // Debug
 void vmm_dump(void);
 

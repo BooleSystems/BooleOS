@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include "drivers/vga.h"
+#include "serial.h"
 #include "gdt.h"
 #include "idt.h"
 #include "pic.h"
@@ -107,6 +108,7 @@ static void __attribute__((unused)) test_heap(void) {
 
 void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     (void)multiboot_info_addr;
+    serial_init();
     vga_init();
 
     // Banner
@@ -217,11 +219,12 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
 
     // Status final
     vga_set_color(VGA_YELLOW, VGA_BLACK);
-    vga_puts("\n Fase 3 iniciada!\n");
+    vga_puts("\n Fase 3b iniciada!\n");
     vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
     vga_puts(" PMM + VMM + kmalloc funcionando.\n");
     vga_puts(" Scheduler cooperativo com stacks de kernel por tarefa.\n");
-    vga_puts(" Proximos passos: stacks de usuario e processos isolados.\n\n");
+    vga_puts(" Isolamento de processos via CR3 switching e TSS configurado.\n");
+    vga_puts(" Proximos passos: ring 3 (user mode) e syscalls.\n\n");
 
     vga_puts(" Digite algo:\n > ");
 

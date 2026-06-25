@@ -12,13 +12,15 @@
 #define GDT_KERNEL_DATA 2
 #define GDT_USER_CODE   3
 #define GDT_USER_DATA   4
-#define GDT_ENTRIES     5
+#define GDT_TSS         5
+#define GDT_ENTRIES     6
 
 // Seletores de segmento (índice * 8 + RPL)
 #define SEG_KERNEL_CODE 0x08  // Ring 0
 #define SEG_KERNEL_DATA 0x10  // Ring 0
 #define SEG_USER_CODE   0x1B  // Ring 3
 #define SEG_USER_DATA   0x23  // Ring 3
+#define SEG_TSS         0x28  // TSS entry is 5 * 8 = 40 = 0x28
 
 // Inicializa e carrega a GDT
 void gdt_init(void);

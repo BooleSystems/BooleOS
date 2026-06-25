@@ -1,6 +1,9 @@
 // nullos/kernel/process.c
 #include "process.h"
 #include "drivers/vga.h"
+#include "memory/vmm.h"
+#include "memory/pmm.h"
+#include "tss.h"
 #include <stdint.h>
 
 static process_t process_table[PROCESS_MAX];
@@ -77,6 +80,9 @@ process_t *process_spawn(const char *name, process_entry_t entry, void *arg, voi
             process->wake_tick = 0;
             process->ticks_run = 0;
             process->runs = 0;
+            process->cr3 = vmm_create_directory();
+            if (!process->cr3)
+                process->cr3 = vmm_get_kernel_directory();
             return process;
         }
     }

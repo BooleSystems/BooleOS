@@ -7,9 +7,9 @@
 typedef uint32_t pde_t;
 typedef uint32_t pte_t;
 
-#define PAGE_DIR_ADDR    0x10A000
-#define PAGE_TABLE_START 0x10B000
-#define PAGE_TABLE_END   0x14B000
+#define PAGE_DIR_ADDR    0x300000
+#define PAGE_TABLE_START 0x301000
+#define PAGE_TABLE_END   0x341000
 
 static uint32_t pt_next      = PAGE_TABLE_START;
 static uint8_t  paging_active = 0;
@@ -59,6 +59,38 @@ uint32_t vmm_get_phys(uint32_t virt) {
     pte_t *pt = (pte_t *)(pd[di] & 0xFFFFF000);
     if (!(pt[ti] & VMM_PRESENT)) return 0;
     return (pt[ti] & 0xFFFFF000) | (virt & 0xFFF);
+}
+
+uint32_t vmm_get_kernel_directory(void) {
+    return (uint32_t)PAGE_DIR_ADDR;
+}
+
+void vmm_switch_directory(uint32_t cr3) {
+    __asm__ volatile ("mov %0, %%cr3" : : "r"(cr3) : "memory");
+}
+
+uint32_t vmm_create_directory(void) {
+    uint32_t pd_phys = pmm_alloc_page();
+    if (!pd_phys) return 0;
+
+    /* Must be within the identity-mapped region (first 8MB) so we can
+       write to it via its physical address before mapping it elsewhere. */
+    if (pd_phys >= 0x800000) {
+        pmm_free_page(pd_phys);
+        return 0;
+    }
+
+    pde_t *new_pd = (pde_t *)pd_phys;
+    pde_t *kernel_pd = (pde_t *)PAGE_DIR_ADDR;
+
+    for (int i = 0; i < 1024; i++)
+        new_pd[i] = 0;
+
+    /* Clone the two kernel PDEs (first 8MB identity mapping). */
+    new_pd[0] = kernel_pd[0];
+    new_pd[1] = kernel_pd[1];
+
+    return pd_phys;
 }
 
 void vmm_init(void) {
