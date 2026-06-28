@@ -2,6 +2,7 @@
 #include "syscall.h"
 #include "process.h"
 #include "scheduler.h"
+#include "keyboard.h"
 #include "drivers/vga.h"
 #include <stdint.h>
 
@@ -32,12 +33,38 @@ static uint32_t sys_getpid(void) {
     return p ? p->pid : 0;
 }
 
+static uint32_t sys_read(uint32_t fd, char *buf, uint32_t len) {
+    if (fd != 0 || !buf || len == 0)
+        return (uint32_t)-1;
+
+    uint32_t n = 0;
+    while (n < len) {
+        int c;
+        while ((c = keyboard_getchar_nowait()) == -1)
+            scheduler_sleep_current(1);
+
+        vga_putchar((char)c);   /* eco */
+
+        if (c == '\b') {
+            if (n > 0) n--;     /* backspace: descarta último char */
+            continue;
+        }
+
+        buf[n++] = (char)c;
+
+        if (c == '\n')
+            break;
+    }
+    return n;
+}
+
 uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t arg3) {
     switch (num) {
         case SYS_WRITE:  return sys_write(arg1, (const char *)arg2, arg3);
         case SYS_EXIT:   return sys_exit(arg1);
         case SYS_YIELD:  return sys_yield();
         case SYS_GETPID: return sys_getpid();
+        case SYS_READ:   return sys_read(arg1, (char *)arg2, arg3);
         default:
             vga_set_color(VGA_YELLOW, VGA_BLACK);
             vga_puts("[SYSCALL] numero desconhecido: ");

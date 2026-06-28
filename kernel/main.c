@@ -77,7 +77,7 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     vga_puts(" | |\\  | |_| | | | |_| |___) |\n");
     vga_puts(" |_| \\_|\\__,_|_|_|\\___/|____/ \n\n");
     vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
-    vga_puts(" NullOS v0.5.0 - Fase 5: ramfs + ELF loader\n\n");
+    vga_puts(" NullOS v0.7.0 - Fase 7: shell userland\n\n");
 
     print_separator();
 
@@ -193,18 +193,10 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
         print_ok();
 
         print_tag("[EXEC] ");
-        vga_puts("Carregando init...\n");
-        if (!exec("init")) {
+        vga_puts("Carregando shell...\n");
+        if (!exec("shell")) {
             vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
-            vga_puts("ERRO ao carregar init\n");
-            vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
-        }
-
-        print_tag("[EXEC] ");
-        vga_puts("Carregando spintest...\n");
-        if (!exec("spintest")) {
-            vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
-            vga_puts("ERRO ao carregar spintest\n");
+            vga_puts("ERRO ao carregar shell\n");
             vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
         }
     }
@@ -213,9 +205,8 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     print_separator();
 
     vga_set_color(VGA_YELLOW, VGA_BLACK);
-    vga_puts("\n Fase 5 iniciada!\n");
+    vga_puts("\n Shell iniciado!\n");
     vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
-    vga_puts(" ramfs + ELF loader + exec() prontos.\n\n");
 
     for (;;) {
         scheduler_run_once();

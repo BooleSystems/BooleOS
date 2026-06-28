@@ -42,7 +42,6 @@ static void keyboard_callback(uint32_t int_no) {
         kb_buffer[kb_head] = c;
         kb_head = next;
     }
-    vga_putchar(c);
 }
 
 void keyboard_init(void) {
@@ -56,6 +55,15 @@ char keyboard_getchar(void) {
     char c = kb_buffer[kb_tail];
     kb_tail = (kb_tail + 1) % KB_BUFFER_SIZE;
     return c;
+}
+
+/* Retorna o próximo char do buffer ou -1 se vazio (não bloqueia). */
+int keyboard_getchar_nowait(void) {
+    if (kb_head == kb_tail)
+        return -1;
+    char c = kb_buffer[kb_tail];
+    kb_tail = (kb_tail + 1) % KB_BUFFER_SIZE;
+    return (int)(unsigned char)c;
 }
 
 int keyboard_haschar(void) {
