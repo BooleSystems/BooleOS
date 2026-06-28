@@ -13,24 +13,18 @@ static int sys_write(const char *buf, unsigned int len) {
     return ret;
 }
 
-static void sys_yield(void) {
-    int ret;
-    /* "=a"/"0": eax=3 na entrada, retorno na saída.
-       Sem isso, com -O2 o compilador assume eax=3 após iret e não recarrega,
-       causando o próximo int $0x80 com eax=retorno_anterior em vez de 3. */
+static void sys_exit(int code) {
     __asm__ volatile (
         "int $0x80"
-        : "=a"(ret)
-        : "0"(3)
+        :
+        : "a"(2), "b"(code)
         : "memory"
     );
-    (void)ret;
 }
 
 static const char msg[] = "init: hello from userland!\n";
 
 void _start(void) {
     sys_write(msg, sizeof(msg) - 1);
-    for (;;)
-        sys_yield();
+    sys_exit(0);
 }

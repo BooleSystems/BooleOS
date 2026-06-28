@@ -136,7 +136,8 @@ void process_exit(process_t *process) {
     if (!process || process->state == PROCESS_UNUSED)
         return;
 
-    process->state = PROCESS_ZOMBIE;
+    process->state = PROCESS_UNUSED;
+    process->pid   = 0;
 }
 
 void process_sleep(process_t *process, uint32_t now, uint32_t ticks) {
