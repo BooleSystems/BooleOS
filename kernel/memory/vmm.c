@@ -61,6 +61,16 @@ uint32_t vmm_get_phys(uint32_t virt) {
     return (pt[ti] & 0xFFFFF000) | (virt & 0xFFF);
 }
 
+uint32_t vmm_get_phys_from_dir(uint32_t pd_phys, uint32_t virt) {
+    uint32_t di = virt >> 22;
+    uint32_t ti = (virt >> 12) & 0x3FF;
+    pde_t *pd = (pde_t *)pd_phys;
+    if (!(pd[di] & VMM_PRESENT)) return 0;
+    pte_t *pt = (pte_t *)(pd[di] & 0xFFFFF000);
+    if (!(pt[ti] & VMM_PRESENT)) return 0;
+    return (pt[ti] & 0xFFFFF000) | (virt & 0xFFF);
+}
+
 uint32_t vmm_get_kernel_directory(void) {
     return (uint32_t)PAGE_DIR_ADDR;
 }

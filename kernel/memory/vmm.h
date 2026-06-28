@@ -37,6 +37,9 @@ void vmm_switch_directory(uint32_t cr3);
 // pd_phys deve estar dentro dos primeiros 8MB (identity-mapped)
 void vmm_map_user_page(uint32_t pd_phys, uint32_t virt, uint32_t phys);
 
+// Resolve virt→phys num page directory arbitrário (identity-mapped)
+uint32_t vmm_get_phys_from_dir(uint32_t pd_phys, uint32_t virt);
+
 // Debug
 void vmm_dump(void);
 

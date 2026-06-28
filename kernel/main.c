@@ -14,6 +14,7 @@
 #include "memory/vmm.h"
 #include "memory/heap.h"
 #include "scheduler.h"
+#include "multiboot2.h"
 
 #define MULTIBOOT2_MAGIC 0x36d76289
 
@@ -193,6 +194,24 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
         goto hang;
     }
     vga_puts("Multiboot2: "); print_ok();
+
+    // Módulos Multiboot2
+    {
+        uint32_t mod_start = 0, mod_end = 0;
+        print_tag("[BOOT] ");
+        if (multiboot2_find_module((void *)multiboot_info_addr,
+                                   &mod_start, &mod_end)) {
+            vga_puts("modulo: 0x");
+            vga_puthex(mod_start);
+            vga_puts(" - 0x");
+            vga_puthex(mod_end);
+            vga_puts(" (");
+            vga_putdec(mod_end - mod_start);
+            vga_puts(" bytes)\n");
+        } else {
+            vga_puts("nenhum modulo carregado\n");
+        }
+    }
 
     // GDT
     print_tag("[GDT]  ");
