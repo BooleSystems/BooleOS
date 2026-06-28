@@ -3,7 +3,10 @@
 #include "process.h"
 #include "scheduler.h"
 #include "keyboard.h"
+#include "timer.h"
 #include "drivers/vga.h"
+#include "memory/pmm.h"
+#include "memory/heap.h"
 #include <stdint.h>
 
 static uint32_t sys_write(uint32_t fd, const char *buf, uint32_t len) {
@@ -58,13 +61,51 @@ static uint32_t sys_read(uint32_t fd, char *buf, uint32_t len) {
     return n;
 }
 
+static uint32_t sys_uptime(void) {
+    return timer_get_ticks();
+}
+
+static uint32_t sys_meminfo(uint32_t *pmm_out, uint32_t *heap_out, uint32_t *procs_out) {
+    if (pmm_out)   *pmm_out   = pmm_free_pages();
+    if (heap_out)  *heap_out  = heap_free_bytes();
+    if (procs_out) {
+        uint32_t n = 0;
+        for (uint32_t i = 0; i < PROCESS_MAX; i++) {
+            process_t *p = process_at(i);
+            if (p && p->state != PROCESS_UNUSED) n++;
+        }
+        *procs_out = n;
+    }
+    return 0;
+}
+
+static uint32_t sys_ps(void) {
+    process_dump();
+    return 0;
+}
+
+static uint32_t sys_kill(uint32_t pid) {
+    for (uint32_t i = 0; i < PROCESS_MAX; i++) {
+        process_t *p = process_at(i);
+        if (p && p->pid == pid && p->state != PROCESS_UNUSED) {
+            process_exit(p);
+            return 0;
+        }
+    }
+    return (uint32_t)-1;
+}
+
 uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t arg3) {
     switch (num) {
-        case SYS_WRITE:  return sys_write(arg1, (const char *)arg2, arg3);
-        case SYS_EXIT:   return sys_exit(arg1);
-        case SYS_YIELD:  return sys_yield();
-        case SYS_GETPID: return sys_getpid();
-        case SYS_READ:   return sys_read(arg1, (char *)arg2, arg3);
+        case SYS_WRITE:   return sys_write(arg1, (const char *)arg2, arg3);
+        case SYS_EXIT:    return sys_exit(arg1);
+        case SYS_YIELD:   return sys_yield();
+        case SYS_GETPID:  return sys_getpid();
+        case SYS_READ:    return sys_read(arg1, (char *)arg2, arg3);
+        case SYS_UPTIME:  return sys_uptime();
+        case SYS_MEMINFO: return sys_meminfo((uint32_t *)arg1, (uint32_t *)arg2, (uint32_t *)arg3);
+        case SYS_PS:      return sys_ps();
+        case SYS_KILL:    return sys_kill(arg1);
         default:
             vga_set_color(VGA_YELLOW, VGA_BLACK);
             vga_puts("[SYSCALL] numero desconhecido: ");

@@ -177,6 +177,16 @@ void kfree(void *ptr) {
     }
 }
 
+uint32_t heap_free_bytes(void) {
+    block_header_t *cur = heap_start_ptr;
+    uint32_t free = 0;
+    while (cur) {
+        if (cur->magic == MAGIC_FREE) free += cur->size;
+        cur = cur->next;
+    }
+    return free;
+}
+
 void heap_dump(void) {
     block_header_t *cur = heap_start_ptr;
     uint32_t        free_bytes = 0;

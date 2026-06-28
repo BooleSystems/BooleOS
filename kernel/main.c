@@ -38,32 +38,6 @@ static void print_separator(void) {
     vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
 }
 
-static void heartbeat_task(void *arg) {
-    (void)arg;
-    uint32_t beats = 0;
-    for (;;) {
-        vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
-        vga_puts("[task:heartbeat] beat ");
-        vga_putdec(++beats);
-        vga_puts("\n");
-        vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
-        scheduler_sleep_current(100);
-    }
-}
-
-static void heap_watch_task(void *arg) {
-    (void)arg;
-    uint32_t samples = 0;
-    for (;;) {
-        vga_set_color(VGA_YELLOW, VGA_BLACK);
-        vga_puts("[task:heap-watch] sample ");
-        vga_putdec(++samples);
-        vga_puts("\n");
-        vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
-        heap_dump();
-        scheduler_sleep_current(250);
-    }
-}
 
 void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     serial_init();
@@ -174,14 +148,6 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     print_tag("[SCHED]");
     vga_puts("Inicializando scheduler... ");
     scheduler_init();
-    process_t *heartbeat = scheduler_spawn("heartbeat", heartbeat_task, 0);
-    process_t *heap_watch = scheduler_spawn("heap-watch", heap_watch_task, 0);
-    if (!heartbeat || !heap_watch) {
-        vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
-        vga_puts("ERRO ao criar tasks\n");
-        vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
-        goto hang;
-    }
     print_ok();
 
     // ramfs + exec("init") — só se o GRUB passou um módulo

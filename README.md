@@ -9,7 +9,7 @@
  | |\  | |_| | | | |_| |___) |
  |_| \_|\__,_|_|_|\___/|____/ 
 
- NullOS v0.6.0 - Fase 6: preempção + retorno de syscalls
+ NullOS v0.7.0 - Fase 7: shell userland
 ```
 
 ## Overview
@@ -29,7 +29,8 @@ NullOS is an experimental x86 OS written from scratch in C99 and NASM assembly. 
 | **4** | TSS, ring 3 usermode, syscalls via `int 0x80` | ✅ Done |
 | **5** | Multiboot2 module parser, ramfs flat, ELF32 loader, `exec()`, `user/init` | ✅ Done |
 | **6** | Retorno de syscalls em `eax`, preempção via IRQ0 (fatia de 10 ticks) | ✅ Done |
-| **7** | Mais syscalls (open, read, write, mmap…) + shell | ⏳ Planned |
+| **7** | `SYS_READ`, ringbuffer de teclado, shell interativo em userland | ✅ Done |
+| **8** | Mais syscalls (open, mmap…), múltiplos processos do shell, filesystem | ⏳ Planned |
 
 ## O que está implementado
 
@@ -65,6 +66,11 @@ NullOS is an experimental x86 OS written from scratch in C99 and NASM assembly. 
 | 2 | `SYS_EXIT` | `exit(code) → não retorna` |
 | 3 | `SYS_YIELD` | `yield() → 0` |
 | 4 | `SYS_GETPID` | `getpid() → pid` |
+| 5 | `SYS_READ` | `read(fd, buf, len) → bytes lidos` |
+| 6 | `SYS_UPTIME` | `uptime() → ticks (100 Hz)` |
+| 7 | `SYS_MEMINFO` | `meminfo(*pmm_pages, *heap_bytes, *nprocs) → 0` |
+| 8 | `SYS_PS` | `ps() → 0` (imprime tabela de processos via VGA) |
+| 9 | `SYS_KILL` | `kill(pid) → 0 ou -1` |
 
 > **Retorno de syscalls:** `isr128` escreve o retorno do `syscall_handler` no slot EAX do frame do `pusha` antes do `popa`, entregando o valor correto em `eax` para o userland após o `iret`. Inline asm do userland deve usar constraints `"=a"`/`"0"` para que o compilador não assuma eax inalterado após o `int $0x80`.
 
@@ -73,8 +79,15 @@ NullOS is an experimental x86 OS written from scratch in C99 and NASM assembly. 
 - ramfs flat: `[uint32_t n] [entry×n: name[32]+offset+size] [dados...]`
 - ELF32 loader: valida magic, itera `PT_LOAD`, aloca páginas físicas, mapeia no CR3 do processo, copia segmentos
 - `exec(name)`: busca na ramfs → cria CR3 → `elf_load` → aloca user stack → `scheduler_spawn_user`
-- `kmain` chama `exec("init")` e `exec("spintest")` se o GRUB passar um módulo; sobe sem processo de usuário caso contrário
-- `user/spintest`: processo de teste que nunca chama yield — valida preempção
+- `kmain` chama `exec("shell")` se o GRUB passar um módulo; sobe sem processo de usuário caso contrário
+
+### Shell interativo
+- Ringbuffer de teclado (256 chars) no IRQ1; echo removido do handler
+- `SYS_READ (fd=0)`: lê da ringbuffer com polling + `scheduler_sleep_current(1)` para não starvar; faz echo e trata backspace
+- `user/shell`: loop `> ` → `sys_read` → `run_command`
+- Comandos: `help`, `uname`, `fetch`, `ps`, `mem`, `echo <texto>`, `kill <pid>`, `clear`, `exit`
+- `fetch`: banner ASCII com OS, Arch, Uptime, PMM livre, Heap livre, Procs rodando
+- Sem tasks de debug em background — VGA exclusivo do shell
 
 ## Estrutura
 
@@ -101,10 +114,11 @@ kernel/
   elf.c/h             ELF32 loader
   exec.c/h            exec(): ramfs → ELF → spawn
 user/
-  init.c              primeiro processo de usuário: SYS_WRITE + loop SYS_YIELD
+  init.c              processo de usuário simples: SYS_WRITE + SYS_EXIT
   spintest.c          processo sem yield: valida preempção via IRQ0
+  shell.c             shell interativo: help/uname/fetch/ps/mem/echo/kill/clear/exit
   link.ld             linker script de usuário (entry @ 0x01000000)
-  Makefile            compila init.elf e spintest.elf
+  Makefile            compila init.elf, spintest.elf e shell.elf
   memory/
     pmm.c             Physical Memory Manager
     vmm.c             Virtual Memory Manager
