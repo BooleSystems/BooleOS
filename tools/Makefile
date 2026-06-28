@@ -37,6 +37,7 @@ C_SRCS   = $(ROOT)/kernel/main.c \
             $(ROOT)/kernel/syscall.c \
             $(ROOT)/kernel/ramfs.c \
             $(ROOT)/kernel/elf.c \
+            $(ROOT)/kernel/exec.c \
             $(ROOT)/kernel/gdt.c \
             $(ROOT)/kernel/idt.c \
             $(ROOT)/kernel/pic.c \

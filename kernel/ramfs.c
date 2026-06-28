@@ -1,6 +1,6 @@
 #include "ramfs.h"
 
-static uint8_t        *ramfs_base    = 0;
+uint8_t               *ramfs_base    = 0;
 static uint32_t        ramfs_size    = 0;
 static uint32_t        ramfs_nfiles  = 0;
 static ramfs_entry_t  *ramfs_entries = 0;
