@@ -9,84 +9,114 @@
  | |\  | |_| | | | |_| |___) |
  |_| \_|\__,_|_|_|\___/|____/ 
 
- NullOS v0.4.0 - Phase 3b: Context Switch + Exception Handlers
+ NullOS v0.4.0 - Fase 4: Usermode + Syscalls
 ```
 
 ## Overview
 
-NullOS is an experimental operating system for the x86 architecture. It aims to implement a complete OS stack, including memory management, multitasking, a virtual file system, and eventually a graphical user interface. The project is built using a cross-compiler toolchain and is designed to boot via GRUB using the Multiboot2 specification.
+NullOS is an experimental x86 OS written from scratch in C99 and NASM assembly. It boots via GRUB (Multiboot2), runs kernel and user processes with memory isolation, and handles syscalls from ring 3 via `int 0x80`.
 
-## Project Roadmap
+## Roadmap
 
-| Phase | Description | Status |
-|-------|-------------|--------|
-| **0** | Bootloader + VGA text output | ✅ Done |
-| **1** | GDT, IDT, PIC, Timer, Keyboard | ✅ Done |
-| **2** | Physical Memory Manager (PMM) | ✅ Done |
-| **2b** | Virtual Memory Manager (VMM) + Kernel Heap | ✅ Done |
-| **3a** | Kernel process table + cooperative scheduler | ✅ Done |
-| **3b** | Context switching + per-process CR3 + exception handlers | ✅ Done |
-| **4** | Filesystem + VFS | ⏳ Planned |
-| **5** | Syscalls + Userland | ⏳ Planned |
-| **6** | Shell (nullsh) | ⏳ Planned |
-| **7** | Basic Networking | ⏳ Planned |
-| **8** | Graphical User Interface (GUI) | ⏳ Planned |
-| **9** | User Applications | ⏳ Planned |
+| Fase | Descrição | Status |
+|------|-----------|--------|
+| **0** | Bootloader (Multiboot2) + VGA text output | ✅ Done |
+| **1** | GDT, IDT, PIC, PIT (100 Hz), teclado PS/2 | ✅ Done |
+| **2** | PMM (Physical Memory Manager) | ✅ Done |
+| **2b** | VMM com paginação + heap (`kmalloc`/`kfree`) | ✅ Done |
+| **3a** | Tabela de processos + scheduler cooperativo round-robin | ✅ Done |
+| **3b** | Context switch por processo, CR3 por processo, exception handlers | ✅ Done |
+| **4** | TSS, ring 3 usermode, syscalls via `int 0x80` | ✅ Done |
+| **5** | ramfs / initrd para carregar programas de usuário | ⏳ Planned |
+| **6** | Preempção (scheduler preemptivo via IRQ0) | ⏳ Planned |
+| **7** | Mais syscalls (open, read, write, mmap…) + shell | ⏳ Planned |
 
-## Project Structure
+## O que está implementado
 
-```text
-boot/           - Bootloader entry point and linker scripts
-  ├── boot.asm  - Multiboot2 header and early initialization
-  └── linker.ld - Kernel memory layout
-kernel/         - Core kernel source code
-  ├── main.c    - Kernel entry point
-  ├── memory/   - PMM, VMM, and Heap management
-  ├── drivers/  - VGA text driver
-  └── ...       - GDT, IDT, PIC, Keyboard, Scheduler, etc.
-tools/          - Build scripts and configuration files
-  ├── Makefile  - Build system instructions
-  ├── grub.cfg  - GRUB bootloader configuration
-  ├── docker_build.sh - Environment-agnostic build script
-  └── run_qemu.sh     - Helper script to launch QEMU
-build/          - Compilation artifacts (git-ignored)
-docs/           - Technical documentation and setup guides
+### Kernel base
+- Boot via GRUB2 com header Multiboot2
+- VGA text mode 80×25 com cores
+- GDT com segmentos ring 0 e ring 3 (código + dados)
+- IDT com handlers para exceções CPU (0–31), IRQs (32–33) e syscall gate (int 0x80, DPL=3)
+- PIC 8259 remapeado (IRQs 0–15 → vetores 32–47)
+- PIT configurado a 100 Hz
+- Driver de teclado PS/2
+
+### Memória
+- PMM: bitmap de páginas físicas (64 MB)
+- VMM: paginação 32-bit com identity map 0–8 MB, diretórios por processo
+- Heap do kernel: `kmalloc`/`kfree` com first-fit
+
+### Multitarefa
+- Tabela de processos com até 16 entradas
+- Scheduler cooperativo round-robin
+- Context switch em assembly (salva/restaura callee-saved registers via ESP)
+- TSS configurado para stack do kernel por processo (SS0:ESP0)
+- Processos kernel com bootstrap e stacks isoladas
+
+### Usermode e syscalls
+- `jump_to_usermode` via `iret` com segmentos ring 3 (CS=0x1B, SS=0x23)
+- Isolamento via CR3 por processo (page directory próprio com kernel mapeado)
+- Syscall gate: `int 0x80`, convenção `eax=num, ebx=arg1, ecx=arg2, edx=arg3`
+- Syscalls implementadas:
+
+| num | nome | assinatura |
+|-----|------|-----------|
+| 1 | `SYS_WRITE` | `write(fd, buf, len) → bytes` |
+| 2 | `SYS_EXIT` | `exit(code) → não retorna` |
+| 3 | `SYS_YIELD` | `yield() → 0` |
+| 4 | `SYS_GETPID` | `getpid() → pid` |
+
+## Estrutura
+
+```
+boot/
+  boot.asm       Multiboot2 header + _start
+  linker.ld      Layout de memória (kernel @ 0x100000)
+kernel/
+  main.c         kmain: inicialização e loop do scheduler
+  gdt.c/asm      Global Descriptor Table
+  idt.c          Interrupt Descriptor Table + exception handler
+  isr.asm        Stubs de exceção e syscall gate (isr128)
+  pic.c          8259 PIC
+  timer.c        PIT 100 Hz
+  keyboard.c     PS/2 keyboard
+  tss.c          Task State Segment
+  process.c/h    Tabela de processos
+  scheduler.c/h  Round-robin cooperativo
+  context_switch.asm  Troca de contexto ESP
+  usermode.asm   jump_to_usermode
+  syscall.c/h    Dispatcher de syscalls
+  memory/
+    pmm.c        Physical Memory Manager
+    vmm.c        Virtual Memory Manager
+    heap.c       kmalloc/kfree
+  drivers/
+    vga.c        VGA text driver
+tools/
+  Makefile       Build system (i686-elf-gcc + NASM + grub2-mkrescue)
+  grub.cfg       Configuração do GRUB
+build/           Artefatos (git-ignored)
 ```
 
-## Getting Started
-
-### Prerequisites
-
-To build and run NullOS, you will need:
-- **Docker**: For the consistent cross-compilation environment.
-- **QEMU**: To emulate the x86 hardware.
-- **Bash**: To run the build and helper scripts.
-
-### Building NullOS
-
-The recommended way to build NullOS is via Docker to avoid toolchain issues.
+## Build
 
 ```bash
-# Build the kernel and generate a bootable ISO
-bash tools/docker_build.sh
+cd tools
+make          # gera build/nullos.iso
+make run      # lança no QEMU
+make clean    # limpa build/
 ```
 
-### Running NullOS
+**Dependências:** `i686-elf-gcc`, `i686-elf-ld`, `nasm`, `grub2-mkrescue`, `qemu-system-x86_64`
 
-Once the build is complete, you can launch the OS using QEMU:
+## Specs técnicas
 
-```bash
-qemu-system-i386 -cdrom build/nullos.iso -m 512M -vga std -serial stdio
-```
-
-## Technical Specifications
-
-- **Architecture**: x86 (32-bit, i686-elf)
-- **Standard**: C99 / GNU99
-- **Boot Protocol**: Multiboot2
-- **Toolchain**: i686-elf-gcc, NASM
-- **Target Platform**: Bare-metal (Generic x86 PC)
+- Arquitetura: x86 32-bit (i686)
+- Linguagem: C99 + NASM
+- Boot: Multiboot2 via GRUB2
+- Toolchain: i686-elf-gcc, i686-elf-ld, NASM
 
 ## License
 
-This project is licensed under the MIT License.
+MIT
