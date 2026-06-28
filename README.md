@@ -27,8 +27,8 @@ NullOS is an experimental x86 OS written from scratch in C99 and NASM assembly. 
 | **3a** | Tabela de processos + scheduler cooperativo round-robin | ✅ Done |
 | **3b** | Context switch por processo, CR3 por processo, exception handlers | ✅ Done |
 | **4** | TSS, ring 3 usermode, syscalls via `int 0x80` | ✅ Done |
-| **5** | Multiboot2 module parser, ramfs flat, ELF32 loader, `exec()` | ✅ Done |
-| **6** | Preempção (scheduler preemptivo via IRQ0) | ⏳ Planned |
+| **5** | Multiboot2 module parser, ramfs flat, ELF32 loader, `exec()`, `user/init` | ✅ Done |
+| **6** | Retorno de syscalls em `eax` + preempção via IRQ0 | ⏳ Planned |
 | **7** | Mais syscalls (open, read, write, mmap…) + shell | ⏳ Planned |
 
 ## O que está implementado
@@ -64,6 +64,8 @@ NullOS is an experimental x86 OS written from scratch in C99 and NASM assembly. 
 | 2 | `SYS_EXIT` | `exit(code) → não retorna` |
 | 3 | `SYS_YIELD` | `yield() → 0` |
 | 4 | `SYS_GETPID` | `getpid() → pid` |
+
+> **Nota:** o valor de retorno das syscalls não é atualmente entregue em `eax` para o userland — `iret` restaura o `eax` original (número da syscall). Programas que precisarem do retorno (ex: bytes escritos por `SYS_WRITE`) exigirão uma correção no stub `isr128`.
 
 ### Carregamento de programas
 - Parser de tags Multiboot2 (`multiboot2_find_module`)

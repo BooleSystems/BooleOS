@@ -1,4 +1,4 @@
-# nullos/tools/Makefile - Fase 3
+# nullos/tools/Makefile - Fase 5
 
 CC  = i686-elf-gcc
 LD  = i686-elf-ld
@@ -57,10 +57,12 @@ ALL_OBJS = $(ASM_OBJS) $(C_OBJS)
 
 KERNEL_ELF = $(BUILD)/nullos.elf
 KERNEL_ISO = $(BUILD)/nullos.iso
+INIT_ELF   = $(BUILD)/user/init.elf
+RAMFS_IMG  = $(BUILD)/ramfs.img
 
-.PHONY: all clean run dirs
+.PHONY: all clean run dirs user
 
-all: dirs $(KERNEL_ISO)
+all: dirs user $(KERNEL_ISO)
 	@echo ""
 	@echo "  Build OK: $(KERNEL_ISO)"
 	@echo "  'make run' para testar"
@@ -70,6 +72,11 @@ dirs:
 	@mkdir -p $(BUILD)/boot
 	@mkdir -p $(BUILD)/kernel/drivers
 	@mkdir -p $(BUILD)/kernel/memory
+	@mkdir -p $(BUILD)/user
+
+user:
+	@echo "  USER user/init.c"
+	$(MAKE) -C $(ROOT)/user
 
 $(BUILD)/%.o: $(ROOT)/%.asm
 	@echo "  ASM  $<"
@@ -85,10 +92,15 @@ $(KERNEL_ELF): $(ALL_OBJS)
 	@echo "  LD   $@"
 	$(LD) $(LDFLAGS) -o $@ $(ALL_OBJS)
 
-$(KERNEL_ISO): $(KERNEL_ELF)
+$(RAMFS_IMG): $(INIT_ELF)
+	@echo "  RAMFS $@"
+	python3 $(ROOT)/tools/make_ramfs.py $@ init=$(INIT_ELF)
+
+$(KERNEL_ISO): $(KERNEL_ELF) $(RAMFS_IMG)
 	@echo "  ISO  $@"
 	@mkdir -p $(ISO_DIR)/boot/grub
 	@cp $(KERNEL_ELF) $(ISO_DIR)/boot/nullos.elf
+	@cp $(RAMFS_IMG)  $(ISO_DIR)/boot/ramfs.img
 	@cp $(ROOT)/tools/grub.cfg $(ISO_DIR)/boot/grub/grub.cfg
 	grub2-mkrescue -o $@ $(ISO_DIR)
 	@echo "  OK"

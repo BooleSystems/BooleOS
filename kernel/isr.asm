@@ -188,6 +188,5 @@ isr128:
     push eax                ; num   (primeiro)
     call syscall_handler
     add esp, 16
-    mov [esp + 28], eax     ; devolve retorno no slot de eax do pusha
-    popa                    ; restaura registradores (eax = valor de retorno)
+    popa                    ; restaura regs do usuário; eax = valor original (não o retorno)
     iret
