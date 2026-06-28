@@ -90,6 +90,34 @@ process_t *process_spawn(const char *name, process_entry_t entry, void *arg, voi
     return 0;
 }
 
+process_t *process_spawn_user(const char *name, uint32_t user_entry,
+                              uint32_t user_esp, uint32_t cr3,
+                              void (*bootstrap)(void)) {
+    if (!bootstrap) return 0;
+
+    for (uint32_t i = 0; i < PROCESS_MAX; i++) {
+        process_t *p = &process_table[i];
+        if (p->state != PROCESS_UNUSED) continue;
+
+        p->pid        = next_pid++;
+        copy_name(p->name, name);
+        p->state      = PROCESS_READY;
+        p->entry      = 0;                   /* não usado: entry é ring 3 */
+        p->arg        = (void *)user_entry;  /* EIP do processo de usuário */
+        p->stack      = process_stacks[i];
+        p->stack_size = PROCESS_STACK_SIZE;
+        p->esp        = build_initial_stack(p->stack, p->stack_size, bootstrap);
+        p->cr3        = cr3;
+        p->user_esp   = user_esp;
+        p->user_stack = 0;
+        p->wake_tick  = 0;
+        p->ticks_run  = 0;
+        p->runs       = 0;
+        return p;
+    }
+    return 0;
+}
+
 process_t *process_at(uint32_t index) {
     if (index >= PROCESS_MAX)
         return 0;

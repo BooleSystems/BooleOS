@@ -4,6 +4,7 @@
 #include "drivers/vga.h"
 #include "memory/vmm.h"
 #include "tss.h"
+#include "usermode.h"
 #include <stdint.h>
 
 extern void context_switch(uint32_t *old_esp, uint32_t new_esp, uint32_t new_cr3);
@@ -39,6 +40,22 @@ process_t *scheduler_spawn(const char *name, process_entry_t entry, void *arg) {
     if (!scheduler_ready)
         return 0;
     return process_spawn(name, entry, arg, scheduler_task_bootstrap);
+}
+
+/* Bootstrap para processos de usuário: atualiza TSS e salta para ring 3.
+   p->arg guarda o EIP de usuário; p->user_esp guarda o ESP de usuário. */
+static void user_task_bootstrap(void) {
+    process_t *p = process_current();
+    if (!p) return;
+    tss_set_stack(0x10, (uint32_t)p->stack + p->stack_size);
+    jump_to_usermode((uint32_t)p->arg, p->user_esp);
+    /* não retorna */
+}
+
+process_t *scheduler_spawn_user(const char *name, uint32_t user_entry,
+                                uint32_t user_esp, uint32_t cr3) {
+    if (!scheduler_ready) return 0;
+    return process_spawn_user(name, user_entry, user_esp, cr3, user_task_bootstrap);
 }
 
 void scheduler_tick(uint32_t tick) {

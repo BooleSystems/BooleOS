@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include "drivers/vga.h"
 #include "serial.h"
+#include "usermode.h"
 #include "gdt.h"
 #include "idt.h"
 #include "pic.h"
@@ -15,6 +16,67 @@
 #include "scheduler.h"
 
 #define MULTIBOOT2_MAGIC 0x36d76289
+
+/* -------------------------------------------------------
+ * Processo de teste em ring 3 — código x86 embutido
+ *
+ * Layout de memória virtual do processo:
+ *   código : USER_CODE_VIRT  = 0x01000000
+ *   stack  : USER_STACK_VIRT = 0x02000000  (top = +PAGE_SIZE)
+ *
+ * Convenção de syscall: eax=num, ebx=arg1, ecx=arg2, edx=arg3
+ *
+ * O blob executa, em ordem:
+ *   1. SYS_WRITE(1, msg, 18)   — imprime "Hello from ring3!\n"
+ *   2. SYS_GETPID()            — resultado ignorado
+ *   3. loop: SYS_YIELD()
+ *
+ * A string "Hello from ring3!\n" (18 bytes) está no offset 38 do blob.
+ * Endereço virtual da string = 0x01000000 + 0x26 = 0x01000026.
+ * ------------------------------------------------------- */
+#define USER_CODE_VIRT  0x01000000U
+#define USER_STACK_VIRT 0x02000000U
+
+static const uint8_t user_blob[] = {
+    /* offset  0 */ 0xB8, 0x01, 0x00, 0x00, 0x00,  /* mov eax, 1          (SYS_WRITE)  */
+    /* offset  5 */ 0xBB, 0x01, 0x00, 0x00, 0x00,  /* mov ebx, 1          (fd=stdout)  */
+    /* offset 10 */ 0xB9, 0x26, 0x00, 0x00, 0x01,  /* mov ecx, 0x01000026 (msg addr)   */
+    /* offset 15 */ 0xBA, 0x12, 0x00, 0x00, 0x00,  /* mov edx, 18         (msg len)    */
+    /* offset 20 */ 0xCD, 0x80,                     /* int 0x80                         */
+    /* offset 22 */ 0xB8, 0x04, 0x00, 0x00, 0x00,  /* mov eax, 4          (SYS_GETPID) */
+    /* offset 27 */ 0xCD, 0x80,                     /* int 0x80                         */
+    /* offset 29 */ 0xB8, 0x03, 0x00, 0x00, 0x00,  /* mov eax, 3  [loop:] (SYS_YIELD)  */
+    /* offset 34 */ 0xCD, 0x80,                     /* int 0x80                         */
+    /* offset 36 */ 0xEB, 0xF7,                     /* jmp loop  (rel=-9 → offset 29)   */
+    /* offset 38 */ 'H','e','l','l','o',' ','f','r','o','m',' ','r','i','n','g','3','!','\n'
+};
+
+static process_t *spawn_user_test(void) {
+    /* Cria page directory isolado para o processo */
+    uint32_t cr3 = vmm_create_directory();
+    if (!cr3) {
+        vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+        vga_puts("[USER] falha ao criar directory\n");
+        vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+        return 0;
+    }
+
+    /* Aloca página física para código e copia o blob */
+    uint32_t code_phys = pmm_alloc_page();
+    if (!code_phys) return 0;
+    uint8_t *code_page = (uint8_t *)code_phys;  /* identity-mapped (<8MB) */
+    for (uint32_t i = 0; i < sizeof(user_blob); i++)
+        code_page[i] = user_blob[i];
+    vmm_map_user_page(cr3, USER_CODE_VIRT, code_phys);
+
+    /* Aloca página física para stack de usuário */
+    uint32_t stack_phys = pmm_alloc_page();
+    if (!stack_phys) return 0;
+    vmm_map_user_page(cr3, USER_STACK_VIRT, stack_phys);
+
+    uint32_t user_esp = USER_STACK_VIRT + PAGE_SIZE;  /* topo da stack */
+    return scheduler_spawn_user("ring3-test", USER_CODE_VIRT, user_esp, cr3);
+}
 
 static void print_ok(void) {
     vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
@@ -207,6 +269,13 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
         vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
         goto hang;
     }
+    process_t *user_proc = spawn_user_test();
+    if (!user_proc) {
+        vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+        vga_puts("ERRO ao criar processo de usuario\n");
+        vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+        goto hang;
+    }
     print_ok();
     scheduler_dump();
 
@@ -230,7 +299,7 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
 
     for (;;) {
         scheduler_run_once();
-        __asm__ volatile ("hlt");
+        __asm__ volatile ("sti; hlt");
     }
 
 hang:

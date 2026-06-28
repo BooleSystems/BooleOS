@@ -29,10 +29,12 @@ LDFLAGS  = -m elf_i386 \
 ASM_SRCS = $(ROOT)/boot/boot.asm \
             $(ROOT)/kernel/gdt_flush.asm \
             $(ROOT)/kernel/isr.asm \
-            $(ROOT)/kernel/context_switch.asm
+            $(ROOT)/kernel/context_switch.asm \
+            $(ROOT)/kernel/usermode.asm
 
 C_SRCS   = $(ROOT)/kernel/main.c \
             $(ROOT)/kernel/serial.c \
+            $(ROOT)/kernel/syscall.c \
             $(ROOT)/kernel/gdt.c \
             $(ROOT)/kernel/idt.c \
             $(ROOT)/kernel/pic.c \
@@ -65,7 +67,6 @@ dirs:
 	@mkdir -p $(BUILD)/boot
 	@mkdir -p $(BUILD)/kernel/drivers
 	@mkdir -p $(BUILD)/kernel/memory
-	@mkdir -p $(ISO_DIR)/boot/grub
 
 $(BUILD)/%.o: $(ROOT)/%.asm
 	@echo "  ASM  $<"
@@ -83,9 +84,10 @@ $(KERNEL_ELF): $(ALL_OBJS)
 
 $(KERNEL_ISO): $(KERNEL_ELF)
 	@echo "  ISO  $@"
+	@mkdir -p $(ISO_DIR)/boot/grub
 	@cp $(KERNEL_ELF) $(ISO_DIR)/boot/nullos.elf
 	@cp $(ROOT)/tools/grub.cfg $(ISO_DIR)/boot/grub/grub.cfg
-	grub-mkrescue -o $@ $(ISO_DIR)
+	grub2-mkrescue -o $@ $(ISO_DIR)
 	@echo "  OK"
 
 run: $(KERNEL_ISO)

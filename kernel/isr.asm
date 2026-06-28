@@ -38,8 +38,11 @@ global isr29
 global isr30
 global isr31
 
+global isr128
+
 extern irq_handler
 extern exception_handler
+extern syscall_handler
 
 ; -------------------------------------------------------
 ; idt_flush / lidt
@@ -160,3 +163,31 @@ ISR_NOERRCODE 28   ;      Reserved
 ISR_NOERRCODE 29   ;      Reserved
 ISR_NOERRCODE 30   ;      Reserved
 ISR_NOERRCODE 31   ;      Reserved
+
+; -------------------------------------------------------
+; int 0x80 — syscall gate (DPL=3, chamado de ring 3)
+;
+; Convenção: eax=num, ebx=arg1, ecx=arg2, edx=arg3
+; Retorno:   eax = valor retornado pelo syscall_handler
+;
+; Quando vem de ring 3 a CPU empilha o frame completo
+; (eip, cs, eflags, user_esp, user_ss) via TSS.
+; pusha/popa preserva todos os registradores do usuário;
+; o slot de eax no frame é sobrescrito com o valor de retorno.
+; -------------------------------------------------------
+isr128:
+    pusha                   ; salva eax,ecx,edx,ebx,esp,ebp,esi,edi
+    ; após pusha: [esp+28]=eax  [esp+16]=ebx  [esp+24]=ecx  [esp+20]=edx
+    mov eax, [esp + 28]     ; num   (eax original)
+    mov ebx, [esp + 16]     ; arg1  (ebx original)
+    mov ecx, [esp + 24]     ; arg2  (ecx original)
+    mov edx, [esp + 20]     ; arg3  (edx original)
+    push edx                ; cdecl: arg3 por último
+    push ecx                ; arg2
+    push ebx                ; arg1
+    push eax                ; num   (primeiro)
+    call syscall_handler
+    add esp, 16
+    mov [esp + 28], eax     ; devolve retorno no slot de eax do pusha
+    popa                    ; restaura registradores (eax = valor de retorno)
+    iret

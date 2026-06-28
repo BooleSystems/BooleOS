@@ -69,6 +69,22 @@ void vmm_switch_directory(uint32_t cr3) {
     __asm__ volatile ("mov %0, %%cr3" : : "r"(cr3) : "memory");
 }
 
+void vmm_map_user_page(uint32_t pd_phys, uint32_t virt, uint32_t phys) {
+    uint32_t di = virt >> 22;
+    uint32_t ti = (virt >> 12) & 0x3FF;
+    pde_t *pd = (pde_t *)pd_phys;   /* pd_phys é identity-mapped (<8MB) */
+
+    if (!(pd[di] & VMM_PRESENT)) {
+        uint32_t pt_phys = pmm_alloc_page();
+        if (!pt_phys || pt_phys >= 0x800000) return;
+        zero_4kb(pt_phys);
+        pd[di] = pt_phys | VMM_PRESENT | VMM_WRITABLE | VMM_USER;
+    }
+
+    pte_t *pt = (pte_t *)(pd[di] & 0xFFFFF000);
+    pt[ti] = (phys & 0xFFFFF000) | VMM_PRESENT | VMM_WRITABLE | VMM_USER;
+}
+
 uint32_t vmm_create_directory(void) {
     uint32_t pd_phys = pmm_alloc_page();
     if (!pd_phys) return 0;

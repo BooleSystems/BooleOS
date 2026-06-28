@@ -37,6 +37,7 @@ typedef struct process {
 
 void process_init(void);
 process_t *process_spawn(const char *name, process_entry_t entry, void *arg, void (*bootstrap)(void));
+process_t *process_spawn_user(const char *name, uint32_t user_entry, uint32_t user_esp, uint32_t cr3, void (*bootstrap)(void));
 process_t *process_at(uint32_t index);
 process_t *process_current(void);
 void process_set_current(process_t *process);

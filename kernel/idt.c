@@ -17,7 +17,7 @@ typedef struct {
 } __attribute__((packed)) idt_ptr_t;
 
 #define IDT_ADDRESS 0x200000
-#define IDT_SIZE    48
+#define IDT_SIZE    256
 
 static idt_ptr_t     idtp;
 static isr_handler_t handlers[IDT_SIZE];
@@ -25,6 +25,9 @@ static isr_handler_t handlers[IDT_SIZE];
 /* IRQ stubs (hardware interrupts) */
 extern void irq0(void);
 extern void irq1(void);
+
+/* Syscall gate */
+extern void isr128(void);
 
 /* CPU exception stubs */
 extern void isr0(void);
@@ -122,8 +125,7 @@ void irq_handler(uint32_t int_no) {
 }
 
 void idt_register_handler(uint8_t irq, isr_handler_t handler) {
-    if (irq < IDT_SIZE)
-        handlers[irq] = handler;
+    handlers[irq] = handler;
 }
 
 static void idt_set_gate(uint8_t num, void (*base)(void), uint16_t sel, uint8_t flags) {
@@ -166,10 +168,14 @@ void idt_init(void) {
     idt_set_gate(32, irq0, 0x08, 0x8E);
     idt_set_gate(33, irq1, 0x08, 0x8E);
 
-    vga_puts(" [4] flush\n");
+    /* 0xEF = presente | DPL=3 | trap gate de 32 bits — preserva IF (sem cli implícito) */
+    vga_puts(" [4] gate syscall (0x80, DPL=3)\n");
+    idt_set_gate(128, isr128, 0x08, 0xEF);
+
+    vga_puts(" [5] flush\n");
     idtp.limit = (uint16_t)(sizeof(idt_entry_t) * IDT_SIZE - 1);
     idtp.base  = IDT_ADDRESS;
     idt_flush((uint32_t)&idtp);
 
-    vga_puts(" [5] ok!\n");
+    vga_puts(" [6] ok!\n");
 }

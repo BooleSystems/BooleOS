@@ -33,6 +33,10 @@ uint32_t vmm_create_directory(void);
 // Troca o diretório de páginas atual
 void vmm_switch_directory(uint32_t cr3);
 
+// Mapeia virt→phys no page directory pd_phys com flags de usuário (RW + USER)
+// pd_phys deve estar dentro dos primeiros 8MB (identity-mapped)
+void vmm_map_user_page(uint32_t pd_phys, uint32_t virt, uint32_t phys);
+
 // Debug
 void vmm_dump(void);
 
