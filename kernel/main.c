@@ -198,7 +198,14 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
             vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
             vga_puts("ERRO ao carregar init\n");
             vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
-            /* não fatal — continua sem processo de usuário */
+        }
+
+        print_tag("[EXEC] ");
+        vga_puts("Carregando spintest...\n");
+        if (!exec("spintest")) {
+            vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+            vga_puts("ERRO ao carregar spintest\n");
+            vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
         }
     }
 

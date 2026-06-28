@@ -3,11 +3,13 @@
 #include "idt.h"
 #include "pic.h"
 #include "scheduler.h"
+#include "process.h"
 #include <stdint.h>
 
 #define PIT_CMD     0x43
 #define PIT_CH0     0x40
-#define PIT_BASE_HZ 1193182
+#define PIT_BASE_HZ    1193182
+#define PREEMPT_TICKS  10       /* fatia de tempo: 10 ticks = 100ms a 100Hz */
 
 static volatile uint32_t ticks = 0;
 static uint32_t tick_freq = 0;
@@ -20,6 +22,16 @@ static void timer_callback(uint32_t int_no) {
     (void)int_no;
     ticks++;
     scheduler_tick(ticks);
+
+    /* Preempção: força yield se o processo atual esgotou sua fatia de tempo.
+       O irq0 já salvou o contexto completo (pusha + frame CPU via TSS),
+       então context_switch aqui é seguro — o iret do irq0 vai restaurar
+       o processo corretamente quando for re-agendado. */
+    process_t *p = process_current();
+    if (p && p->state == PROCESS_RUNNING &&
+        (ticks - p->ticks_run) >= PREEMPT_TICKS) {
+        scheduler_yield();
+    }
 }
 
 void timer_init(uint32_t freq_hz) {

@@ -9,7 +9,7 @@
  | |\  | |_| | | | |_| |___) |
  |_| \_|\__,_|_|_|\___/|____/ 
 
- NullOS v0.5.0 - Fase 5: ramfs + ELF loader
+ NullOS v0.6.0 - Fase 6: preempção + retorno de syscalls
 ```
 
 ## Overview
@@ -28,7 +28,7 @@ NullOS is an experimental x86 OS written from scratch in C99 and NASM assembly. 
 | **3b** | Context switch por processo, CR3 por processo, exception handlers | ✅ Done |
 | **4** | TSS, ring 3 usermode, syscalls via `int 0x80` | ✅ Done |
 | **5** | Multiboot2 module parser, ramfs flat, ELF32 loader, `exec()`, `user/init` | ✅ Done |
-| **6** | Retorno de syscalls em `eax` + preempção via IRQ0 | ⏳ Planned |
+| **6** | Retorno de syscalls em `eax`, preempção via IRQ0 (fatia de 10 ticks) | ✅ Done |
 | **7** | Mais syscalls (open, read, write, mmap…) + shell | ⏳ Planned |
 
 ## O que está implementado
@@ -49,9 +49,10 @@ NullOS is an experimental x86 OS written from scratch in C99 and NASM assembly. 
 
 ### Multitarefa
 - Tabela de processos com até 16 entradas
-- Scheduler cooperativo round-robin
+- Scheduler round-robin com preempção via IRQ0 (fatia de 10 ticks = 100ms a 100Hz)
 - Context switch em assembly (salva/restaura callee-saved registers via ESP)
 - TSS configurado para stack do kernel por processo (SS0:ESP0)
+- Processos que nunca chamam yield são expulsos pelo timer automaticamente
 
 ### Usermode e syscalls
 - `jump_to_usermode` via `iret` com segmentos ring 3 (CS=0x1B, SS=0x23)
@@ -65,14 +66,15 @@ NullOS is an experimental x86 OS written from scratch in C99 and NASM assembly. 
 | 3 | `SYS_YIELD` | `yield() → 0` |
 | 4 | `SYS_GETPID` | `getpid() → pid` |
 
-> **Nota:** o valor de retorno das syscalls não é atualmente entregue em `eax` para o userland — `iret` restaura o `eax` original (número da syscall). Programas que precisarem do retorno (ex: bytes escritos por `SYS_WRITE`) exigirão uma correção no stub `isr128`.
+> **Retorno de syscalls:** `isr128` escreve o retorno do `syscall_handler` no slot EAX do frame do `pusha` antes do `popa`, entregando o valor correto em `eax` para o userland após o `iret`. Inline asm do userland deve usar constraints `"=a"`/`"0"` para que o compilador não assuma eax inalterado após o `int $0x80`.
 
 ### Carregamento de programas
 - Parser de tags Multiboot2 (`multiboot2_find_module`)
 - ramfs flat: `[uint32_t n] [entry×n: name[32]+offset+size] [dados...]`
 - ELF32 loader: valida magic, itera `PT_LOAD`, aloca páginas físicas, mapeia no CR3 do processo, copia segmentos
 - `exec(name)`: busca na ramfs → cria CR3 → `elf_load` → aloca user stack → `scheduler_spawn_user`
-- `kmain` chama `exec("init")` se o GRUB passar um módulo; sobe sem processo de usuário caso contrário
+- `kmain` chama `exec("init")` e `exec("spintest")` se o GRUB passar um módulo; sobe sem processo de usuário caso contrário
+- `user/spintest`: processo de teste que nunca chama yield — valida preempção
 
 ## Estrutura
 
@@ -98,6 +100,11 @@ kernel/
   ramfs.c/h           ramfs flat (find por nome)
   elf.c/h             ELF32 loader
   exec.c/h            exec(): ramfs → ELF → spawn
+user/
+  init.c              primeiro processo de usuário: SYS_WRITE + loop SYS_YIELD
+  spintest.c          processo sem yield: valida preempção via IRQ0
+  link.ld             linker script de usuário (entry @ 0x01000000)
+  Makefile            compila init.elf e spintest.elf
   memory/
     pmm.c             Physical Memory Manager
     vmm.c             Virtual Memory Manager
