@@ -46,6 +46,20 @@ static int sys_exec(const char *name) {
     return ret;
 }
 
+static int sys_exec_arg(const char *name, const char *arg) {
+    int ret;
+    __asm__ volatile ("int $0x80"
+        : "=a"(ret) : "0"(10), "b"(name), "c"(arg) : "memory");
+    return ret;
+}
+
+static void sys_wait(int pid) {
+    int ret;
+    __asm__ volatile ("int $0x80"
+        : "=a"(ret) : "0"(20), "b"(pid) : "memory");
+    (void)ret;
+}
+
 static int sys_kill(uint32_t pid) {
     int ret;
     __asm__ volatile ("int $0x80"
@@ -232,6 +246,7 @@ static const char *help_text =
     "  echo <texto>   imprime texto\n"
     "  kill <pid>     encerra processo\n"
     "  run <prog>     executa programa em background\n"
+    "  edit <arquivo> abre editor de texto\n"
     "  clear          limpa a tela\n"
     "  exit           encerra o shell\n";
 
@@ -292,7 +307,19 @@ void _start(void) {
         line[n] = '\0';
 
         /* extrai PID de run antes de despachar o comando */
-        if (sh_strncmp(line, "run", 3) == 0 && (line[3] == ' ' || line[3] == '\0')) {
+        if (sh_strncmp(line, "edit", 4) == 0 && (line[4] == ' ' || line[4] == '\0')) {
+            char *arg = line[4] == ' ' ? line + 5 : "";
+            unsigned int alen = sh_strlen(arg);
+            if (alen > 0 && arg[alen - 1] == '\n') arg[alen - 1] = '\0';
+            int pid = sys_exec_arg("edit", arg);
+            if (pid < 0) {
+                sh_puts("erro: edit nao encontrado\n");
+            } else {
+                foreground_pid = pid;
+                sys_wait(pid);   /* bloqueia até o editor terminar */
+                foreground_pid = 0;
+            }
+        } else if (sh_strncmp(line, "run", 3) == 0 && (line[3] == ' ' || line[3] == '\0')) {
             char *name = line[3] == ' ' ? line + 4 : "";
             unsigned int nlen = sh_strlen(name);
             if (nlen > 0 && name[nlen - 1] == '\n') name[nlen - 1] = '\0';

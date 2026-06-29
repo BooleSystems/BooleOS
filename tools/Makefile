@@ -60,6 +60,8 @@ KERNEL_ISO = $(BUILD)/nullos.iso
 INIT_ELF     = $(BUILD)/user/init.elf
 SPINTEST_ELF = $(BUILD)/user/spintest.elf
 SHELL_ELF    = $(BUILD)/user/shell.elf
+EDIT_ELF     = $(BUILD)/user/edit.elf
+README_TXT   = $(ROOT)/tools/readme.txt
 RAMFS_IMG    = $(BUILD)/ramfs.img
 
 .PHONY: all clean run dirs user
@@ -94,9 +96,9 @@ $(KERNEL_ELF): $(ALL_OBJS)
 	@echo "  LD   $@"
 	$(LD) $(LDFLAGS) -o $@ $(ALL_OBJS)
 
-$(RAMFS_IMG): $(INIT_ELF) $(SPINTEST_ELF) $(SHELL_ELF)
+$(RAMFS_IMG): $(INIT_ELF) $(SPINTEST_ELF) $(SHELL_ELF) $(EDIT_ELF) $(README_TXT)
 	@echo "  RAMFS $@"
-	python3 $(ROOT)/tools/make_ramfs.py $@ init=$(INIT_ELF) spintest=$(SPINTEST_ELF) shell=$(SHELL_ELF)
+	python3 $(ROOT)/tools/make_ramfs.py $@ init=$(INIT_ELF) spintest=$(SPINTEST_ELF) shell=$(SHELL_ELF) edit=$(EDIT_ELF) readme.txt=$(README_TXT)
 
 $(KERNEL_ISO): $(KERNEL_ELF) $(RAMFS_IMG)
 	@echo "  ISO  $@"

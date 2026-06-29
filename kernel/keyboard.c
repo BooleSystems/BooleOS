@@ -31,6 +31,16 @@ static char    kb_buffer[KB_BUFFER_SIZE];
 static uint8_t kb_head = 0;
 static uint8_t kb_tail = 0;
 
+/* buffer de scancodes brutos: bit8=ctrl, bits0-7=scancode */
+static uint16_t kb_raw_buf[KB_BUFFER_SIZE];
+static uint8_t  kb_raw_head = 0;
+static uint8_t  kb_raw_tail = 0;
+
+void keyboard_flush(void) {
+    kb_head = kb_tail = 0;
+    kb_raw_head = kb_raw_tail = 0;
+}
+
 static int ctrl_pressed = 0;
 
 static void keyboard_callback(uint32_t int_no) {
@@ -48,13 +58,24 @@ static void keyboard_callback(uint32_t int_no) {
         c = 0x03;  /* Ctrl+C */
     } else {
         c = scancode_map[scancode & 0x7F];
-        if (c == 0) return;
+        if (c == 0) c = 0;  /* tecla sem mapeamento: só vai pro raw */
     }
 
-    uint8_t next = (kb_head + 1) % KB_BUFFER_SIZE;
-    if (next != kb_tail) {
-        kb_buffer[kb_head] = c;
-        kb_head = next;
+    /* raw: sempre empurra (teclas com e sem mapeamento ASCII) */
+    uint16_t raw = (uint16_t)(scancode | (ctrl_pressed ? 0x100 : 0));
+    uint8_t rnext = (kb_raw_head + 1) % KB_BUFFER_SIZE;
+    if (rnext != kb_raw_tail) {
+        kb_raw_buf[kb_raw_head] = raw;
+        kb_raw_head = rnext;
+    }
+
+    /* ASCII: só empurra se tem mapeamento */
+    if (c != 0) {
+        uint8_t next = (kb_head + 1) % KB_BUFFER_SIZE;
+        if (next != kb_tail) {
+            kb_buffer[kb_head] = c;
+            kb_head = next;
+        }
     }
 }
 
@@ -82,4 +103,12 @@ int keyboard_getchar_nowait(void) {
 
 int keyboard_haschar(void) {
     return kb_head != kb_tail;
+}
+
+/* retorna scancode bruto (bit8=ctrl) ou -1 se buffer vazio */
+int keyboard_raw_nowait(void) {
+    if (kb_raw_head == kb_raw_tail) return -1;
+    uint16_t raw = kb_raw_buf[kb_raw_tail];
+    kb_raw_tail = (kb_raw_tail + 1) % KB_BUFFER_SIZE;
+    return (int)(unsigned int)raw;
 }

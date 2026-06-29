@@ -16,7 +16,7 @@ CFLAGS = -m32 \
 
 .PHONY: all clean
 
-all: $(BUILD)/init.elf $(BUILD)/spintest.elf $(BUILD)/shell.elf
+all: $(BUILD)/init.elf $(BUILD)/spintest.elf $(BUILD)/shell.elf $(BUILD)/edit.elf
 
 $(BUILD)/init.elf: init.c link.ld
 	@mkdir -p $(BUILD)
@@ -29,6 +29,10 @@ $(BUILD)/spintest.elf: spintest.c link.ld
 $(BUILD)/shell.elf: shell.c link.ld
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -T link.ld -o $@ shell.c
+
+$(BUILD)/edit.elf: edit.c link.ld
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -T link.ld -o $@ edit.c
 
 clean:
 	@rm -rf $(BUILD)
