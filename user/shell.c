@@ -39,6 +39,13 @@ static void sys_ps(void) {
     __asm__ volatile ("int $0x80" : : "a"(8) : "memory");
 }
 
+static int sys_exec(const char *name) {
+    int ret;
+    __asm__ volatile ("int $0x80"
+        : "=a"(ret) : "0"(10), "b"(name) : "memory");
+    return ret;
+}
+
 static int sys_kill(uint32_t pid) {
     int ret;
     __asm__ volatile ("int $0x80"
@@ -203,6 +210,18 @@ static void cmd_kill(const char *arg) {
     }
 }
 
+static void cmd_run(const char *name) {
+    if (!name || !*name) { sh_puts("uso: run <programa>\n"); return; }
+    int pid = sys_exec(name);
+    if (pid < 0) {
+        sh_puts("erro: programa nao encontrado\n");
+    } else {
+        sh_puts("executando: ");
+        sh_puts(name);
+        sh_puts("\n");
+    }
+}
+
 static const char *help_text =
     "comandos:\n"
     "  help           esta mensagem\n"
@@ -212,6 +231,7 @@ static const char *help_text =
     "  mem            uso de memoria\n"
     "  echo <texto>   imprime texto\n"
     "  kill <pid>     encerra processo\n"
+    "  run <prog>     executa programa em background\n"
     "  clear          limpa a tela\n"
     "  exit           encerra o shell\n";
 
@@ -236,6 +256,8 @@ static void run_command(char *line, int len) {
         cmd_echo(line);
     } else if (sh_strncmp(line, "kill", 4) == 0 && (line[4] == ' ' || line[4] == '\0')) {
         cmd_kill(line[4] == ' ' ? line + 5 : "");
+    } else if (sh_strncmp(line, "run", 3) == 0 && (line[3] == ' ' || line[3] == '\0')) {
+        cmd_run(line[3] == ' ' ? line + 4 : "");
     } else if (sh_strcmp(line, "clear") == 0) {
         sh_puts(clear_text);
     } else if (sh_strcmp(line, "exit") == 0) {
@@ -252,6 +274,7 @@ static void run_command(char *line, int len) {
 
 void _start(void) {
     static char line[128];
+    static int foreground_pid = 0;
 
     sh_puts("NullOS shell — digite 'help'\n");
 
@@ -259,7 +282,32 @@ void _start(void) {
         sh_puts("> ");
         int n = sys_read(line, 127);
         if (n <= 0) continue;
+        if (n == 1 && line[0] == 0x03) {
+            if (foreground_pid > 0) {
+                sys_kill((uint32_t)foreground_pid);
+                foreground_pid = 0;
+            }
+            continue;
+        }
         line[n] = '\0';
-        run_command(line, n);
+
+        /* extrai PID de run antes de despachar o comando */
+        if (sh_strncmp(line, "run", 3) == 0 && (line[3] == ' ' || line[3] == '\0')) {
+            char *name = line[3] == ' ' ? line + 4 : "";
+            unsigned int nlen = sh_strlen(name);
+            if (nlen > 0 && name[nlen - 1] == '\n') name[nlen - 1] = '\0';
+            int pid = sys_exec(name);
+            if (pid < 0) {
+                sh_puts("erro: programa nao encontrado\n");
+            } else {
+                foreground_pid = pid;
+                sh_puts("executando: ");
+                sh_puts(name);
+                sh_puts("\n");
+            }
+        } else {
+            foreground_pid = 0;
+            run_command(line, n);
+        }
     }
 }

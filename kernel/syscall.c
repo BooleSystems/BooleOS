@@ -7,6 +7,8 @@
 #include "drivers/vga.h"
 #include "memory/pmm.h"
 #include "memory/heap.h"
+#include "exec.h"
+#include "memory/vmm.h"
 #include <stdint.h>
 
 static uint32_t sys_write(uint32_t fd, const char *buf, uint32_t len) {
@@ -46,6 +48,12 @@ static uint32_t sys_read(uint32_t fd, char *buf, uint32_t len) {
         while ((c = keyboard_getchar_nowait()) == -1)
             scheduler_sleep_current(1);
 
+        if (c == 0x03) {
+            vga_puts("^C\n");
+            buf[0] = 0x03;
+            return 1;
+        }
+
         vga_putchar((char)c);   /* eco */
 
         if (c == '\b') {
@@ -84,6 +92,37 @@ static uint32_t sys_ps(void) {
     return 0;
 }
 
+#define USER_STR_MAX 64
+
+/* resolve um byte no espaço virtual de cur para seu endereço físico identity-mapped */
+static char *user_kptr(process_t *cur, uint32_t uaddr) {
+    uint32_t phys = vmm_get_phys_from_dir(cur->cr3, uaddr);
+    if (!phys) return (char *)0;
+    return (char *)((phys & ~0xFFFu) | (uaddr & 0xFFFu));
+}
+
+static uint32_t sys_exec(const char *user_name) {
+    if (!user_name) return (uint32_t)-1;
+    process_t *cur = process_current();
+    if (!cur) return (uint32_t)-1;
+    char kname[USER_STR_MAX];
+    uint32_t uaddr = (uint32_t)user_name;
+
+    uint32_t i;
+    for (i = 0; i < USER_STR_MAX - 1; i++) {
+        char *kp = user_kptr(cur, uaddr + i);
+        if (!kp) return (uint32_t)-1;
+        char c = *kp;
+        kname[i] = c;
+        if (c == '\0') break;
+    }
+    kname[i] = '\0';
+
+    process_t *p = exec(kname);
+    if (!p) return (uint32_t)-1;
+    return p->pid;
+}
+
 static uint32_t sys_kill(uint32_t pid) {
     for (uint32_t i = 0; i < PROCESS_MAX; i++) {
         process_t *p = process_at(i);
@@ -106,6 +145,7 @@ uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t ar
         case SYS_MEMINFO: return sys_meminfo((uint32_t *)arg1, (uint32_t *)arg2, (uint32_t *)arg3);
         case SYS_PS:      return sys_ps();
         case SYS_KILL:    return sys_kill(arg1);
+        case SYS_EXEC:    return sys_exec((const char *)arg1);
         default:
             vga_set_color(VGA_YELLOW, VGA_BLACK);
             vga_puts("[SYSCALL] numero desconhecido: ");

@@ -31,12 +31,26 @@ static char    kb_buffer[KB_BUFFER_SIZE];
 static uint8_t kb_head = 0;
 static uint8_t kb_tail = 0;
 
+static int ctrl_pressed = 0;
+
 static void keyboard_callback(uint32_t int_no) {
     (void)int_no;
     uint8_t scancode = inb(KB_DATA_PORT);
-    if (scancode & 0x80) return;
-    char c = scancode_map[scancode & 0x7F];
-    if (c == 0) return;
+
+    /* rastreia Ctrl esquerdo (0x1D press, 0x9D release) */
+    if (scancode == 0x1D) { ctrl_pressed = 1; return; }
+    if (scancode == 0x9D) { ctrl_pressed = 0; return; }
+
+    if (scancode & 0x80) return;  /* outros key-releases */
+
+    char c;
+    if (ctrl_pressed && scancode == 0x2E) {
+        c = 0x03;  /* Ctrl+C */
+    } else {
+        c = scancode_map[scancode & 0x7F];
+        if (c == 0) return;
+    }
+
     uint8_t next = (kb_head + 1) % KB_BUFFER_SIZE;
     if (next != kb_tail) {
         kb_buffer[kb_head] = c;

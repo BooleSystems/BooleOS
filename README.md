@@ -9,7 +9,7 @@
  | |\  | |_| | | | |_| |___) |
  |_| \_|\__,_|_|_|\___/|____/ 
 
- NullOS v0.7.0 - Fase 7: shell userland
+ NullOS v0.8.0 - Fase 8: exec, Ctrl+C, foreground
 ```
 
 ## Overview
@@ -30,7 +30,8 @@ NullOS is an experimental x86 OS written from scratch in C99 and NASM assembly. 
 | **5** | Multiboot2 module parser, ramfs flat, ELF32 loader, `exec()`, `user/init` | ✅ Done |
 | **6** | Retorno de syscalls em `eax`, preempção via IRQ0 (fatia de 10 ticks) | ✅ Done |
 | **7** | `SYS_READ`, ringbuffer de teclado, shell interativo em userland | ✅ Done |
-| **8** | Mais syscalls (open, mmap…), múltiplos processos do shell, filesystem | ⏳ Planned |
+| **8** | `SYS_EXEC`, Ctrl+C, foreground PID, copy-from-user | ✅ Done |
+| **9** | Mais syscalls (open, mmap…), múltiplos processos do shell, filesystem | ⏳ Planned |
 
 ## O que está implementado
 
@@ -71,6 +72,7 @@ NullOS is an experimental x86 OS written from scratch in C99 and NASM assembly. 
 | 7 | `SYS_MEMINFO` | `meminfo(*pmm_pages, *heap_bytes, *nprocs) → 0` |
 | 8 | `SYS_PS` | `ps() → 0` (imprime tabela de processos via VGA) |
 | 9 | `SYS_KILL` | `kill(pid) → 0 ou -1` |
+| 10 | `SYS_EXEC` | `exec(name) → pid ou -1` |
 
 > **Retorno de syscalls:** `isr128` escreve o retorno do `syscall_handler` no slot EAX do frame do `pusha` antes do `popa`, entregando o valor correto em `eax` para o userland após o `iret`. Inline asm do userland deve usar constraints `"=a"`/`"0"` para que o compilador não assuma eax inalterado após o `int $0x80`.
 
@@ -85,9 +87,14 @@ NullOS is an experimental x86 OS written from scratch in C99 and NASM assembly. 
 - Ringbuffer de teclado (256 chars) no IRQ1; echo removido do handler
 - `SYS_READ (fd=0)`: lê da ringbuffer com polling + `scheduler_sleep_current(1)` para não starvar; faz echo e trata backspace
 - `user/shell`: loop `> ` → `sys_read` → `run_command`
-- Comandos: `help`, `uname`, `fetch`, `ps`, `mem`, `echo <texto>`, `kill <pid>`, `clear`, `exit`
+- Comandos: `help`, `uname`, `fetch`, `ps`, `mem`, `echo <texto>`, `kill <pid>`, `run <prog>`, `clear`, `exit`
 - `fetch`: banner ASCII com OS, Arch, Uptime, PMM livre, Heap livre, Procs rodando
 - Sem tasks de debug em background — VGA exclusivo do shell
+
+### Execução de programas e controle de foreground
+- `SYS_EXEC (10)`: recebe ponteiro virtual do usuário para o nome do programa; `sys_exec` copia a string byte a byte do espaço do usuário via `vmm_get_phys_from_dir(cur->cr3, vaddr)` (identity-map), chama `exec()` do kernel e retorna o PID do novo processo ou -1
+- Shell guarda o PID retornado em `foreground_pid`; ao digitar outro comando, `foreground_pid` é resetado
+- **Ctrl+C**: IRQ1 detecta scancode `0x1D` (Ctrl press/release) e `0x2E` (C); injeta `0x03` no ringbuffer; `SYS_READ` retorna imediatamente com `buf[0]=0x03` e ecoa `^C\n`; shell chama `sys_kill(foreground_pid)` e reseta o PID
 
 ## Estrutura
 
@@ -116,7 +123,7 @@ kernel/
 user/
   init.c              processo de usuário simples: SYS_WRITE + SYS_EXIT
   spintest.c          processo sem yield: valida preempção via IRQ0
-  shell.c             shell interativo: help/uname/fetch/ps/mem/echo/kill/clear/exit
+  shell.c             shell interativo: help/uname/fetch/ps/mem/echo/kill/run/clear/exit
   link.ld             linker script de usuário (entry @ 0x01000000)
   Makefile            compila init.elf, spintest.elf e shell.elf
   memory/
