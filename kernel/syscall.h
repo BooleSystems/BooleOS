@@ -13,6 +13,8 @@
 #define SYS_PS      8  /* ps()   — imprime tabela de procs via VGA → 0    */
 #define SYS_KILL    9  /* kill(pid)                         → 0 ou -1      */
 #define SYS_EXEC   10  /* exec(name)                        → pid ou -1    */
+#define SYS_OPEN   11  /* open(name)                        → fd ou -1     */
+#define SYS_CLOSE  12  /* close(fd)                         → 0 ou -1      */
 
 uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t arg3);
 

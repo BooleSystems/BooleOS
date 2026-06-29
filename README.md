@@ -9,7 +9,7 @@
  | |\  | |_| | | | |_| |___) |
  |_| \_|\__,_|_|_|\___/|____/ 
 
- NullOS v0.8.0 - Fase 8: exec, Ctrl+C, foreground
+ NullOS v0.9.0 - Fase 9: open/read/close de arquivos ramfs
 ```
 
 ## Overview
@@ -31,7 +31,8 @@ NullOS is an experimental x86 OS written from scratch in C99 and NASM assembly. 
 | **6** | Retorno de syscalls em `eax`, preempção via IRQ0 (fatia de 10 ticks) | ✅ Done |
 | **7** | `SYS_READ`, ringbuffer de teclado, shell interativo em userland | ✅ Done |
 | **8** | `SYS_EXEC`, Ctrl+C, foreground PID, copy-from-user | ✅ Done |
-| **9** | Mais syscalls (open, mmap…), múltiplos processos do shell, filesystem | ⏳ Planned |
+| **9** | `SYS_OPEN`, `SYS_CLOSE`, `SYS_READ` para arquivos da ramfs, tabela de fds por processo | ✅ Done |
+| **10** | Mais syscalls (mmap, seek…), filesystem persistente | ⏳ Planned |
 
 ## O que está implementado
 
@@ -73,6 +74,10 @@ NullOS is an experimental x86 OS written from scratch in C99 and NASM assembly. 
 | 8 | `SYS_PS` | `ps() → 0` (imprime tabela de processos via VGA) |
 | 9 | `SYS_KILL` | `kill(pid) → 0 ou -1` |
 | 10 | `SYS_EXEC` | `exec(name) → pid ou -1` |
+| 11 | `SYS_OPEN` | `open(name) → fd (≥3) ou -1` |
+| 12 | `SYS_CLOSE` | `close(fd) → 0 ou -1` |
+
+> `SYS_READ` é polimórfico: fd=0 lê do teclado (bloqueante, com eco e backspace); fd≥3 lê de arquivo aberto via `SYS_OPEN`, avança a posição e retorna 0 no EOF.
 
 > **Retorno de syscalls:** `isr128` escreve o retorno do `syscall_handler` no slot EAX do frame do `pusha` antes do `popa`, entregando o valor correto em `eax` para o userland após o `iret`. Inline asm do userland deve usar constraints `"=a"`/`"0"` para que o compilador não assuma eax inalterado após o `int $0x80`.
 
@@ -90,6 +95,13 @@ NullOS is an experimental x86 OS written from scratch in C99 and NASM assembly. 
 - Comandos: `help`, `uname`, `fetch`, `ps`, `mem`, `echo <texto>`, `kill <pid>`, `run <prog>`, `clear`, `exit`
 - `fetch`: banner ASCII com OS, Arch, Uptime, PMM livre, Heap livre, Procs rodando
 - Sem tasks de debug em background — VGA exclusivo do shell
+
+### Arquivos: open/read/close na ramfs
+- `SYS_OPEN (11)`: copia o nome do espaço do usuário via `user_kptr`, busca na ramfs com `ramfs_find`, aloca o primeiro slot livre na `fd_table[slot_proc][0..7]` e retorna `fd = 3 + idx`; retorna -1 se arquivo não encontrado ou sem slots livres
+- `SYS_READ (5)` com fd≥3: lê até `len` bytes de `ramfs_base + offset + pos`, avança `pos`, retorna 0 no EOF — sem bloqueio
+- `SYS_CLOSE (12)`: marca o slot como livre
+- `fd_table[PROCESS_MAX][8]` — tabela global indexada pelo slot do processo; `sys_exit` zera todos os fds do processo ao encerrar, evitando vazamento de slots
+- fds 0/1/2 reservados (stdin/stdout/stderr); arquivos começam em fd=3
 
 ### Execução de programas e controle de foreground
 - `SYS_EXEC (10)`: recebe ponteiro virtual do usuário para o nome do programa; `sys_exec` copia a string byte a byte do espaço do usuário via `vmm_get_phys_from_dir(cur->cr3, vaddr)` (identity-map), chama `exec()` do kernel e retorna o PID do novo processo ou -1

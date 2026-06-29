@@ -9,7 +9,32 @@
 #include "memory/heap.h"
 #include "exec.h"
 #include "memory/vmm.h"
+#include "ramfs.h"
 #include <stdint.h>
+
+/* ── tabela de file descriptors ─────────────────────────────────── */
+
+#define FD_PER_PROC  8
+#define FD_BASE      3   /* 0=stdin,1=stdout,2=stderr reservados */
+
+typedef struct {
+    uint8_t  used;
+    uint32_t offset;   /* byte offset do arquivo na imagem ramfs */
+    uint32_t size;     /* tamanho total do arquivo */
+    uint32_t pos;      /* posição atual de leitura */
+} file_desc_t;
+
+/* indexado por [slot do processo][fd local] */
+static file_desc_t fd_table[PROCESS_MAX][FD_PER_PROC];
+
+/* retorna o slot do processo atual na tabela de processos, ou -1 */
+static int proc_slot(void) {
+    for (uint32_t i = 0; i < PROCESS_MAX; i++) {
+        if (process_at(i) == process_current())
+            return (int)i;
+    }
+    return -1;
+}
 
 static uint32_t sys_write(uint32_t fd, const char *buf, uint32_t len) {
     (void)fd;  // só stdout por enquanto
@@ -21,6 +46,11 @@ static uint32_t sys_write(uint32_t fd, const char *buf, uint32_t len) {
 
 static uint32_t sys_exit(uint32_t code) {
     (void)code;
+    int slot = proc_slot();
+    if (slot >= 0) {
+        for (uint32_t j = 0; j < FD_PER_PROC; j++)
+            fd_table[slot][j].used = 0;
+    }
     process_t *p = process_current();
     if (p) process_exit(p);
     scheduler_yield();
@@ -39,8 +69,30 @@ static uint32_t sys_getpid(void) {
 }
 
 static uint32_t sys_read(uint32_t fd, char *buf, uint32_t len) {
-    if (fd != 0 || !buf || len == 0)
-        return (uint32_t)-1;
+    if (!buf || len == 0) return (uint32_t)-1;
+
+    /* fd >= FD_BASE: leitura de arquivo da ramfs */
+    if (fd >= FD_BASE) {
+        int slot = proc_slot();
+        if (slot < 0) return (uint32_t)-1;
+        uint32_t idx = fd - FD_BASE;
+        if (idx >= FD_PER_PROC) return (uint32_t)-1;
+        file_desc_t *f = &fd_table[slot][idx];
+        if (!f->used) return (uint32_t)-1;
+        if (!ramfs_base) return (uint32_t)-1;
+
+        uint32_t avail = f->size - f->pos;
+        if (avail == 0) return 0;  /* EOF */
+        if (len > avail) len = avail;
+        uint8_t *src = ramfs_base + f->offset + f->pos;
+        for (uint32_t i = 0; i < len; i++)
+            buf[i] = (char)src[i];
+        f->pos += len;
+        return len;
+    }
+
+    /* fd == 0: teclado */
+    if (fd != 0) return (uint32_t)-1;
 
     uint32_t n = 0;
     while (n < len) {
@@ -101,6 +153,53 @@ static char *user_kptr(process_t *cur, uint32_t uaddr) {
     return (char *)((phys & ~0xFFFu) | (uaddr & 0xFFFu));
 }
 
+static uint32_t sys_open(const char *user_name) {
+    if (!user_name) return (uint32_t)-1;
+    process_t *cur = process_current();
+    if (!cur) return (uint32_t)-1;
+    int slot = proc_slot();
+    if (slot < 0) return (uint32_t)-1;
+
+    /* copia nome do espaço do usuário */
+    char kname[USER_STR_MAX];
+    uint32_t uaddr = (uint32_t)user_name;
+    uint32_t i;
+    for (i = 0; i < USER_STR_MAX - 1; i++) {
+        char *kp = user_kptr(cur, uaddr + i);
+        if (!kp) return (uint32_t)-1;
+        char c = *kp;
+        kname[i] = c;
+        if (c == '\0') break;
+    }
+    kname[i] = '\0';
+
+    uint32_t off, sz;
+    if (!ramfs_find(kname, &off, &sz)) return (uint32_t)-1;
+
+    /* acha slot livre */
+    for (uint32_t j = 0; j < FD_PER_PROC; j++) {
+        if (!fd_table[slot][j].used) {
+            fd_table[slot][j].used   = 1;
+            fd_table[slot][j].offset = off;
+            fd_table[slot][j].size   = sz;
+            fd_table[slot][j].pos    = 0;
+            return FD_BASE + j;
+        }
+    }
+    return (uint32_t)-1;  /* sem slots livres */
+}
+
+static uint32_t sys_close(uint32_t fd) {
+    if (fd < FD_BASE) return (uint32_t)-1;
+    int slot = proc_slot();
+    if (slot < 0) return (uint32_t)-1;
+    uint32_t idx = fd - FD_BASE;
+    if (idx >= FD_PER_PROC) return (uint32_t)-1;
+    if (!fd_table[slot][idx].used) return (uint32_t)-1;
+    fd_table[slot][idx].used = 0;
+    return 0;
+}
+
 static uint32_t sys_exec(const char *user_name) {
     if (!user_name) return (uint32_t)-1;
     process_t *cur = process_current();
@@ -146,6 +245,8 @@ uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t ar
         case SYS_PS:      return sys_ps();
         case SYS_KILL:    return sys_kill(arg1);
         case SYS_EXEC:    return sys_exec((const char *)arg1);
+        case SYS_OPEN:    return sys_open((const char *)arg1);
+        case SYS_CLOSE:   return sys_close(arg1);
         default:
             vga_set_color(VGA_YELLOW, VGA_BLACK);
             vga_puts("[SYSCALL] numero desconhecido: ");
