@@ -61,6 +61,18 @@ void process_init(void) {
     next_pid = 1;
 }
 
+/* KNOWN RACE / TECH DEBT (out of scope for Phase 13): process_spawn()
+   and process_spawn_user() below scan for a PROCESS_UNUSED slot and
+   claim it WITHOUT any cli/sti protection, unlike process_fork()
+   further down in this file. If the preemptive timer interrupts this
+   scan and a different process also ends up in one of these
+   functions (e.g. two exec() calls racing), both could pick the same
+   slot before either marks it used, corrupting the process table.
+   This hasn't been observed in practice — the scan itself is a
+   handful of instructions, far under one timer slice — and fixing it
+   was explicitly left out of scope here; only process_fork()'s own
+   slot claim was required to be atomic. If this is ever tightened up,
+   do both functions together for consistency. */
 process_t *process_spawn(const char *name, process_entry_t entry, void *arg, void (*bootstrap)(void)) {
     if (!entry || !bootstrap)
         return 0;
@@ -118,6 +130,150 @@ process_t *process_spawn_user(const char *name, uint32_t user_entry,
     return 0;
 }
 
+/* Unwinds a fork() that ran out of memory partway through copying the
+   address space: frees every data page currently mapped in cr3's user
+   region (PDE 2 and up — PDE 0/1 are the shared kernel identity map,
+   never touched here) plus the directory page itself.
+   Walking the child's OWN (partially built) directory, instead of
+   keeping a separate list of what was allocated so far, is deliberate:
+   process_fork() runs on the calling process's kernel stack, which is
+   only PROCESS_STACK_SIZE bytes — there's no room to spare for a
+   tracking array sized for "however many pages this process happens
+   to have". The directory itself already records exactly that.
+   This does NOT free the intermediate page-table pages that
+   vmm_map_user_page() may have allocated along the way — same
+   accepted limitation as process_exit() never reclaiming a process's
+   address space at all (see its comment below). */
+static void fork_free_address_space(uint32_t cr3) {
+    uint32_t *pd = (uint32_t *)cr3;
+    for (uint32_t di = 2; di < 1024; di++) {
+        if (!(pd[di] & VMM_PRESENT)) continue;
+        uint32_t *pt = (uint32_t *)(pd[di] & 0xFFFFF000);
+        for (uint32_t ti = 0; ti < 1024; ti++) {
+            if (pt[ti] & VMM_PRESENT)
+                pmm_free_page(pt[ti] & 0xFFFFF000);
+        }
+    }
+    pmm_free_page(cr3);
+}
+
+process_t *process_fork(process_t *parent, const uint32_t *saved_frame) {
+    if (!parent || !saved_frame)
+        return 0;
+
+    /* ── 1. atomically claim a free process slot ──────────────────
+       Protected by cli/sti so two fork()s interleaved by the
+       preemptive timer can't both pick the same slot — see the
+       comment above process_spawn() for the equivalent, currently
+       unprotected race in that function and process_spawn_user(). */
+    int slot = -1;
+    __asm__ volatile ("cli");
+    for (uint32_t i = 0; i < PROCESS_MAX; i++) {
+        if (process_table[i].state == PROCESS_UNUSED) {
+            slot = (int)i;
+            process_table[i].pid = next_pid++;
+            /* PROCESS_BLOCKED: reserved but not runnable yet — cr3 and
+               the kernel stack below aren't built. Only flipped to
+               PROCESS_READY once the child is fully formed, so
+               scheduler_run_once() can't pick it up half-built. */
+            process_table[i].state = PROCESS_BLOCKED;
+            break;
+        }
+    }
+    __asm__ volatile ("sti");
+    if (slot < 0)
+        return 0;   /* table full — nothing allocated yet, nothing to undo */
+
+    process_t *child = &process_table[slot];
+    copy_name(child->name, parent->name);
+    child->entry      = 0;    /* unused: the child resumes via isr128_resume, not a bootstrap */
+    child->arg        = 0;
+    child->stack       = process_stacks[slot];
+    child->stack_size  = PROCESS_STACK_SIZE;
+    child->wake_tick   = 0;
+    child->ticks_run   = 0;
+    child->runs        = 0;
+    child->user_stack  = 0;
+    child->user_esp    = parent->user_esp;
+
+    /* ── 2. duplicate the address space: full copy, not COW ────────
+       Walks every present PDE/PTE beyond the shared kernel mapping
+       (PDE 0/1), so this naturally covers whatever the parent has
+       mapped — code, data, stack, anything else — not a fixed list
+       of regions. Each page gets a fresh physical frame (allocated
+       via pmm_alloc_page(), matching the same convention elf_load()
+       already uses: content is copied through the raw physical
+       address, assumed to be within the identity-mapped first 8MB)
+       and is mapped into the child's directory via the same
+       vmm_map_user_page() exec() already relies on. */
+    uint32_t child_cr3 = vmm_create_directory();
+    if (!child_cr3) {
+        child->state = PROCESS_UNUSED;
+        child->pid   = 0;
+        return 0;
+    }
+
+    uint32_t *parent_pd = (uint32_t *)parent->cr3;
+    int failed = 0;
+
+    for (uint32_t di = 2; di < 1024 && !failed; di++) {
+        if (!(parent_pd[di] & VMM_PRESENT)) continue;
+        uint32_t *parent_pt = (uint32_t *)(parent_pd[di] & 0xFFFFF000);
+
+        for (uint32_t ti = 0; ti < 1024; ti++) {
+            if (!(parent_pt[ti] & VMM_PRESENT)) continue;
+
+            uint32_t virt        = (di << 22) | (ti << 12);
+            uint32_t parent_phys = parent_pt[ti] & 0xFFFFF000;
+            uint32_t child_phys  = pmm_alloc_page();
+            if (!child_phys) { failed = 1; break; }
+
+            uint32_t *src = (uint32_t *)parent_phys;
+            uint32_t *dst = (uint32_t *)child_phys;
+            for (uint32_t w = 0; w < PAGE_SIZE / 4; w++) dst[w] = src[w];
+
+            vmm_map_user_page(child_cr3, virt, child_phys);
+        }
+    }
+
+    if (failed) {
+        fork_free_address_space(child_cr3);
+        child->state = PROCESS_UNUSED;
+        child->pid   = 0;
+        return 0;
+    }
+
+    child->cr3 = child_cr3;
+
+    /* ── 3. fabricate the child's kernel stack ─────────────────────
+       Lays out, from the top of the child's stack down: the 13-word
+       frame captured from the parent's syscall entry (with eax
+       already zeroed by the caller — see sys_fork() in syscall.c),
+       then the same 4-dummy-words-plus-return-address prologue
+       build_initial_stack() uses for brand-new processes, except the
+       "return address" is isr128_resume instead of a bootstrap
+       function. The first time the scheduler runs this process,
+       context_switch()'s pop/ret lands on isr128_resume, which does
+       'popa; iret' using the frame right above it — resuming exactly
+       where the parent's fork() syscall was, with eax=0. */
+    extern void isr128_resume(void);
+
+    uint32_t *top   = (uint32_t *)((uint8_t *)child->stack + child->stack_size);
+    uint32_t *frame = top - 13;
+    for (int i = 0; i < 13; i++) frame[i] = saved_frame[i];
+
+    uint32_t *sp = frame;
+    sp = stack_push(sp, (uint32_t)isr128_resume);
+    sp = stack_push(sp, 0);   /* edi */
+    sp = stack_push(sp, 0);   /* esi */
+    sp = stack_push(sp, 0);   /* ebx */
+    sp = stack_push(sp, 0);   /* ebp */
+    child->esp = (uint32_t)sp;
+
+    child->state = PROCESS_READY;
+    return child;
+}
+
 process_t *process_at(uint32_t index) {
     if (index >= PROCESS_MAX)
         return 0;
@@ -136,6 +292,12 @@ void process_exit(process_t *process) {
     if (!process || process->state == PROCESS_UNUSED)
         return;
 
+    /* KNOWN LEAK (pre-existing, out of scope): this never frees
+       process->cr3 or any of the physical pages mapped under it —
+       the process's whole address space (and, for a forked child,
+       its independent copy of every page) is simply abandoned. Slots
+       are still safely reusable since process_spawn()/process_fork()
+       always allocate a fresh cr3 for whatever they build next. */
     process->state = PROCESS_UNUSED;
     process->pid   = 0;
 }

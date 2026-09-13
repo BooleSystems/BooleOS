@@ -92,3 +92,15 @@
 - Prompts do usuário no chat de planejamento continuam em português
   (isso não muda), só o código/output do sistema em si é que deve
   ser 100% inglês daqui pra frente.
+  
+  ## Documentação
+
+- SEMPRE que uma fase/feature nova for concluída e eu confirmar que
+  o teste passou, atualize o README.md como parte da MESMA tarefa
+  (não espere um pedido separado): banner de versão, tabela de
+  roadmap (marcar fase como Done), seção de syscalls (se adicionou
+  syscall nova), lista de arquivos/estrutura (se adicionou arquivo
+  novo), e qualquer seção descritiva relevante à feature.
+- Isso vale mesmo que o pedido original não mencione o README
+  explicitamente — a atualização da documentação é parte implícita
+  de "fase concluída", não uma tarefa separada que precisa ser pedida.

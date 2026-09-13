@@ -5,6 +5,7 @@ global irq0
 global irq1
 global irq14
 global irq15
+global isr128_resume
 
 ; CPU exception stubs
 global isr0
@@ -45,6 +46,7 @@ global isr128
 extern irq_handler
 extern exception_handler
 extern syscall_handler
+extern g_syscall_frame
 
 ; -------------------------------------------------------
 ; idt_flush / lidt
@@ -201,9 +203,23 @@ ISR_NOERRCODE 31   ;      Reserved
 ; (eip, cs, eflags, user_esp, user_ss) via the TSS.
 ; pusha/popa preserves all of the user's registers;
 ; the eax slot in the frame is overwritten with the return value.
+;
+; g_syscall_frame / isr128_resume (SYS_FORK support):
+; right after 'pusha', ESP points at a 13-word block: the 8 pusha
+; registers followed directly by the CPU's ring3->ring0 trap frame
+; (eip, cs, eflags, user_esp, user_ss) — i.e. everything needed to
+; resume this exact ring-3 execution point via 'popa; iret'. We save
+; that ESP into g_syscall_frame so process_fork() (see process.c) can
+; copy the whole block into a new child process's own kernel stack —
+; with the eax slot forced to 0 — so the child's first scheduling
+; lands on isr128_resume below and comes back out to ring 3 exactly
+; where the parent's fork() call was, just with a different eax.
+; g_syscall_frame is only ever valid synchronously for the syscall
+; being dispatched right now — see the comment on it in syscall.c.
 ; -------------------------------------------------------
 isr128:
     pusha                   ; saves eax,ecx,edx,ebx,esp,ebp,esi,edi
+    mov [g_syscall_frame], esp
     ; after pusha: [esp+28]=eax  [esp+16]=ebx  [esp+24]=ecx  [esp+20]=edx
     mov eax, [esp + 28]     ; num   (original eax)
     mov ebx, [esp + 16]     ; arg1  (original ebx)
@@ -216,5 +232,6 @@ isr128:
     call syscall_handler
     add esp, 16
     mov [esp + 28], eax     ; write the return value into the pusha frame's EAX slot
-    popa                    ; restore regs; eax = syscall return value
+isr128_resume:
+    popa                    ; restore regs; eax = syscall return value (0 for a fresh fork() child)
     iret

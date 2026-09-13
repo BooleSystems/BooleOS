@@ -33,6 +33,61 @@ static int proc_slot(void) {
     return -1;
 }
 
+/* returns p's slot in the process table, or -1 */
+static int slot_of(process_t *p) {
+    for (uint32_t i = 0; i < PROCESS_MAX; i++) {
+        if (process_at(i) == p)
+            return (int)i;
+    }
+    return -1;
+}
+
+/* ── SYS_FORK support ──────────────────────────────────────────
+   Set by isr128 (see isr.asm) right after 'pusha', to the ESP value
+   at that point — a pointer to a 13-word block: the 8 pusha
+   registers followed by the CPU's ring3->ring0 trap frame (eip, cs,
+   eflags, user_esp, user_ss). That's everything needed to resume the
+   interrupted ring-3 execution via 'popa; iret', which is exactly
+   what process_fork() fabricates for a new child's first scheduling.
+
+   IMPORTANT: this global is only valid synchronously, for the
+   syscall currently being dispatched. If sys_fork() below used it
+   directly during the (potentially preempted, possibly slow) page
+   copy in process_fork(), a different process's syscall entry could
+   overwrite it in the meantime, corrupting the child being built.
+   sys_fork() copies it into a LOCAL buffer as its very first action,
+   before anything else, and nothing beyond that point — in this file
+   or elsewhere — should read g_syscall_frame again for this call. */
+uint32_t g_syscall_frame = 0;
+
+#define SYSCALL_FRAME_WORDS 13
+#define SYSCALL_FRAME_EAX   7   /* index of the saved EAX within the block above */
+
+static uint32_t sys_fork(void) {
+    /* snapshot FIRST — see the comment on g_syscall_frame above */
+    uint32_t frame[SYSCALL_FRAME_WORDS];
+    const uint32_t *src = (const uint32_t *)g_syscall_frame;
+    for (int i = 0; i < SYSCALL_FRAME_WORDS; i++) frame[i] = src[i];
+    frame[SYSCALL_FRAME_EAX] = 0;   /* the child sees fork() return 0 */
+
+    process_t *parent = process_current();
+    if (!parent) return (uint32_t)-1;
+    int parent_slot = proc_slot();
+    if (parent_slot < 0) return (uint32_t)-1;
+
+    process_t *child = process_fork(parent, frame);
+    if (!child) return (uint32_t)-1;
+
+    /* duplicate the parent's open files into the child's own slot */
+    int child_slot = slot_of(child);
+    if (child_slot >= 0) {
+        for (uint32_t j = 0; j < FD_PER_PROC; j++)
+            fd_table[child_slot][j] = fd_table[parent_slot][j];
+    }
+
+    return child->pid;
+}
+
 static uint32_t sys_write(uint32_t fd, const char *buf, uint32_t len) {
     (void)fd;  // stdout only for now
     if (!buf) return (uint32_t)-1;
@@ -397,6 +452,7 @@ uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t ar
         case SYS_WRITE_FILE:   return sys_write_file(arg1, arg2, arg3);
         case SYS_CREATE:       return sys_create((const char *)arg1);
         case SYS_PCI_LIST:     pci_print_list(); return 0;
+        case SYS_FORK:         return sys_fork();
         default:
             vga_set_color(VGA_YELLOW, VGA_BLACK);
             vga_puts("[SYSCALL] unknown number: ");
