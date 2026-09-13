@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
 # nullos/tools/setup_env.sh
-# Instala as dependências de build do NullOS no Fedora
-# Execute com: bash setup_env.sh
+# Installs NullOS's build dependencies on Fedora
+# Run with: bash setup_env.sh
 
 set -e
 
-echo "=== NullOS — Setup do ambiente de build ==="
+echo "=== NullOS — Build environment setup ==="
 echo ""
 
-# Detecta distro
+# Detect distro
 if [ -f /etc/fedora-release ]; then
     DISTRO="fedora"
 elif [ -f /etc/debian_version ]; then
     DISTRO="debian"
 else
-    echo "AVISO: Distro não reconhecida. Ajuste manualmente."
+    echo "WARNING: Unrecognized distro. Adjust manually."
     DISTRO="unknown"
 fi
 
-echo "[1/4] Instalando dependências do sistema..."
+echo "[1/4] Installing system dependencies..."
 
 if [ "$DISTRO" = "fedora" ]; then
     sudo dnf install -y \
@@ -43,40 +43,40 @@ elif [ "$DISTRO" = "debian" ]; then
 fi
 
 echo ""
-echo "[2/4] Verificando cross-compiler x86_64-elf-gcc..."
+echo "[2/4] Checking for the x86_64-elf-gcc cross-compiler..."
 echo ""
-echo "  O cross-compiler NAO esta nos repos do Fedora."
-echo "  Opcoes:"
+echo "  The cross-compiler is NOT in the Fedora repos."
+echo "  Options:"
 echo ""
-echo "  A) Compilar do zero (demorado, ~30min):"
+echo "  A) Build it from scratch (slow, ~30min):"
 echo "     https://wiki.osdev.org/GCC_Cross-Compiler"
 echo ""
-echo "  B) Usar binarios prontos do osdev-toolchain:"
-echo "     https://github.com/lordmilko/i686-elf-tools (para i686)"
-echo "     ou compilar via crosstool-ng"
+echo "  B) Use prebuilt osdev-toolchain binaries:"
+echo "     https://github.com/lordmilko/i686-elf-tools (for i686)"
+echo "     or build via crosstool-ng"
 echo ""
-echo "  C) Usar o build automatico via Docker (recomendado):"
+echo "  C) Use the automatic Docker build (recommended):"
 echo "     tools/docker_build.sh clean"
 echo ""
 
-echo "[3/4] Verificando QEMU..."
+echo "[3/4] Checking QEMU..."
 if command -v qemu-system-x86_64 &>/dev/null; then
     echo "  qemu-system-x86_64: OK ($(qemu-system-x86_64 --version | head -1))"
 else
-    echo "  QEMU nao encontrado. Instale com: sudo dnf install qemu-system-x86"
+    echo "  QEMU not found. Install with: sudo dnf install qemu-system-x86"
 fi
 
 echo ""
-echo "[4/4] Verificando NASM..."
+echo "[4/4] Checking NASM..."
 if command -v nasm &>/dev/null; then
     echo "  nasm: OK ($(nasm --version))"
 else
-    echo "  NASM nao encontrado. Instale com: sudo dnf install nasm"
+    echo "  NASM not found. Install with: sudo dnf install nasm"
 fi
 
 echo ""
-echo "=== Setup concluido ==="
+echo "=== Setup complete ==="
 echo ""
-echo "Proximos passos:"
+echo "Next steps:"
 echo "  1. tools/docker_build.sh clean"
 echo "  2. tools/run_qemu.sh"

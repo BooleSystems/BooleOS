@@ -1,5 +1,5 @@
 // nullos/kernel/main.c
-// kmain() - Fase 5: ramfs + ELF loader + exec()
+// kmain() - Phase 5: ramfs + ELF loader + exec()
 
 #include <stdint.h>
 #include "drivers/vga.h"
@@ -53,7 +53,7 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     vga_puts(" | |\\  | |_| | | | |_| |___) |\n");
     vga_puts(" |_| \\_|\\__,_|_|_|\\___/|____/ \n\n");
     vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
-    vga_puts(" NullOS v0.7.0 - Fase 7: shell userland\n\n");
+    vga_puts(" NullOS v0.10.1 - Phase 10: persistent disk (ATA PIO + FAT16)\n\n");
 
     print_separator();
 
@@ -61,19 +61,19 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     print_tag("[BOOT] ");
     if (multiboot_magic != MULTIBOOT2_MAGIC) {
         vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
-        vga_puts("Multiboot2 magic invalido!\n");
+        vga_puts("Invalid Multiboot2 magic!\n");
         goto hang;
     }
     vga_puts("Multiboot2: "); print_ok();
 
-    // Módulo ramfs (opcional)
+    // ramfs module (optional)
     uint32_t mod_start = 0, mod_end = 0;
     int has_module = multiboot2_find_module((void *)multiboot_info_addr,
                                             &mod_start, &mod_end);
     {
         print_tag("[BOOT] ");
         if (has_module) {
-            vga_puts("modulo ramfs: 0x");
+            vga_puts("ramfs module: 0x");
             vga_puthex(mod_start);
             vga_puts(" - 0x");
             vga_puthex(mod_end);
@@ -81,26 +81,26 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
             vga_putdec(mod_end - mod_start);
             vga_puts(" bytes)\n");
         } else {
-            vga_puts("nenhum modulo — modo sem ramfs\n");
+            vga_puts("no module — running without ramfs\n");
         }
     }
 
     // GDT
     print_tag("[GDT]  ");
-    vga_puts("Inicializando... ");
+    vga_puts("Initializing... ");
     gdt_init();
     print_ok();
 
     // PIC
     print_tag("[PIC]  ");
-    vga_puts("Remapeando IRQs... ");
+    vga_puts("Remapping IRQs... ");
     pic_init();
     for (int i = 0; i < 16; i++) pic_mask_irq((uint8_t)i);
     print_ok();
 
     // IDT
     print_tag("[IDT]  ");
-    vga_puts("Instalando vetores...\n");
+    vga_puts("Installing vectors...\n");
     idt_init();
     print_tag("       ");
     print_ok();
@@ -111,7 +111,7 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     timer_init(100);
     print_ok();
 
-    // Teclado
+    // Keyboard
     print_tag("[KB]   ");
     vga_puts("PS/2 keyboard... ");
     keyboard_init();
@@ -123,7 +123,7 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
 
     // PMM
     print_tag("[PMM]  ");
-    vga_puts("Inicializando...\n");
+    vga_puts("Initializing...\n");
     pmm_init(64 * 1024);
     print_tag("       ");
     print_ok();
@@ -131,7 +131,7 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
 
     // VMM
     print_tag("[VMM]  ");
-    vga_puts("Ativando paginacao...\n");
+    vga_puts("Enabling paging...\n");
     vmm_init();
     print_tag("       ");
     print_ok();
@@ -139,56 +139,56 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
 
     // Heap
     print_tag("[HEAP] ");
-    vga_puts("Inicializando kmalloc...\n");
+    vga_puts("Initializing kmalloc...\n");
     heap_init();
     print_tag("       ");
     print_ok();
 
     print_separator();
 
-    // Scheduler + tasks de kernel
+    // Scheduler + kernel tasks
     print_tag("[SCHED]");
-    vga_puts("Inicializando scheduler... ");
+    vga_puts("Initializing scheduler... ");
     scheduler_init();
     print_ok();
 
     // ATA
     print_tag("[ATA]  ");
-    vga_puts("Detectando disco... ");
+    vga_puts("Detecting disk... ");
     if (ata_init()) {
         print_ok();
     } else {
         vga_set_color(VGA_DARK_GREY, VGA_BLACK);
-        vga_puts("nenhum disco\n");
+        vga_puts("no disk\n");
         vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
     }
 
     // FAT16
     print_tag("[FAT16]");
-    vga_puts(" Inicializando... ");
+    vga_puts(" Initializing... ");
     if (fat16_init()) {
         print_ok();
     } else {
         vga_set_color(VGA_DARK_GREY, VGA_BLACK);
-        vga_puts("nenhum disco FAT16\n");
+        vga_puts("no FAT16 disk\n");
         vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
     }
 
     print_separator();
 
-    // ramfs + exec("init") — só se o GRUB passou um módulo
+    // ramfs + exec("init") — only if GRUB passed a module
     if (has_module) {
         print_tag("[RAMFS]");
-        vga_puts("Montando imagem...\n");
+        vga_puts("Mounting image...\n");
         ramfs_init((void *)mod_start, mod_end - mod_start);
         print_tag("       ");
         print_ok();
 
         print_tag("[EXEC] ");
-        vga_puts("Carregando shell...\n");
+        vga_puts("Loading shell...\n");
         if (!exec("shell")) {
             vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
-            vga_puts("ERRO ao carregar shell\n");
+            vga_puts("ERROR loading shell\n");
             vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
         }
     }
@@ -197,7 +197,7 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     print_separator();
 
     vga_set_color(VGA_YELLOW, VGA_BLACK);
-    vga_puts("\n Shell iniciado!\n");
+    vga_puts("\n Shell started!\n");
     vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
 
     for (;;) {

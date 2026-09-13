@@ -1,4 +1,4 @@
-# nullos/tools/Makefile - Fase 5
+# nullos/tools/Makefile - Phase 5
 
 CC  = i686-elf-gcc
 LD  = i686-elf-ld
@@ -72,7 +72,7 @@ DISK_IMG     = $(BUILD)/disk.img
 all: dirs user $(KERNEL_ISO) $(DISK_IMG)
 	@echo ""
 	@echo "  Build OK: $(KERNEL_ISO)"
-	@echo "  'make run' para testar"
+	@echo "  'make run' to test it"
 	@echo ""
 
 dirs:

@@ -14,7 +14,7 @@ process_t *exec(const char *name) {
 
     if (!ramfs_find(name, &file_offset, &file_size)) {
         vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
-        vga_puts("[EXEC] nao encontrado: ");
+        vga_puts("[EXEC] not found: ");
         vga_puts(name);
         vga_puts("\n");
         vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
@@ -29,7 +29,7 @@ process_t *exec(const char *name) {
     uint32_t cr3 = vmm_create_directory();
     if (!cr3) {
         vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
-        vga_puts("[EXEC] falha ao criar page directory\n");
+        vga_puts("[EXEC] failed to create page directory\n");
         vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
         return 0;
     }
@@ -37,7 +37,7 @@ process_t *exec(const char *name) {
     uint32_t entry = 0;
     if (elf_load(cr3, elf_data, &entry) != 0) {
         vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
-        vga_puts("[EXEC] elf_load falhou: ");
+        vga_puts("[EXEC] elf_load failed: ");
         vga_puts(name);
         vga_puts("\n");
         vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
@@ -50,7 +50,7 @@ process_t *exec(const char *name) {
         uint32_t phys = pmm_alloc_page();
         if (!phys) {
             vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
-            vga_puts("[EXEC] sem memoria para user stack\n");
+            vga_puts("[EXEC] out of memory for user stack\n");
             vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
             return 0;
         }
@@ -62,7 +62,7 @@ process_t *exec(const char *name) {
     process_t *p = scheduler_spawn_user(name, entry, user_esp, cr3);
     if (!p) {
         vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
-        vga_puts("[EXEC] scheduler_spawn_user falhou\n");
+        vga_puts("[EXEC] scheduler_spawn_user failed\n");
         vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
         return 0;
     }

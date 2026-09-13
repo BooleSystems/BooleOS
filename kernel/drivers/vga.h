@@ -1,5 +1,5 @@
 // nullos/kernel/drivers/vga.h
-// Driver VGA modo texto 80x25 — interface pública
+// VGA text mode 80x25 driver — public interface
 
 #ifndef VGA_H
 #define VGA_H
@@ -7,11 +7,11 @@
 #include <stdint.h>
 #include <stddef.h>
 
-// Dimensões do terminal VGA padrão
+// Standard VGA terminal dimensions
 #define VGA_COLS 80
 #define VGA_ROWS 25
 
-// Cores VGA (4 bits — foreground e background)
+// VGA colors (4 bits — foreground and background)
 typedef enum {
     VGA_BLACK         = 0,
     VGA_BLUE          = 1,
@@ -31,28 +31,28 @@ typedef enum {
     VGA_WHITE         = 15,
 } vga_color_t;
 
-// Inicializa e limpa o terminal
+// Initializes and clears the terminal
 void vga_init(void);
 
-// Define cor atual (fg = foreground, bg = background)
+// Sets the current color (fg = foreground, bg = background)
 void vga_set_color(vga_color_t fg, vga_color_t bg);
 
-// Imprime um caractere na posição atual do cursor
+// Prints a character at the current cursor position
 void vga_putchar(char c);
 
-// Imprime uma string null-terminated
+// Prints a null-terminated string
 void vga_puts(const char *str);
 
-// Limpa a tela
+// Clears the screen
 void vga_clear(void);
 
-// Move o cursor para (col, row)
+// Moves the cursor to (col, row)
 void vga_set_cursor(uint8_t col, uint8_t row);
 
-// Imprime um número inteiro em hex (ex: 0xDEADBEEF)
+// Prints an integer in hex (e.g. 0xDEADBEEF)
 void vga_puthex(uint32_t value);
 
-// Imprime um número inteiro em decimal
+// Prints an integer in decimal
 void vga_putdec(uint32_t value);
 
 #endif // VGA_H

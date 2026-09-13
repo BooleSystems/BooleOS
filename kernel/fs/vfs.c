@@ -1,4 +1,4 @@
-/* nullos/kernel/fs/vfs.c — despachante de filesystem */
+/* nullos/kernel/fs/vfs.c — filesystem dispatcher */
 #include "vfs.h"
 #include "fat16.h"
 #include "../ramfs.h"
@@ -13,7 +13,7 @@ static void vfs_store_name(vfs_fd_t *fd, const char *name) {
 int vfs_open(const char *name, vfs_fd_t *fd) {
     if (!name || !fd) return -1;
 
-    /* tenta ramfs primeiro */
+    /* try ramfs first */
     uint32_t off, sz;
     if (ramfs_find(name, &off, &sz)) {
         fd->used    = 1;
@@ -25,7 +25,7 @@ int vfs_open(const char *name, vfs_fd_t *fd) {
         return 0;
     }
 
-    /* tenta FAT16 */
+    /* then try FAT16 */
     if (fat16_available()) {
         uint32_t cluster = 0, size = 0;
         int found = fat16_find(name, &cluster, &size);
@@ -46,7 +46,7 @@ int vfs_open(const char *name, vfs_fd_t *fd) {
 int vfs_create(const char *name, vfs_fd_t *fd) {
     if (!name || !fd) return -1;
 
-    /* já existe (ramfs ou FAT16)? só abre */
+    /* already exists (ramfs or FAT16)? just open it */
     if (vfs_open(name, fd) == 0) return 0;
 
     if (!fat16_available()) return -1;
@@ -89,7 +89,7 @@ int vfs_read(vfs_fd_t *fd, char *buf, uint32_t len) {
 
 int vfs_write(vfs_fd_t *fd, const char *buf, uint32_t len) {
     if (!fd || !fd->used) return -1;
-    if (fd->backend != VFS_FAT16) return -1;  /* ramfs é read-only */
+    if (fd->backend != VFS_FAT16) return -1;  /* ramfs is read-only */
     return fat16_write_file(fd->name, buf, len);
 }
 

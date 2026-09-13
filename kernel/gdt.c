@@ -1,40 +1,40 @@
 // nullos/kernel/gdt.c
 // Global Descriptor Table
-// Define os segmentos de memória do sistema (código/dados, ring 0/3)
+// Defines the system's memory segments (code/data, ring 0/3)
 
 #include "gdt.h"
 #include "tss.h"
 #include <stdint.h>
 
 // ============================================================
-// Estruturas
+// Structures
 // ============================================================
 
-// Uma entrada da GDT (8 bytes)
+// A GDT entry (8 bytes)
 typedef struct {
-    uint16_t limit_low;     // Bits 0-15 do limite
-    uint16_t base_low;      // Bits 0-15 da base
-    uint8_t  base_mid;      // Bits 16-23 da base
-    uint8_t  access;        // Byte de acesso (tipo, DPL, presente)
-    uint8_t  granularity;   // Flags + bits 16-19 do limite
-    uint8_t  base_high;     // Bits 24-31 da base
+    uint16_t limit_low;     // Bits 0-15 of the limit
+    uint16_t base_low;      // Bits 0-15 of the base
+    uint8_t  base_mid;      // Bits 16-23 of the base
+    uint8_t  access;        // Access byte (type, DPL, present)
+    uint8_t  granularity;   // Flags + bits 16-19 of the limit
+    uint8_t  base_high;     // Bits 24-31 of the base
 } __attribute__((packed)) gdt_entry_t;
 
-// GDTR — registrador que o processador lê com lgdt
+// GDTR — register the processor reads with lgdt
 typedef struct {
-    uint16_t limit;         // Tamanho da GDT - 1
-    uint32_t base;          // Endereço da GDT
+    uint16_t limit;         // GDT size - 1
+    uint32_t base;          // GDT address
 } __attribute__((packed)) gdt_ptr_t;
 
 // ============================================================
-// Dados estáticos
+// Static data
 // ============================================================
 
 static gdt_entry_t gdt[GDT_ENTRIES];
 static gdt_ptr_t   gdt_ptr;
 
 // ============================================================
-// Funções internas
+// Internal functions
 // ============================================================
 
 static void gdt_set_entry(int idx, uint32_t base, uint32_t limit,
@@ -47,31 +47,31 @@ static void gdt_set_entry(int idx, uint32_t base, uint32_t limit,
     gdt[idx].access      = access;
 }
 
-// Carrega a GDT e recarrega os registradores de segmento
+// Loads the GDT and reloads the segment registers
 extern void gdt_flush(uint32_t gdt_ptr_addr);
 
 // ============================================================
-// API pública
+// Public API
 // ============================================================
 
 void gdt_init(void) {
     gdt_ptr.limit = (uint16_t)(sizeof(gdt) - 1);
     gdt_ptr.base  = (uint32_t)&gdt;
 
-    // Segmento nulo (obrigatório — primeiro entry sempre zero)
+    // Null segment (mandatory — first entry is always zero)
     gdt_set_entry(GDT_NULL_SEG,    0, 0x00000000, 0x00, 0x00);
 
-    // Código do kernel: base=0, limite=4GB, ring 0, executável
-    // Access: presente(1) | DPL=00 | tipo=1 | executável(1) | leitura(1)
+    // Kernel code: base=0, limit=4GB, ring 0, executable
+    // Access: present(1) | DPL=00 | type=1 | executable(1) | readable(1)
     gdt_set_entry(GDT_KERNEL_CODE, 0, 0xFFFFFFFF, 0x9A, 0xCF);
 
-    // Dados do kernel: base=0, limite=4GB, ring 0, leitura/escrita
+    // Kernel data: base=0, limit=4GB, ring 0, read/write
     gdt_set_entry(GDT_KERNEL_DATA, 0, 0xFFFFFFFF, 0x92, 0xCF);
 
-    // Código do usuário: ring 3, executável
+    // User code: ring 3, executable
     gdt_set_entry(GDT_USER_CODE,   0, 0xFFFFFFFF, 0xFA, 0xCF);
 
-    // Dados do usuário: ring 3, leitura/escrita
+    // User data: ring 3, read/write
     gdt_set_entry(GDT_USER_DATA,   0, 0xFFFFFFFF, 0xF2, 0xCF);
 
     // TSS
@@ -79,9 +79,9 @@ void gdt_init(void) {
     uint32_t tss_addr = tss_get_addr();
     gdt_set_entry(GDT_TSS, tss_addr, sizeof(tss_entry_t), 0x89, 0x40);
 
-    // Carrega a GDT e recarrega segmentos
+    // Load the GDT and reload segments
     gdt_flush((uint32_t)&gdt_ptr);
 
-    // Carrega o seletor do TSS
+    // Load the TSS selector
     __asm__ volatile("ltr %%ax" : : "a" (SEG_TSS));
 }

@@ -82,7 +82,7 @@ void vmm_switch_directory(uint32_t cr3) {
 void vmm_map_user_page(uint32_t pd_phys, uint32_t virt, uint32_t phys) {
     uint32_t di = virt >> 22;
     uint32_t ti = (virt >> 12) & 0x3FF;
-    pde_t *pd = (pde_t *)pd_phys;   /* pd_phys é identity-mapped (<8MB) */
+    pde_t *pd = (pde_t *)pd_phys;   /* pd_phys is identity-mapped (<8MB) */
 
     if (!(pd[di] & VMM_PRESENT)) {
         uint32_t pt_phys = pmm_alloc_page();
@@ -125,18 +125,18 @@ void vmm_init(void) {
     uint32_t *pt0 = (uint32_t *)PAGE_TABLE_START;
     uint32_t *pt1 = (uint32_t *)(PAGE_TABLE_START + PAGE_SIZE);
 
-    vga_puts("   vmm: [1] zerando PD e PTs\n");
+    vga_puts("   vmm: [1] zeroing PD and PTs\n");
     for (i = 0; i < 1024; i++) {
         pd[i]  = 0;
         pt0[i] = 0;
         pt1[i] = 0;
     }
 
-    vga_puts("   vmm: [2] mapeando 0-4MB\n");
+    vga_puts("   vmm: [2] mapping 0-4MB\n");
     for (i = 0; i < 1024; i++)
         pt0[i] = (i * PAGE_SIZE) | VMM_KERNEL | VMM_PRESENT;
 
-    vga_puts("   vmm: [3] mapeando 4MB-8MB\n");
+    vga_puts("   vmm: [3] mapping 4MB-8MB\n");
     for (i = 0; i < 1024; i++)
         pt1[i] = (0x400000 + i * PAGE_SIZE) | VMM_KERNEL | VMM_PRESENT;
 
@@ -158,7 +158,7 @@ void vmm_dump(void) {
     vga_set_color(VGA_CYAN, VGA_BLACK);
     vga_puts("[VMM] ");
     vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
-    vga_puts("PTs usadas: ");
+    vga_puts("PTs used: ");
     vga_putdec((pt_next - PAGE_TABLE_START) / PAGE_SIZE);
     vga_puts("\n");
 }

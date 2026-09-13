@@ -150,7 +150,7 @@ void idt_init(void) {
     int i;
     idt_entry_t *idt = (idt_entry_t *)IDT_ADDRESS;
 
-    vga_puts(" [1] zerando IDT em 0x200000\n");
+    vga_puts(" [1] zeroing IDT at 0x200000\n");
     for (i = 0; i < IDT_SIZE; i++) {
         idt[i].base_low  = 0;
         idt[i].selector  = 0;
@@ -160,16 +160,16 @@ void idt_init(void) {
         handlers[i]      = 0;
     }
 
-    vga_puts(" [2] gates de excecao (0-31)\n");
+    vga_puts(" [2] exception gates (0-31)\n");
     for (i = 0; i < 32; i++)
         idt_set_gate((uint8_t)i, isr_table[i], 0x08, 0x8E);
 
-    vga_puts(" [3] gates de IRQ (32-33)\n");
+    vga_puts(" [3] IRQ gates (32-33)\n");
     idt_set_gate(32, irq0, 0x08, 0x8E);
     idt_set_gate(33, irq1, 0x08, 0x8E);
 
-    /* 0xEF = presente | DPL=3 | trap gate de 32 bits — preserva IF (sem cli implícito) */
-    vga_puts(" [4] gate syscall (0x80, DPL=3)\n");
+    /* 0xEF = present | DPL=3 | 32-bit trap gate — preserves IF (no implicit cli) */
+    vga_puts(" [4] syscall gate (0x80, DPL=3)\n");
     idt_set_gate(128, isr128, 0x08, 0xEF);
 
     vga_puts(" [5] flush\n");

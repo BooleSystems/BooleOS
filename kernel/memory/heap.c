@@ -1,7 +1,7 @@
 // nullos/kernel/memory/heap.c
-// Heap do kernel — kmalloc/kfree
-// Implementação simples com lista encadeada de blocos
-// Heap começa em 0x400000 (4MB) e cresce para cima
+// Kernel heap — kmalloc/kfree
+// Simple implementation using a linked list of blocks
+// The heap starts at 0x400000 (4MB) and grows upward
 
 #include "heap.h"
 #include "pmm.h"
@@ -11,16 +11,16 @@
 #include <stddef.h>
 
 #define HEAP_START  0x400000   // 4MB
-#define HEAP_MAX    0x800000   // 8MB (4MB de heap)
+#define HEAP_MAX    0x800000   // 8MB (4MB of heap)
 #define MAGIC_FREE  0xDEAD1234
 #define MAGIC_USED  0xBEEF5678
 
-// Cabeçalho de cada bloco da heap
+// Header for each heap block
 typedef struct block_header {
-    uint32_t             magic;   // MAGIC_FREE ou MAGIC_USED
-    uint32_t             size;    // Tamanho do bloco (sem o header)
-    struct block_header *next;    // Próximo bloco
-    struct block_header *prev;    // Bloco anterior
+    uint32_t             magic;   // MAGIC_FREE or MAGIC_USED
+    uint32_t             size;    // Block size (without the header)
+    struct block_header *next;    // Next block
+    struct block_header *prev;    // Previous block
 } block_header_t;
 
 #define HEADER_SIZE sizeof(block_header_t)
@@ -29,22 +29,22 @@ static block_header_t *heap_start_ptr = 0;
 static uint32_t        heap_end       = HEAP_START;
 
 // ============================================================
-// Funções internas
+// Internal functions
 // ============================================================
 
-// Expande a heap alocando novas páginas físicas
+// Expands the heap by allocating new physical pages
 static int heap_expand(uint32_t size) {
     uint32_t pages_needed = (size + PAGE_SIZE - 1) / PAGE_SIZE;
     uint32_t i;
 
     for (i = 0; i < pages_needed; i++) {
         if (heap_end + PAGE_SIZE > HEAP_MAX) {
-            vga_puts("heap: ERRO sem espaco para expandir!\n");
+            vga_puts("heap: ERROR no room to expand!\n");
             return 0;
         }
         uint32_t phys = pmm_alloc_page();
         if (!phys) {
-            vga_puts("heap: ERRO sem paginas fisicas!\n");
+            vga_puts("heap: ERROR out of physical pages!\n");
             return 0;
         }
         vmm_map_page(heap_end, phys, VMM_KERNEL);
@@ -54,28 +54,28 @@ static int heap_expand(uint32_t size) {
 }
 
 // ============================================================
-// API pública
+// Public API
 // ============================================================
 
 void heap_init(void) {
-    vga_puts("   heap: inicializando em ");
+    vga_puts("   heap: initializing at ");
     vga_puthex(HEAP_START);
     vga_puts("\n");
 
-    // Aloca primeira página
+    // Allocate the first page
     if (!heap_expand(PAGE_SIZE)) {
-        vga_puts("   heap: ERRO ao inicializar!\n");
+        vga_puts("   heap: ERROR initializing!\n");
         return;
     }
 
-    // Cria bloco inicial cobrindo toda a heap disponível
+    // Create the initial block covering the whole available heap
     heap_start_ptr = (block_header_t *)HEAP_START;
     heap_start_ptr->magic = MAGIC_FREE;
     heap_start_ptr->size  = heap_end - HEAP_START - HEADER_SIZE;
     heap_start_ptr->next  = 0;
     heap_start_ptr->prev  = 0;
 
-    vga_puts("   heap: bloco inicial size=");
+    vga_puts("   heap: initial block size=");
     vga_putdec(heap_start_ptr->size);
     vga_puts(" bytes\n");
 }
@@ -83,21 +83,21 @@ void heap_init(void) {
 void *kmalloc(size_t size) {
     if (size == 0) return 0;
 
-    // Alinha a 4 bytes
+    // Align to 4 bytes
     size = (size + 3) & ~3U;
 
     block_header_t *cur = heap_start_ptr;
 
     while (cur) {
         if (cur->magic != MAGIC_FREE && cur->magic != MAGIC_USED) {
-            vga_puts("heap: CORRUPCAO DETECTADA!\n");
+            vga_puts("heap: CORRUPTION DETECTED!\n");
             return 0;
         }
 
         if (cur->magic == MAGIC_FREE && cur->size >= size) {
-            // Bloco livre grande o suficiente
+            // Free block big enough
 
-            // Divide o bloco se sobrar espaço
+            // Split the block if there's leftover space
             if (cur->size >= size + HEADER_SIZE + 4) {
                 block_header_t *new_block = (block_header_t *)
                     ((uint8_t *)cur + HEADER_SIZE + size);
@@ -118,7 +118,7 @@ void *kmalloc(size_t size) {
         cur = cur->next;
     }
 
-    // Sem bloco livre — expande a heap e anexa o novo espaco a lista.
+    // No free block — expand the heap and append the new space to the list.
     uint32_t old_end = heap_end;
     if (!heap_expand(size + HEADER_SIZE)) return 0;
 
@@ -144,7 +144,7 @@ void *kmalloc(size_t size) {
         }
     }
 
-    // Tenta alocar de novo agora que o bloco expandido esta encadeado.
+    // Try allocating again now that the expanded block is linked in.
     return kmalloc(size);
 }
 
@@ -154,13 +154,13 @@ void kfree(void *ptr) {
     block_header_t *hdr = (block_header_t *)((uint8_t *)ptr - HEADER_SIZE);
 
     if (hdr->magic != MAGIC_USED) {
-        vga_puts("kfree: ERRO ponteiro invalido ou duplo free!\n");
+        vga_puts("kfree: ERROR invalid pointer or double free!\n");
         return;
     }
 
     hdr->magic = MAGIC_FREE;
 
-    // Merge com bloco seguinte se também for livre
+    // Merge with the next block if it's also free
     if (hdr->next && hdr->next->magic == MAGIC_FREE) {
         hdr->size += HEADER_SIZE + hdr->next->size;
         hdr->next  = hdr->next->next;
@@ -168,7 +168,7 @@ void kfree(void *ptr) {
             hdr->next->prev = hdr;
     }
 
-    // Merge com bloco anterior se também for livre
+    // Merge with the previous block if it's also free
     if (hdr->prev && hdr->prev->magic == MAGIC_FREE) {
         hdr->prev->size += HEADER_SIZE + hdr->size;
         hdr->prev->next  = hdr->next;
@@ -205,11 +205,11 @@ void heap_dump(void) {
     vga_set_color(VGA_CYAN, VGA_BLACK);
     vga_puts("[HEAP] ");
     vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
-    vga_puts("Blocos: ");
+    vga_puts("Blocks: ");
     vga_putdec(n_blocks);
-    vga_puts(" | Livre: ");
+    vga_puts(" | Free: ");
     vga_putdec(free_bytes);
-    vga_puts("B | Usado: ");
+    vga_puts("B | Used: ");
     vga_putdec(used_bytes);
     vga_puts("B\n");
 }

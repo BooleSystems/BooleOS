@@ -1,9 +1,9 @@
-/* nullos/user/init.c — primeiro processo de usuário */
+/* nullos/user/init.c — first user process */
 
 static int sys_write(const char *buf, unsigned int len) {
     int ret;
-    /* "=a" output + "0" input: eax=1 na entrada, retorno do kernel na saída.
-       Garante que o compilador não reutiliza eax após o int $0x80. */
+    /* "=a" output + "0" input: eax=1 on entry, kernel's return value on exit.
+       Ensures the compiler doesn't reuse eax after the int $0x80. */
     __asm__ volatile (
         "int $0x80"
         : "=a"(ret)

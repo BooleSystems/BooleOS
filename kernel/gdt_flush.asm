@@ -1,16 +1,16 @@
 ; nullos/kernel/gdt_flush.asm
-; Carrega a GDT e recarrega todos os registradores de segmento
-; Chamado por gdt_init() em gdt.c
+; Loads the GDT and reloads all segment registers
+; Called by gdt_init() in gdt.c
 
 bits 32
 global gdt_flush
 
 gdt_flush:
-    ; Argumento: endereço do gdt_ptr (via stack, convenção cdecl)
+    ; Argument: address of gdt_ptr (via stack, cdecl convention)
     mov eax, [esp + 4]
     lgdt [eax]
 
-    ; Recarrega registradores de segmento de dados com seletor kernel data (0x10)
+    ; Reload data segment registers with the kernel data selector (0x10)
     mov ax, 0x10
     mov ds, ax
     mov es, ax
@@ -18,7 +18,7 @@ gdt_flush:
     mov gs, ax
     mov ss, ax
 
-    ; Far jump para recarregar CS com seletor kernel code (0x08)
+    ; Far jump to reload CS with the kernel code selector (0x08)
     jmp 0x08:.flush
 
 .flush:

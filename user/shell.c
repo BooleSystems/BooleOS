@@ -1,4 +1,4 @@
-/* nullos/user/shell.c — shell interativo */
+/* nullos/user/shell.c — interactive shell */
 
 typedef unsigned int uint32_t;
 
@@ -132,7 +132,7 @@ static char *sh_uitoa(uint32_t v, char *buf, unsigned int bufsz) {
 /* ── commands ───────────────────────────────────────────────────── */
 
 static void cmd_uname(void) {
-    sh_puts("NullOS v0.7.0 i686\n");
+    sh_puts("NullOS v0.10.1 i686\n");
 }
 
 static void cmd_fetch(void) {
@@ -154,7 +154,7 @@ static void cmd_fetch(void) {
     char *n;
 
     /* line 0: logo + OS */
-    sh_puts(logo[0]); sh_puts("  OS: NullOS v0.7.0 i686\n");
+    sh_puts(logo[0]); sh_puts("  OS: NullOS v0.10.1 i686\n");
 
     /* line 1: logo + Arch */
     sh_puts(logo[1]); sh_puts("  Arch: i686\n");
@@ -169,18 +169,18 @@ static void cmd_fetch(void) {
     sh_puts(logo[3]);
     sh_puts("  Mem PMM: ");
     n = sh_uitoa(pmm_pages * 4, nbuf, sizeof(nbuf));
-    sh_puts(n); sh_puts(" KB livres\n");
+    sh_puts(n); sh_puts(" KB free\n");
 
     /* line 4: logo + Heap */
     sh_puts(logo[4]);
     sh_puts("  Heap: ");
     n = sh_uitoa(heap_bytes, nbuf, sizeof(nbuf));
-    sh_puts(n); sh_puts(" B livres\n");
+    sh_puts(n); sh_puts(" B free\n");
 
     /* line 5: padding + Procs */
     sh_puts("                                   Procs: ");
     n = sh_uitoa(nprocs, nbuf, sizeof(nbuf));
-    sh_puts(n); sh_puts(" rodando\n");
+    sh_puts(n); sh_puts(" running\n");
 }
 
 static void cmd_ps(void) {
@@ -197,7 +197,7 @@ static void cmd_mem(void) {
     sh_puts("PMM:  ");
     n = sh_uitoa(pmm_pages, nbuf, sizeof(nbuf));
     sh_puts(n);
-    sh_puts(" paginas livres (");
+    sh_puts(" free pages (");
     n = sh_uitoa(pmm_pages * 4, nbuf, sizeof(nbuf));
     sh_puts(n);
     sh_puts(" KB)\n");
@@ -205,11 +205,11 @@ static void cmd_mem(void) {
     sh_puts("Heap: ");
     n = sh_uitoa(heap_bytes, nbuf, sizeof(nbuf));
     sh_puts(n);
-    sh_puts(" B livres\n");
+    sh_puts(" B free\n");
 }
 
 static void cmd_echo(const char *line) {
-    /* pula "echo " */
+    /* skip "echo " */
     if (line[0] == 'e' && line[1] == 'c' && line[2] == 'h' &&
         line[3] == 'o' && line[4] == ' ') {
         sh_puts(line + 5);
@@ -220,68 +220,68 @@ static void cmd_echo(const char *line) {
 }
 
 static void cmd_kill(const char *arg) {
-    if (!arg || !*arg) { sh_puts("uso: kill <pid>\n"); return; }
+    if (!arg || !*arg) { sh_puts("usage: kill <pid>\n"); return; }
 
     uint32_t pid = 0;
     while (*arg >= '0' && *arg <= '9')
         pid = pid * 10 + (uint32_t)(*arg++ - '0');
 
-    if (pid == 0) { sh_puts("pid invalido\n"); return; }
+    if (pid == 0) { sh_puts("invalid pid\n"); return; }
 
-    /* avisa se for o proprio shell */
+    /* warn if it's the shell itself */
     if (pid == sys_getpid()) {
-        sh_puts("encerrando shell...\n");
+        sh_puts("shutting down shell...\n");
         sys_exit(0);
     }
 
     int r = sys_kill(pid);
     if (r == 0) {
-        sh_puts("processo ");
+        sh_puts("process ");
         char nbuf[16];
         sh_puts(sh_uitoa(pid, nbuf, sizeof(nbuf)));
-        sh_puts(" encerrado\n");
+        sh_puts(" terminated\n");
     } else {
-        sh_puts("pid nao encontrado\n");
+        sh_puts("pid not found\n");
     }
 }
 
 static void cmd_touch(const char *arg) {
-    if (!arg || !*arg) { sh_puts("uso: touch <arquivo>\n"); return; }
+    if (!arg || !*arg) { sh_puts("usage: touch <file>\n"); return; }
     int fd = sys_create(arg);
     if (fd < 0) {
-        sh_puts("erro: nao foi possivel criar (sem disco?)\n");
+        sh_puts("error: could not create (no disk?)\n");
         return;
     }
     sys_close(fd);
 }
 
 static void cmd_run(const char *name) {
-    if (!name || !*name) { sh_puts("uso: run <programa>\n"); return; }
+    if (!name || !*name) { sh_puts("usage: run <program>\n"); return; }
     int pid = sys_exec(name);
     if (pid < 0) {
-        sh_puts("erro: programa nao encontrado\n");
+        sh_puts("error: program not found\n");
     } else {
-        sh_puts("executando: ");
+        sh_puts("running: ");
         sh_puts(name);
         sh_puts("\n");
     }
 }
 
 static const char *help_text =
-    "comandos:\n"
-    "  help           esta mensagem\n"
-    "  uname          versao do sistema\n"
-    "  fetch          info do sistema\n"
-    "  ps             tabela de processos\n"
-    "  mem            uso de memoria\n"
-    "  ls             lista arquivos\n"
-    "  touch <nome>   cria arquivo vazio\n"
-    "  echo <texto>   imprime texto\n"
-    "  kill <pid>     encerra processo\n"
-    "  run <prog>     executa programa em background\n"
-    "  edit <arquivo> abre editor de texto\n"
-    "  clear          limpa a tela\n"
-    "  exit           encerra o shell\n";
+    "commands:\n"
+    "  help           this message\n"
+    "  uname          system version\n"
+    "  fetch          system info\n"
+    "  ps             process table\n"
+    "  mem            memory usage\n"
+    "  ls             list files\n"
+    "  touch <name>   create an empty file\n"
+    "  echo <text>    print text\n"
+    "  kill <pid>     terminate a process\n"
+    "  run <prog>     run a program in the background\n"
+    "  edit <file>    open the text editor\n"
+    "  clear          clear the screen\n"
+    "  exit           exit the shell\n";
 
 static const char *clear_text =
     "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n";
@@ -313,10 +313,10 @@ static void run_command(char *line, int len) {
     } else if (sh_strcmp(line, "clear") == 0) {
         sh_puts(clear_text);
     } else if (sh_strcmp(line, "exit") == 0) {
-        sh_puts("tchau!\n");
+        sh_puts("bye!\n");
         sys_exit(0);
     } else {
-        sh_puts("comando nao encontrado: ");
+        sh_puts("command not found: ");
         sh_puts(line);
         sh_puts("\n");
     }
@@ -328,7 +328,7 @@ void _start(void) {
     static char line[128];
     static int foreground_pid = 0;
 
-    sh_puts("NullOS shell — digite 'help'\n");
+    sh_puts("NullOS shell — type 'help'\n");
 
     for (;;) {
         sh_puts("> ");
@@ -343,17 +343,17 @@ void _start(void) {
         }
         line[n] = '\0';
 
-        /* extrai PID de run antes de despachar o comando */
+        /* extracts run's PID before dispatching the command */
         if (sh_strncmp(line, "edit", 4) == 0 && (line[4] == ' ' || line[4] == '\0')) {
             char *arg = line[4] == ' ' ? line + 5 : "";
             unsigned int alen = sh_strlen(arg);
             if (alen > 0 && arg[alen - 1] == '\n') arg[alen - 1] = '\0';
             int pid = sys_exec_arg("edit", arg);
             if (pid < 0) {
-                sh_puts("erro: edit nao encontrado\n");
+                sh_puts("error: edit not found\n");
             } else {
                 foreground_pid = pid;
-                sys_wait(pid);   /* bloqueia até o editor terminar */
+                sys_wait(pid);   /* blocks until the editor exits */
                 foreground_pid = 0;
             }
         } else if (sh_strncmp(line, "run", 3) == 0 && (line[3] == ' ' || line[3] == '\0')) {
@@ -362,10 +362,10 @@ void _start(void) {
             if (nlen > 0 && name[nlen - 1] == '\n') name[nlen - 1] = '\0';
             int pid = sys_exec(name);
             if (pid < 0) {
-                sh_puts("erro: programa nao encontrado\n");
+                sh_puts("error: program not found\n");
             } else {
                 foreground_pid = pid;
-                sh_puts("executando: ");
+                sh_puts("running: ");
                 sh_puts(name);
                 sh_puts("\n");
             }

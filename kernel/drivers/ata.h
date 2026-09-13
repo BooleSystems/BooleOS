@@ -3,11 +3,11 @@
 
 #include <stdint.h>
 
-/* Retorna 1 se um disco foi detectado, 0 caso contrário. */
+/* Returns 1 if a disk was detected, 0 otherwise. */
 int  ata_init(void);
 
-/* Lê/escreve um setor de 512 bytes no LBA indicado.
-   Retorna 0 em sucesso, -1 em erro.                  */
+/* Reads/writes a 512-byte sector at the given LBA.
+   Returns 0 on success, -1 on error.                 */
 int  ata_read_sector (uint32_t lba, void *buf);
 int  ata_write_sector(uint32_t lba, const void *buf);
 

@@ -22,14 +22,14 @@ int ramfs_find(const char *name, uint32_t *out_offset, uint32_t *out_size) {
     for (uint32_t i = 0; i < ramfs_nfiles; i++) {
         ramfs_entry_t *e = &ramfs_entries[i];
 
-        /* strcmp sem libc */
+        /* strcmp without libc */
         const char *a = name, *b = e->name;
         while (*a && *a == *b) { a++; b++; }
         if (*a != *b)
             continue;
 
         if (e->offset + e->size > ramfs_size)
-            return 0;  /* entry corrompida */
+            return 0;  /* corrupted entry */
 
         if (out_offset) *out_offset = e->offset;
         if (out_size)   *out_size   = e->size;

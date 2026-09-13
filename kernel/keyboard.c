@@ -31,7 +31,7 @@ static char    kb_buffer[KB_BUFFER_SIZE];
 static uint8_t kb_head = 0;
 static uint8_t kb_tail = 0;
 
-/* buffer de scancodes brutos: bit8=ctrl, bits0-7=scancode */
+/* raw scancode buffer: bit8=ctrl, bits0-7=scancode */
 static uint16_t kb_raw_buf[KB_BUFFER_SIZE];
 static uint8_t  kb_raw_head = 0;
 static uint8_t  kb_raw_tail = 0;
@@ -47,21 +47,21 @@ static void keyboard_callback(uint32_t int_no) {
     (void)int_no;
     uint8_t scancode = inb(KB_DATA_PORT);
 
-    /* rastreia Ctrl esquerdo (0x1D press, 0x9D release) */
+    /* tracks left Ctrl (0x1D press, 0x9D release) */
     if (scancode == 0x1D) { ctrl_pressed = 1; return; }
     if (scancode == 0x9D) { ctrl_pressed = 0; return; }
 
-    if (scancode & 0x80) return;  /* outros key-releases */
+    if (scancode & 0x80) return;  /* other key-releases */
 
     char c;
     if (ctrl_pressed && scancode == 0x2E) {
         c = 0x03;  /* Ctrl+C */
     } else {
         c = scancode_map[scancode & 0x7F];
-        if (c == 0) c = 0;  /* tecla sem mapeamento: só vai pro raw */
+        if (c == 0) c = 0;  /* unmapped key: only goes to raw */
     }
 
-    /* raw: sempre empurra (teclas com e sem mapeamento ASCII) */
+    /* raw: always pushed (keys with and without an ASCII mapping) */
     uint16_t raw = (uint16_t)(scancode | (ctrl_pressed ? 0x100 : 0));
     uint8_t rnext = (kb_raw_head + 1) % KB_BUFFER_SIZE;
     if (rnext != kb_raw_tail) {
@@ -69,7 +69,7 @@ static void keyboard_callback(uint32_t int_no) {
         kb_raw_head = rnext;
     }
 
-    /* ASCII: só empurra se tem mapeamento */
+    /* ASCII: only pushed if it has a mapping */
     if (c != 0) {
         uint8_t next = (kb_head + 1) % KB_BUFFER_SIZE;
         if (next != kb_tail) {
@@ -92,7 +92,7 @@ char keyboard_getchar(void) {
     return c;
 }
 
-/* Retorna o próximo char do buffer ou -1 se vazio (não bloqueia). */
+/* Returns the next char from the buffer or -1 if empty (non-blocking). */
 int keyboard_getchar_nowait(void) {
     if (kb_head == kb_tail)
         return -1;
@@ -105,7 +105,7 @@ int keyboard_haschar(void) {
     return kb_head != kb_tail;
 }
 
-/* retorna scancode bruto (bit8=ctrl) ou -1 se buffer vazio */
+/* returns raw scancode (bit8=ctrl) or -1 if the buffer is empty */
 int keyboard_raw_nowait(void) {
     if (kb_raw_head == kb_raw_tail) return -1;
     uint16_t raw = kb_raw_buf[kb_raw_tail];

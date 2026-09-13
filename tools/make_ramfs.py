@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-tools/make_ramfs.py — gera uma imagem ramfs flat para o NullOS.
+tools/make_ramfs.py — generates a flat ramfs image for NullOS.
 
-Formato da imagem:
+Image format:
   [uint32_t  num_entries]
-  [entry * num_entries]    cada entry: name[32] + uint32_t offset + uint32_t size
-  [dados dos arquivos]
+  [entry * num_entries]    each entry: name[32] + uint32_t offset + uint32_t size
+  [file data]
 
-Uso:
+Usage:
   make_ramfs.py out.img name1=file1.elf [name2=file2.elf ...]
 """
 
@@ -23,23 +23,23 @@ ENTRY_SIZE     = ENTRY_NAME_LEN + 4 + 4    # name[32] + offset + size
 def pack_name(name: str) -> bytes:
     encoded = name.encode("ascii")
     if len(encoded) >= ENTRY_NAME_LEN:
-        sys.exit(f"erro: nome '{name}' excede {ENTRY_NAME_LEN - 1} caracteres")
+        sys.exit(f"error: name '{name}' exceeds {ENTRY_NAME_LEN - 1} characters")
     return encoded + b"\x00" * (ENTRY_NAME_LEN - len(encoded))
 
 
 def main():
     if len(sys.argv) < 3:
-        sys.exit(f"uso: {sys.argv[0]} out.img name=file [name=file ...]")
+        sys.exit(f"usage: {sys.argv[0]} out.img name=file [name=file ...]")
 
     out_path = sys.argv[1]
     files = []
 
     for arg in sys.argv[2:]:
         if "=" not in arg:
-            sys.exit(f"erro: argumento inválido '{arg}' (esperado name=file)")
+            sys.exit(f"error: invalid argument '{arg}' (expected name=file)")
         name, path = arg.split("=", 1)
         if not os.path.isfile(path):
-            sys.exit(f"erro: arquivo não encontrado: {path}")
+            sys.exit(f"error: file not found: {path}")
         with open(path, "rb") as f:
             data = f.read()
         files.append((name, data))
@@ -63,7 +63,7 @@ def main():
             out.write(data)
 
     total = data_start + sum(len(d) for _, d in files)
-    print(f"ramfs: {num_entries} arquivo(s), {total} bytes → {out_path}")
+    print(f"ramfs: {num_entries} file(s), {total} bytes → {out_path}")
     for name, file_offset, size, _ in entries:
         print(f"  {name:32s}  offset=0x{file_offset:08x}  size={size}")
 

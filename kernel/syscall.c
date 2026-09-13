@@ -15,15 +15,15 @@
 #include "ramfs.h"
 #include <stdint.h>
 
-/* ── tabela de file descriptors ─────────────────────────────────── */
+/* ── file descriptor table ─────────────────────────────────── */
 
 #define FD_PER_PROC  8
-#define FD_BASE      3   /* 0=stdin,1=stdout,2=stderr reservados */
+#define FD_BASE      3   /* 0=stdin,1=stdout,2=stderr reserved */
 
-/* indexado por [slot do processo][fd local] */
+/* indexed by [process slot][local fd] */
 static vfs_fd_t fd_table[PROCESS_MAX][FD_PER_PROC];
 
-/* retorna o slot do processo atual na tabela de processos, ou -1 */
+/* returns the current process's slot in the process table, or -1 */
 static int proc_slot(void) {
     for (uint32_t i = 0; i < PROCESS_MAX; i++) {
         if (process_at(i) == process_current())
@@ -33,7 +33,7 @@ static int proc_slot(void) {
 }
 
 static uint32_t sys_write(uint32_t fd, const char *buf, uint32_t len) {
-    (void)fd;  // só stdout por enquanto
+    (void)fd;  // stdout only for now
     if (!buf) return (uint32_t)-1;
     for (uint32_t i = 0; i < len; i++)
         vga_putchar(buf[i]);
@@ -64,13 +64,13 @@ static uint32_t sys_getpid(void) {
     return p ? p->pid : 0;
 }
 
-/* PID do processo em raw mode (sem eco de teclado); -1 = nenhum */
+/* PID of the process in raw mode (no keyboard echo); -1 = none */
 static int raw_mode_pid = -1;
 
 static uint32_t sys_read(uint32_t fd, char *buf, uint32_t len) {
     if (!buf || len == 0) return (uint32_t)-1;
 
-    /* fd >= FD_BASE: leitura de arquivo via VFS */
+    /* fd >= FD_BASE: file read via VFS */
     if (fd >= FD_BASE) {
         int slot = proc_slot();
         if (slot < 0) return (uint32_t)-1;
@@ -82,7 +82,7 @@ static uint32_t sys_read(uint32_t fd, char *buf, uint32_t len) {
         return (r < 0) ? (uint32_t)-1 : (uint32_t)r;
     }
 
-    /* fd == 0: teclado */
+    /* fd == 0: keyboard */
     if (fd != 0) return (uint32_t)-1;
 
     uint32_t n = 0;
@@ -101,10 +101,10 @@ static uint32_t sys_read(uint32_t fd, char *buf, uint32_t len) {
                       process_current() &&
                       (int)process_current()->pid == raw_mode_pid);
         if (!in_raw)
-            vga_putchar((char)c);   /* eco */
+            vga_putchar((char)c);   /* echo */
 
         if (c == '\b') {
-            if (n > 0) n--;     /* backspace: descarta último char */
+            if (n > 0) n--;     /* backspace: discards the last char */
             continue;
         }
 
@@ -139,19 +139,19 @@ static uint32_t sys_ps(void) {
     return 0;
 }
 
-/* argumento passado pelo último SYS_EXEC (ex: nome do arquivo para o editor) */
+/* argument passed by the last SYS_EXEC (e.g. filename for the editor) */
 static char exec_arg[64];
 
 #define USER_STR_MAX 64
 
-/* resolve um byte no espaço virtual de cur para seu endereço físico identity-mapped */
+/* resolves a byte in cur's virtual address space to its identity-mapped physical address */
 static char *user_kptr(process_t *cur, uint32_t uaddr) {
     uint32_t phys = vmm_get_phys_from_dir(cur->cr3, uaddr);
     if (!phys) return (char *)0;
     return (char *)((phys & ~0xFFFu) | (uaddr & 0xFFFu));
 }
 
-/* copia string de endereço virtual do usuário para buf no kernel */
+/* copies a string from the user's virtual address into a kernel buf */
 static int copy_user_str(process_t *cur, uint32_t uaddr, char *buf, uint32_t maxlen) {
     uint32_t i;
     for (i = 0; i < maxlen - 1; i++) {
@@ -178,7 +178,7 @@ static uint32_t sys_open(const char *user_name) {
         serial_putchar('D'); serial_putchar('\n'); return (uint32_t)-1;
     }
 
-    /* acha slot livre */
+    /* find a free slot */
     for (uint32_t j = 0; j < FD_PER_PROC; j++) {
         if (!fd_table[slot][j].used) {
             if (vfs_open(kname, &fd_table[slot][j]) < 0) {
@@ -188,7 +188,7 @@ static uint32_t sys_open(const char *user_name) {
         }
     }
     serial_putchar('F'); serial_putchar('\n');
-    return (uint32_t)-1;  /* sem slots livres */
+    return (uint32_t)-1;  /* no free slots */
 }
 
 static uint32_t sys_create(const char *user_name) {
@@ -209,7 +209,7 @@ static uint32_t sys_create(const char *user_name) {
             return FD_BASE + j;
         }
     }
-    return (uint32_t)-1;  /* sem slots livres */
+    return (uint32_t)-1;  /* no free slots */
 }
 
 static uint32_t sys_close(uint32_t fd) {
@@ -232,7 +232,7 @@ static uint32_t sys_exec(const char *user_name, uint32_t user_arg) {
     if (copy_user_str(cur, (uint32_t)user_name, kname, USER_STR_MAX) < 0)
         return (uint32_t)-1;
 
-    /* copia argumento opcional (ex: nome do arquivo para o editor) */
+    /* copies the optional argument (e.g. filename for the editor) */
     exec_arg[0] = '\0';
     if (user_arg)
         copy_user_str(cur, user_arg, exec_arg, sizeof(exec_arg));
@@ -270,7 +270,7 @@ static uint32_t sys_readdir(void) {
     /* ramfs */
     if (ramfs_base) {
         vga_puts("ramfs:\n");
-        /* acessa n_entries e entries diretamente via ramfs_h */
+        /* accesses n_entries and entries directly via ramfs_h */
         uint32_t n = *(uint32_t *)ramfs_base;
         ramfs_entry_t *entries = (ramfs_entry_t *)(ramfs_base + sizeof(uint32_t));
         for (uint32_t i = 0; i < n; i++) {
@@ -296,7 +296,7 @@ static uint32_t sys_readdir(void) {
         }
     }
 
-    if (!any) vga_puts("(sem arquivos)\n");
+    if (!any) vga_puts("(no files)\n");
     return 0;
 }
 
@@ -350,7 +350,7 @@ static uint32_t sys_write_file(uint32_t fd, uint32_t user_buf, uint32_t len) {
     process_t *cur = process_current();
     if (!cur) return (uint32_t)-1;
 
-    /* copia buf do userland para o kernel (heap) */
+    /* copies buf from userland into the kernel (heap) */
     char *kbuf = (char *)kmalloc(len);
     if (!kbuf) return (uint32_t)-1;
 
@@ -397,7 +397,7 @@ uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t ar
         case SYS_CREATE:       return sys_create((const char *)arg1);
         default:
             vga_set_color(VGA_YELLOW, VGA_BLACK);
-            vga_puts("[SYSCALL] numero desconhecido: ");
+            vga_puts("[SYSCALL] unknown number: ");
             vga_putdec(num);
             vga_puts("\n");
             vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);

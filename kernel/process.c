@@ -102,8 +102,8 @@ process_t *process_spawn_user(const char *name, uint32_t user_entry,
         p->pid        = next_pid++;
         copy_name(p->name, name);
         p->state      = PROCESS_READY;
-        p->entry      = 0;                   /* não usado: entry é ring 3 */
-        p->arg        = (void *)user_entry;  /* EIP do processo de usuário */
+        p->entry      = 0;                   /* unused: entry is ring 3 */
+        p->arg        = (void *)user_entry;  /* user process's EIP */
         p->stack      = process_stacks[i];
         p->stack_size = PROCESS_STACK_SIZE;
         p->esp        = build_initial_stack(p->stack, p->stack_size, bootstrap);

@@ -1,12 +1,12 @@
-/* nullos/user/edit.c — editor de texto mínimo estilo nano */
+/* nullos/user/edit.c — minimal nano-style text editor */
 
 typedef unsigned int  uint32_t;
 typedef unsigned char uint8_t;
 
 /* ── syscall wrappers ───────────────────────────────────────────── */
-/* Todas as funções que retornam void usam "=a"(ret) para descartar
-   o valor de retorno do kernel e evitar que o compilador reutilize
-   eax como argumento da próxima instrução int $0x80.              */
+/* Every function that returns void uses "=a"(ret) to discard the
+   kernel's return value and keep the compiler from reusing eax as
+   an argument for the next int $0x80 instruction.                */
 
 static void sys_exit(int code) {
     int ret;
@@ -36,7 +36,7 @@ static int sys_read_fd(int fd, char *buf, unsigned len) {
     return ret;
 }
 
-/* retorna scancode|(ctrl?0x100:0), bloqueante */
+/* returns scancode|(ctrl?0x100:0), blocking */
 static unsigned sys_read_raw(void) {
     unsigned ret;
     __asm__ volatile ("int $0x80" : "=a"(ret) : "0"(13) : "memory");
@@ -90,7 +90,7 @@ static void sys_set_raw_mode(unsigned enable) {
     (void)ret;
 }
 
-/* fg/bg: valores da enum vga_color_t do kernel (0-15) */
+/* fg/bg: values from the kernel's vga_color_t enum (0-15) */
 static void sys_set_color(unsigned fg, unsigned bg) {
     int ret;
     __asm__ volatile ("int $0x80"
@@ -105,7 +105,7 @@ static void sys_write(const char *buf, unsigned len) {
     (void)ret;
 }
 
-/* ── cores VGA (subset) ──────────────────────────────────────────── */
+/* ── VGA colors (subset) ──────────────────────────────────────────── */
 #define VGA_BLACK      0
 #define VGA_LIGHT_GREY 7
 #define VGA_LIGHT_CYAN 11
@@ -113,7 +113,7 @@ static void sys_write(const char *buf, unsigned len) {
 #define VGA_BLUE       1
 #define VGA_CYAN       3
 
-/* ── mapa de scancodes → ASCII ───────────────────────────────────── */
+/* ── scancode → ASCII map ───────────────────────────────────── */
 static const char sc_map[128] = {
     0,    27,  '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-',  '=',
     '\b', '\t','q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[',  ']',
@@ -127,7 +127,7 @@ static const char sc_map[128] = {
     0,    0,
 };
 
-/* ── helpers de string ──────────────────────────────────────────── */
+/* ── string helpers ──────────────────────────────────────────── */
 static unsigned ed_strlen(const char *s) {
     unsigned n = 0; while (s[n]) n++; return n;
 }
@@ -146,16 +146,16 @@ static char *ed_uitoa(unsigned v, char *buf, unsigned sz) {
 #define STAT_ROW  24
 #define BUF_SIZE  4096
 
-/* ── estado ──────────────────────────────────────────────────────── */
+/* ── state ──────────────────────────────────────────────────────── */
 static char     buf[BUF_SIZE];
 static unsigned buf_len  = 0;
 static unsigned cur      = 0;
 static unsigned top_line = 0;
 static char     filename[64];
 static char     status[64];
-static int      file_fd = -1;   /* fd mantido aberto para escrita */
+static int      file_fd = -1;   /* fd kept open for writing */
 
-/* ── navegação ───────────────────────────────────────────────────── */
+/* ── navigation ───────────────────────────────────────────────────── */
 static unsigned line_of(unsigned p) {
     unsigned l = 0;
     for (unsigned i = 0; i < p; i++) if (buf[i] == '\n') l++;
@@ -181,9 +181,9 @@ static unsigned total_lines(void) {
     return l;
 }
 
-/* ── renderização ────────────────────────────────────────────────── */
+/* ── rendering ────────────────────────────────────────────────── */
 
-/* escreve exatamente 'n' espaços em branco */
+/* writes exactly 'n' blank spaces */
 static void write_spaces(unsigned n) {
     static const char sp32[32] = "                                ";
     while (n >= 32) { sys_write(sp32, 32); n -= 32; }
@@ -194,13 +194,13 @@ static void render(void) {
     unsigned cur_line = line_of(cur);
     unsigned cur_col  = col_of(cur);
 
-    /* ajusta viewport */
+    /* adjust the viewport */
     if (cur_line < top_line) top_line = cur_line;
     if (cur_line >= top_line + TEXT_ROWS) top_line = cur_line - TEXT_ROWS + 1;
 
-    sys_clear();  /* limpa tela e reseta cursor para (0,0) */
+    sys_clear();  /* clears the screen and resets the cursor to (0,0) */
 
-    /* ── linhas de conteúdo ── */
+    /* ── content lines ── */
     sys_set_color(VGA_LIGHT_GREY, VGA_BLACK);
     unsigned pos = line_start(top_line);
     for (unsigned row = 0; row < TEXT_ROWS; row++) {
@@ -211,30 +211,30 @@ static void render(void) {
             pos++; col++;
         }
         if (pos < buf_len && buf[pos] == '\n') pos++;
-        /* preenche até COLS-1: nunca avança para a próxima linha no VGA */
+        /* pads up to COLS-1: never advance to the next VGA line */
         write_spaces(COLS - 1 - col);
     }
 
-    /* ── barra de ajuda (linha 23) ── */
+    /* ── help bar (line 23) ── */
     sys_gotoxy(0, HELP_ROW);
     sys_set_color(VGA_BLACK, VGA_LIGHT_GREY);
-    const char *help = "^S salvar  ^Q sair  Setas: navegar";
+    const char *help = "^S save  ^Q quit  Arrows: navigate";
     unsigned hlen = ed_strlen(help);
     if (hlen > COLS - 1) hlen = COLS - 1;
     sys_write(help, hlen);
     write_spaces(COLS - 1 - hlen);
 
-    /* ── barra de status (linha 24) ──────────────────────────────────
-       Escrevemos no máximo COLS-1 chars: o último cell (col=79) fica
-       intocado para evitar que vga_putchar dispare vga_scroll().     */
+    /* ── status bar (line 24) ──────────────────────────────────
+       We write at most COLS-1 chars: the last cell (col=79) is
+       left untouched to keep vga_putchar from triggering vga_scroll(). */
     sys_gotoxy(0, STAT_ROW);
     sys_set_color(VGA_WHITE, VGA_BLUE);
     char nbuf[12];
-    /* monta string de status num buffer local e escreve de uma vez */
+    /* builds the status string in a local buffer and writes it in one go */
     static char sbar[80];
     unsigned si = 0;
     sbar[si++] = ' ';
-    const char *fname = filename[0] ? filename : "[sem nome]";
+    const char *fname = filename[0] ? filename : "[no name]";
     for (unsigned i = 0; fname[i] && si < COLS - 2; i++) sbar[si++] = fname[i];
     sbar[si++] = ' '; sbar[si++] = ' ';
     if (si < COLS - 2) { sbar[si++] = 'L'; sbar[si++] = ':'; }
@@ -247,17 +247,17 @@ static void render(void) {
         sbar[si++] = ' '; sbar[si++] = ' ';
         for (unsigned i = 0; status[i] && si < COLS - 2; i++) sbar[si++] = status[i];
     }
-    /* pad com espaços até COLS-1 (não COLS!) */
+    /* pad with spaces up to COLS-1 (not COLS!) */
     while (si < COLS - 1) sbar[si++] = ' ';
-    sys_write(sbar, COLS - 1);  /* exatamente 79 chars — sem wrap, sem scroll */
+    sys_write(sbar, COLS - 1);  /* exactly 79 chars — no wrap, no scroll */
 
-    /* restaura cor e posiciona o cursor de hardware no ponto de edição */
+    /* restores the color and positions the hardware cursor at the edit point */
     sys_set_color(VGA_LIGHT_GREY, VGA_BLACK);
     unsigned vcol = cur_col < (unsigned)(COLS - 1) ? cur_col : (unsigned)(COLS - 2);
     sys_gotoxy(vcol, cur_line - top_line);
 }
 
-/* ── edição ──────────────────────────────────────────────────────── */
+/* ── editing ──────────────────────────────────────────────────────── */
 static void insert_char(char c) {
     if (buf_len >= BUF_SIZE - 1) return;
     for (unsigned i = buf_len; i > cur; i--) buf[i] = buf[i-1];
@@ -269,7 +269,7 @@ static void delete_before(void) {
     for (unsigned i = cur; i < buf_len; i++) buf[i] = buf[i+1];
 }
 
-/* ── movimentação ────────────────────────────────────────────────── */
+/* ── movement ────────────────────────────────────────────────── */
 static void move_up(void) {
     unsigned cl = line_of(cur), cc = col_of(cur);
     if (cl == 0) return;
@@ -285,11 +285,11 @@ static void move_down(void) {
 static void move_left(void)  { if (cur > 0) cur--; }
 static void move_right(void) { if (cur < buf_len) cur++; }
 
-/* ── carrega arquivo ─────────────────────────────────────────────── */
+/* ── loads the file ─────────────────────────────────────────────── */
 static void load_file(void) {
     file_fd = sys_open(filename);
     if (file_fd < 0) {
-        /* arquivo novo: cria já aberto para permitir salvar depois */
+        /* new file: create it already open so it can be saved later */
         file_fd = sys_create(filename);
         buf[0] = '\0'; buf_len = 0;
         return;
@@ -301,7 +301,7 @@ static void load_file(void) {
         buf[buf_len++] = tmp;
     }
     buf[buf_len] = '\0';
-    /* mantém file_fd aberto para escrita posterior via Ctrl+S */
+    /* keeps file_fd open for later writes via Ctrl+S */
 }
 
 /* ── entry point ─────────────────────────────────────────────────── */
@@ -328,9 +328,9 @@ void _start(void) {
             if (sc == 0x1F) {      /* Ctrl+S: S = scancode 0x1F */
                 const char *m;
                 if (file_fd >= 0 && sys_write_file(file_fd, buf, buf_len) == 0)
-                    m = "salvo";
+                    m = "saved";
                 else
-                    m = "salvo (sem disco)";
+                    m = "saved (no disk)";
                 unsigned i = 0;
                 while (m[i] && i < 63) { status[i] = m[i]; i++; }
                 status[i] = '\0';
@@ -346,12 +346,12 @@ void _start(void) {
         }
 
         switch (sc) {
-            case 0x48: move_up();       break;  /* seta cima  */
-            case 0x50: move_down();     break;  /* seta baixo */
-            case 0x4B: move_left();     break;  /* seta esq   */
-            case 0x4D: move_right();    break;  /* seta dir   */
-            case 0x0E: delete_before(); break;  /* backspace  */
-            case 0x1C: insert_char('\n'); break; /* enter     */
+            case 0x48: move_up();       break;  /* up arrow    */
+            case 0x50: move_down();     break;  /* down arrow  */
+            case 0x4B: move_left();     break;  /* left arrow  */
+            case 0x4D: move_right();    break;  /* right arrow */
+            case 0x0E: delete_before(); break;  /* backspace   */
+            case 0x1C: insert_char('\n'); break; /* enter      */
             default: {
                 char c = (sc < 128) ? sc_map[sc] : 0;
                 if (c >= 0x20 && (unsigned char)c < 0x7F)

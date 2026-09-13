@@ -1,4 +1,4 @@
-/* nullos/user/spintest.c — testa preempção: nunca chama yield */
+/* nullos/user/spintest.c — tests preemption: never calls yield */
 
 static int sys_write(const char *buf, unsigned int len) {
     int ret;

@@ -15,26 +15,26 @@ typedef struct {
     uint32_t      first;      /* ramfs: byte offset; fat16: first cluster */
     uint32_t      size;
     uint32_t      pos;
-    char          name[32];   /* nome original — necessário para escrita FAT16 */
+    char          name[32];   /* original name — needed for FAT16 writes */
 } vfs_fd_t;
 
-/* Abre arquivo pelo nome. Tenta ramfs primeiro, depois FAT16.
-   Preenche *fd e retorna 0 em sucesso, -1 se não encontrado.  */
+/* Opens a file by name. Tries ramfs first, then FAT16.
+   Fills *fd and returns 0 on success, -1 if not found.  */
 int  vfs_open (const char *name, vfs_fd_t *fd);
 
-/* Abre o arquivo se já existir (ramfs ou FAT16); senão cria uma entrada
-   vazia no FAT16 e abre. Retorna 0 em sucesso, -1 se disco indisponível
-   ou sem espaço no root dir. */
+/* Opens the file if it already exists (ramfs or FAT16); otherwise creates
+   an empty entry in FAT16 and opens it. Returns 0 on success, -1 if the
+   disk is unavailable or the root dir has no free space. */
 int  vfs_create(const char *name, vfs_fd_t *fd);
 
-/* Lê até len bytes a partir de fd->pos. Retorna bytes lidos ou -1. */
+/* Reads up to len bytes starting at fd->pos. Returns bytes read or -1. */
 int  vfs_read (vfs_fd_t *fd, char *buf, uint32_t len);
 
-/* Fecha o fd (marca como não usado). */
+/* Closes the fd (marks it as unused). */
 void vfs_close(vfs_fd_t *fd);
 
-/* Escreve len bytes de buf no arquivo referenciado por fd (só FAT16).
-   Retorna 0 em sucesso, -1 se backend não suporta escrita ou em erro. */
+/* Writes len bytes from buf into the file referenced by fd (FAT16 only).
+   Returns 0 on success, -1 if the backend doesn't support writes or on error. */
 int  vfs_write(vfs_fd_t *fd, const char *buf, uint32_t len);
 
 #endif

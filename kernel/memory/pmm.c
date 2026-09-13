@@ -3,7 +3,7 @@
 #include "../drivers/vga.h"
 #include <stdint.h>
 
-// Bitmap em endereco fixo seguro: 0x202000 (logo apos IDT em 0x200000)
+// Bitmap at a fixed safe address: 0x202000 (right after the IDT at 0x200000)
 #define PMM_BITMAP_ADDR 0x202000
 #define PMM_MAX_PAGES   8192
 #define PMM_BITMAP_SIZE (PMM_MAX_PAGES / 32)
@@ -75,18 +75,18 @@ void pmm_init(uint32_t mem_upper) {
     pmm_total = total_pages;
     pmm_used  = 0;
 
-    vga_puts("   pmm: [1] bitmap em "); vga_puthex(PMM_BITMAP_ADDR); vga_puts("\n");
+    vga_puts("   pmm: [1] bitmap at "); vga_puthex(PMM_BITMAP_ADDR); vga_puts("\n");
     for (i = 0; i < PMM_BITMAP_SIZE; i++) get_bitmap()[i] = 0xFFFFFFFF;
 
-    vga_puts("   pmm: [2] liberando mem alta\n");
+    vga_puts("   pmm: [2] freeing high mem\n");
     pmm_mark_free(0x100000, (total_pages - 256) * PAGE_SIZE);
 
-    vga_puts("   pmm: [3] marcando regioes usadas\n");
+    vga_puts("   pmm: [3] marking used regions\n");
     pmm_mark_used(0x100000, 0x300000);
     pmm_mark_used(0x200000, 0x3000);
     pmm_mark_used(0x0F0000, 0x10000);
 
-    vga_puts("   pmm: [4] livre="); vga_putdec(pmm_free_pages()); vga_puts(" pages\n");
+    vga_puts("   pmm: [4] free="); vga_putdec(pmm_free_pages()); vga_puts(" pages\n");
 }
 
 void pmm_dump(void) {
@@ -94,5 +94,5 @@ void pmm_dump(void) {
     vga_puts("[PMM] ");
     vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
     vga_puts("Total: "); vga_putdec(pmm_total_pages() * 4);
-    vga_puts("KB Livre: "); vga_putdec(pmm_free_pages() * 4); vga_puts("KB\n");
+    vga_puts("KB Free: "); vga_putdec(pmm_free_pages() * 4); vga_puts("KB\n");
 }

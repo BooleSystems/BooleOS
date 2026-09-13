@@ -1,10 +1,10 @@
-/* nullos/kernel/fs/fat16.c — FAT16 read-only, sobre ATA PIO */
+/* nullos/kernel/fs/fat16.c — FAT16 read-only, on top of ATA PIO */
 #include "fat16.h"
 #include "../drivers/ata.h"
 #include "../memory/heap.h"
 #include <stdint.h>
 
-/* ── BPB (BIOS Parameter Block) — layout fixo em disco ─────── */
+/* ── BPB (BIOS Parameter Block) — fixed on-disk layout ─────── */
 typedef struct __attribute__((packed)) {
     uint8_t  jmp[3];
     uint8_t  oem[8];
@@ -22,7 +22,7 @@ typedef struct __attribute__((packed)) {
     uint32_t total_sectors_32;
 } bpb_t;
 
-/* ── dir entry FAT (32 bytes) ───────────────────────────────── */
+/* ── FAT dir entry (32 bytes) ───────────────────────────────── */
 typedef struct __attribute__((packed)) {
     uint8_t  name[8];
     uint8_t  ext[3];
@@ -40,36 +40,36 @@ typedef struct __attribute__((packed)) {
 #define DIRENT_EMPTY   0x00
 #define DIRENT_DELETED 0xE5
 
-/* ── estado global ──────────────────────────────────────────── */
+/* ── global state ──────────────────────────────────────────── */
 static int      g_ready             = 0;
 static uint32_t g_fat_start_lba     = 0;
 static uint32_t g_root_start_lba    = 0;
 static uint32_t g_data_start_lba    = 0;
 static uint32_t g_root_sector_count = 0;
 static uint32_t g_sectors_per_cluster = 0;
-static uint16_t *g_fat              = 0;   /* FAT cacheada na heap */
+static uint16_t *g_fat              = 0;   /* FAT cached in the heap */
 static uint32_t  g_fat_size_sectors = 0;
 static uint32_t  g_total_clusters   = 0;
 static uint8_t   g_num_fats         = 0;
 
-static uint8_t dir_buf[512];   /* buffer separado para operações de dir entry */
+static uint8_t dir_buf[512];   /* separate buffer for dir entry operations */
 
 /* ── helpers ────────────────────────────────────────────────── */
 
-static uint8_t sector_buf[512];   /* buffer de trabalho (estático) */
+static uint8_t sector_buf[512];   /* working buffer (static) */
 
 static uint8_t fat16_toupper(uint8_t c) {
     return (c >= 'a' && c <= 'z') ? (uint8_t)(c - 32) : c;
 }
 
-/* Converte "nome.ext" → array 11 bytes estilo FAT (espaços, maiúsculo) */
+/* Converts "name.ext" → 11-byte FAT-style array (spaces, uppercase) */
 static void to_8_3(const char *name, uint8_t out[11]) {
     for (int i = 0; i < 11; i++) out[i] = ' ';
     int i = 0;
-    /* nome */
+    /* name */
     while (*name && *name != '.' && i < 8)
         out[i++] = fat16_toupper((uint8_t)*name++);
-    /* extensão */
+    /* extension */
     if (*name == '.') {
         name++;
         int k = 8;
@@ -78,7 +78,7 @@ static void to_8_3(const char *name, uint8_t out[11]) {
     }
 }
 
-/* ── API pública ────────────────────────────────────────────── */
+/* ── public API ────────────────────────────────────────────── */
 
 int fat16_init(void) {
     g_ready = 0;
@@ -87,7 +87,7 @@ int fat16_init(void) {
 
     bpb_t *bpb = (bpb_t *)sector_buf;
 
-    /* sanidade mínima */
+    /* minimal sanity check */
     if (bpb->bytes_per_sector != 512) return 0;
     if (bpb->fat_size_sectors == 0)   return 0;
     if (bpb->num_fats == 0)           return 0;
@@ -105,7 +105,7 @@ int fat16_init(void) {
         g_total_clusters = (total_sec - g_data_start_lba) / g_sectors_per_cluster + 2;
     }
 
-    /* cacheia a FAT inteira na heap */
+    /* cache the entire FAT in the heap */
     uint32_t fat_bytes = g_fat_size_sectors * 512;
     g_fat = (uint16_t *)kmalloc(fat_bytes);
     if (!g_fat) return 0;
@@ -137,10 +137,10 @@ uint32_t fat16_cluster_to_lba(uint32_t cluster) {
     return g_data_start_lba + (cluster - 2) * g_sectors_per_cluster;
 }
 
-/* retorna 1=achou, 0=nao existe (fim do diretorio), -1=erro de I/O.
-   Um erro de leitura NAO pode virar "0" — isso faria os chamadores
-   (fat16_create, vfs_open, vfs_create) tratarem uma falha transitoria
-   de disco como "arquivo nao existe" e criar entradas duplicadas. */
+/* returns 1=found, 0=doesn't exist (end of directory), -1=I/O error.
+   A read error must NOT turn into "0" — that would make callers
+   (fat16_create, vfs_open, vfs_create) treat a transient disk
+   failure as "file doesn't exist" and create duplicate entries. */
 int fat16_find(const char *name, uint32_t *first_cluster, uint32_t *size) {
     if (!g_ready || !name) return 0;
 
@@ -155,15 +155,15 @@ int fat16_find(const char *name, uint32_t *first_cluster, uint32_t *size) {
 
         for (uint32_t i = 0; i < per_sector; i++) {
             fat16_dirent_t *e = &entries[i];
-            if (e->name[0] == DIRENT_EMPTY)   return 0;  /* fim do dir */
+            if (e->name[0] == DIRENT_EMPTY)   return 0;  /* end of dir */
             if (e->name[0] == DIRENT_DELETED)  continue;
             if (e->attr & (ATTR_VOLUME_ID | ATTR_DIRECTORY)) continue;
 
-            /* name[8]+ext[3] sao dois campos separados no struct —
-               monta os 11 bytes combinados pra comparar e logar,
-               em vez de indexar e->name[] alem de seus 8 bytes
-               declarados (isso lia lixo/UB nos indices 8..10,
-               fazendo o match falhar mesmo com nomes identicos) */
+            /* name[8]+ext[3] are two separate fields in the struct —
+               build the combined 11 bytes to compare and log,
+               instead of indexing e->name[] past its declared 8
+               bytes (that read garbage/UB at indices 8..10, making
+               the match fail even for identical names) */
             uint8_t e_name83[11];
             for (int j = 0; j < 8; j++) e_name83[j]     = e->name[j];
             for (int j = 0; j < 3; j++) e_name83[8 + j] = e->ext[j];
@@ -199,7 +199,7 @@ int fat16_readdir(uint32_t idx, char name[13], uint32_t *size) {
             if (e->attr & (ATTR_VOLUME_ID | ATTR_DIRECTORY)) continue;
 
             if (found == idx) {
-                /* converte 8.3 de volta para "nome.ext" */
+                /* converts 8.3 back to "name.ext" */
                 int p = 0;
                 for (int j = 0; j < 8 && e->name[j] != ' '; j++)
                     name[p++] = (char)e->name[j];
@@ -220,7 +220,7 @@ int fat16_readdir(uint32_t idx, char name[13], uint32_t *size) {
     return 0;
 }
 
-/* ── criação de arquivo ─────────────────────────────────────── */
+/* ── file creation ─────────────────────────────────────── */
 
 int fat16_create(const char *name) {
     if (!g_ready || !name) return -1;
@@ -228,9 +228,10 @@ int fat16_create(const char *name) {
     uint8_t name83[11];
     to_8_3(name, name83);
 
-    /* idempotente: se já existe, não é erro. Se a checagem falhar
-       por erro de I/O, aborta sem escrever nada — nao arrisca criar
-       uma entrada duplicada por nao saber se ela ja existe. */
+    /* idempotent: if it already exists, that's not an error. If the
+       check fails due to an I/O error, abort without writing anything
+       — don't risk creating a duplicate entry from not knowing
+       whether it already exists. */
     uint32_t fc, sz;
     int existing = fat16_find(name, &fc, &sz);
     if (existing == 1) return 0;
@@ -259,10 +260,10 @@ int fat16_create(const char *name) {
             }
         }
     }
-    return -1;  /* root directory cheio */
+    return -1;  /* root directory full */
 }
 
-/* ── helpers de escrita ─────────────────────────────────────── */
+/* ── write helpers ─────────────────────────────────────── */
 
 static int fat16_flush_fat(void) {
     uint8_t *src = (uint8_t *)g_fat;
@@ -283,7 +284,7 @@ static void fat16_free_chain(uint32_t cluster) {
     }
 }
 
-/* aloca um cluster livre, marca como fim de cadeia, retorna o cluster ou 0 */
+/* allocates a free cluster, marks it as end-of-chain, returns the cluster or 0 */
 static uint32_t fat16_alloc_cluster(void) {
     for (uint32_t c = 2; c < g_total_clusters; c++) {
         if (g_fat[c] == 0x0000) {
@@ -291,7 +292,7 @@ static uint32_t fat16_alloc_cluster(void) {
             return c;
         }
     }
-    return 0;  /* disco cheio */
+    return 0;  /* disk full */
 }
 
 /* ── fat16_write_file ───────────────────────────────────────── */
@@ -302,7 +303,7 @@ int fat16_write_file(const char *name, const char *buf, uint32_t len) {
     uint8_t name83[11];
     to_8_3(name, name83);
 
-    /* encontra o dir entry e guarda sua localização */
+    /* finds the dir entry and remembers its location */
     uint32_t dirent_sector = 0;
     uint32_t dirent_idx    = 0;
     int      found         = 0;
@@ -315,11 +316,11 @@ int fat16_write_file(const char *name, const char *buf, uint32_t len) {
             if (e->name[0] == DIRENT_EMPTY)   break;
             if (e->name[0] == DIRENT_DELETED)  continue;
             if (e->attr & (ATTR_VOLUME_ID | ATTR_DIRECTORY)) continue;
-            /* name[8]+ext[3] sao campos separados — mesmo bug que
-               ja tinha sido corrigido em fat16_find (esta era uma
-               copia inline separada da busca por nome que ficou
-               pra tras): nao dar e->name[8..10], tem que montar
-               os 11 bytes combinando os dois campos. */
+            /* name[8]+ext[3] are separate fields — same bug that was
+               already fixed in fat16_find (this was a separate inline
+               copy of the name search that got left behind): don't
+               index e->name[8..10], build the 11 bytes by combining
+               both fields. */
             uint8_t e_name83[11];
             for (int j = 0; j < 8; j++) e_name83[j]     = e->name[j];
             for (int j = 0; j < 3; j++) e_name83[8 + j] = e->ext[j];
@@ -336,14 +337,14 @@ int fat16_write_file(const char *name, const char *buf, uint32_t len) {
     }
     if (!found) return -1;
 
-    /* lê o setor do dir entry de volta para dir_buf (pode ter mudado) */
+    /* re-read the dir entry's sector into dir_buf (it may have changed) */
     if (ata_read_sector(g_root_start_lba + dirent_sector, dir_buf) < 0) return -1;
     fat16_dirent_t *entry = (fat16_dirent_t *)dir_buf + dirent_idx;
 
-    /* libera cadeia antiga */
+    /* free the old chain */
     fat16_free_chain(entry->first_cluster);
 
-    /* aloca nova cadeia e escreve dados */
+    /* allocate a new chain and write the data */
     uint32_t first_new = 0;
     uint32_t prev_cluster = 0;
     uint32_t written = 0;
@@ -351,18 +352,18 @@ int fat16_write_file(const char *name, const char *buf, uint32_t len) {
 
     while (written < len) {
         uint32_t c = fat16_alloc_cluster();
-        if (c == 0) return -1;  /* disco cheio */
+        if (c == 0) return -1;  /* disk full */
 
         if (prev_cluster == 0) first_new = c;
         else                   g_fat[prev_cluster] = (uint16_t)c;
-        g_fat[c] = 0xFFFF;     /* fim provisório */
+        g_fat[c] = 0xFFFF;     /* provisional end */
         prev_cluster = c;
 
         uint32_t lba = fat16_cluster_to_lba(c);
         uint32_t cluster_written = 0;
 
         for (uint32_t sec = 0; sec < g_sectors_per_cluster; sec++) {
-            /* monta setor: copia dados ou zeros para padding */
+            /* build the sector: copy data or zero-pad */
             for (uint32_t b = 0; b < 512; b++) {
                 uint32_t pos = written + cluster_written + b;
                 sector_buf[b] = (pos < len) ? (uint8_t)buf[pos] : 0;
@@ -373,12 +374,12 @@ int fat16_write_file(const char *name, const char *buf, uint32_t len) {
         written += (bpc < (len - written)) ? bpc : (len - written);
     }
 
-    /* atualiza dir entry: first_cluster e size */
+    /* update the dir entry: first_cluster and size */
     entry->first_cluster = (len == 0) ? 0 : (uint16_t)first_new;
     entry->size          = len;
     if (ata_write_sector(g_root_start_lba + dirent_sector, dir_buf) < 0) return -1;
 
-    /* flush da FAT para o disco */
+    /* flush the FAT to disk */
     return fat16_flush_fat();
 }
 
@@ -391,25 +392,25 @@ int fat16_read_at(uint32_t first_cluster, uint32_t pos,
     uint32_t bpc = fat16_bytes_per_cluster();
     uint32_t read = 0;
 
-    /* encontra o cluster correspondente ao byte pos */
+    /* finds the cluster corresponding to byte pos */
     uint32_t cluster     = first_cluster;
     uint32_t cluster_idx = 0;
     uint32_t target_idx  = pos / bpc;
 
     while (cluster_idx < target_idx) {
         uint32_t next = fat16_next_cluster(cluster);
-        if (next >= 0xFFF8) return (int)read;  /* fim prematuro */
+        if (next >= 0xFFF8) return (int)read;  /* premature end */
         cluster = next;
         cluster_idx++;
     }
 
-    /* offset dentro do cluster atual */
+    /* offset within the current cluster */
     uint32_t cluster_off = pos % bpc;
 
     while (read < len && cluster < 0xFFF8) {
         uint32_t lba = fat16_cluster_to_lba(cluster);
 
-        /* setor dentro do cluster que contém cluster_off */
+        /* sector within the cluster that contains cluster_off */
         uint32_t sec_idx = cluster_off / 512;
         uint32_t sec_off = cluster_off % 512;
 

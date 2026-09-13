@@ -42,14 +42,14 @@ process_t *scheduler_spawn(const char *name, process_entry_t entry, void *arg) {
     return process_spawn(name, entry, arg, scheduler_task_bootstrap);
 }
 
-/* Bootstrap para processos de usuário: atualiza TSS e salta para ring 3.
-   p->arg guarda o EIP de usuário; p->user_esp guarda o ESP de usuário. */
+/* Bootstrap for user processes: updates the TSS and jumps to ring 3.
+   p->arg holds the user EIP; p->user_esp holds the user ESP. */
 static void user_task_bootstrap(void) {
     process_t *p = process_current();
     if (!p) return;
     tss_set_stack(0x10, (uint32_t)p->stack + p->stack_size);
     jump_to_usermode((uint32_t)p->arg, p->user_esp);
-    /* não retorna */
+    /* does not return */
 }
 
 process_t *scheduler_spawn_user(const char *name, uint32_t user_entry,

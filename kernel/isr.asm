@@ -165,29 +165,29 @@ ISR_NOERRCODE 30   ;      Reserved
 ISR_NOERRCODE 31   ;      Reserved
 
 ; -------------------------------------------------------
-; int 0x80 — syscall gate (DPL=3, chamado de ring 3)
+; int 0x80 — syscall gate (DPL=3, called from ring 3)
 ;
-; Convenção: eax=num, ebx=arg1, ecx=arg2, edx=arg3
-; Retorno:   eax = valor retornado pelo syscall_handler
+; Convention: eax=num, ebx=arg1, ecx=arg2, edx=arg3
+; Return:     eax = value returned by syscall_handler
 ;
-; Quando vem de ring 3 a CPU empilha o frame completo
-; (eip, cs, eflags, user_esp, user_ss) via TSS.
-; pusha/popa preserva todos os registradores do usuário;
-; o slot de eax no frame é sobrescrito com o valor de retorno.
+; When coming from ring 3, the CPU pushes the full frame
+; (eip, cs, eflags, user_esp, user_ss) via the TSS.
+; pusha/popa preserves all of the user's registers;
+; the eax slot in the frame is overwritten with the return value.
 ; -------------------------------------------------------
 isr128:
-    pusha                   ; salva eax,ecx,edx,ebx,esp,ebp,esi,edi
-    ; após pusha: [esp+28]=eax  [esp+16]=ebx  [esp+24]=ecx  [esp+20]=edx
-    mov eax, [esp + 28]     ; num   (eax original)
-    mov ebx, [esp + 16]     ; arg1  (ebx original)
-    mov ecx, [esp + 24]     ; arg2  (ecx original)
-    mov edx, [esp + 20]     ; arg3  (edx original)
-    push edx                ; cdecl: arg3 por último
+    pusha                   ; saves eax,ecx,edx,ebx,esp,ebp,esi,edi
+    ; after pusha: [esp+28]=eax  [esp+16]=ebx  [esp+24]=ecx  [esp+20]=edx
+    mov eax, [esp + 28]     ; num   (original eax)
+    mov ebx, [esp + 16]     ; arg1  (original ebx)
+    mov ecx, [esp + 24]     ; arg2  (original ecx)
+    mov edx, [esp + 20]     ; arg3  (original edx)
+    push edx                ; cdecl: arg3 last
     push ecx                ; arg2
     push ebx                ; arg1
-    push eax                ; num   (primeiro)
+    push eax                ; num   (first)
     call syscall_handler
     add esp, 16
-    mov [esp + 28], eax     ; escreve retorno no slot EAX do pusha frame
-    popa                    ; restaura regs; eax = valor de retorno do syscall
+    mov [esp + 28], eax     ; write the return value into the pusha frame's EAX slot
+    popa                    ; restore regs; eax = syscall return value
     iret

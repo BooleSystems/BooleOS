@@ -15,7 +15,7 @@ typedef struct {
  *   [file data...]                        <- offsets are relative to image start
  */
 
-extern uint8_t *ramfs_base;  /* ponteiro para o início da imagem ramfs */
+extern uint8_t *ramfs_base;  /* pointer to the start of the ramfs image */
 
 void ramfs_init(void *data, uint32_t size);
 int  ramfs_find(const char *name, uint32_t *out_offset, uint32_t *out_size);

@@ -1,46 +1,46 @@
 // nullos/kernel/drivers/vga.c
-// Driver VGA modo texto 80x25
-// O buffer VGA fica em 0xB8000. Cada célula = 2 bytes: [atributo | char]
+// VGA text mode 80x25 driver
+// The VGA buffer lives at 0xB8000. Each cell = 2 bytes: [attribute | char]
 
 #include "vga.h"
 #include "../serial.h"
 #include <stdint.h>
 #include <stddef.h>
 
-// Endereço do framebuffer VGA em modo texto
+// VGA text mode framebuffer address
 #define VGA_BUFFER ((volatile uint16_t *)0xB8000)
 
-// Portas I/O do controlador VGA (para mover cursor via hardware)
+// VGA controller I/O ports (to move the hardware cursor)
 #define VGA_CTRL_PORT   0x3D4
 #define VGA_DATA_PORT   0x3D5
 #define VGA_CURSOR_HIGH 0x0E
 #define VGA_CURSOR_LOW  0x0F
 
-// Estado interno do terminal
+// Internal terminal state
 static uint8_t  term_col   = 0;
 static uint8_t  term_row   = 0;
 static uint8_t  term_color = 0;
 
 // ============================================================
-// Funções internas
+// Internal functions
 // ============================================================
 
-// Escreve num port I/O (precisamos disso para mover o cursor)
+// Writes to an I/O port (needed to move the cursor)
 static inline void outb(uint16_t port, uint8_t val) {
     __asm__ volatile ("outb %0, %1" : : "a"(val), "Nd"(port));
 }
 
-// Monta o byte de atributo VGA: [bg(4) | fg(4)]
+// Builds the VGA attribute byte: [bg(4) | fg(4)]
 static inline uint8_t vga_make_attr(vga_color_t fg, vga_color_t bg) {
     return (uint8_t)((bg << 4) | (fg & 0x0F));
 }
 
-// Monta uma entry VGA: [atributo(8) | char(8)]
+// Builds a VGA entry: [attribute(8) | char(8)]
 static inline uint16_t vga_make_entry(char c, uint8_t attr) {
     return (uint16_t)((uint16_t)attr << 8) | (uint8_t)c;
 }
 
-// Atualiza o cursor de hardware para a posição atual
+// Updates the hardware cursor to the current position
 static void vga_update_cursor(void) {
     uint16_t pos = (uint16_t)(term_row * VGA_COLS + term_col);
     outb(VGA_CTRL_PORT, VGA_CURSOR_HIGH);
@@ -49,16 +49,16 @@ static void vga_update_cursor(void) {
     outb(VGA_DATA_PORT, (uint8_t)(pos & 0xFF));
 }
 
-// Rola o terminal uma linha pra cima
+// Scrolls the terminal up by one line
 static void vga_scroll(void) {
-    // Move todas as linhas uma pra cima
+    // Move every line up by one
     for (int row = 1; row < VGA_ROWS; row++) {
         for (int col = 0; col < VGA_COLS; col++) {
             VGA_BUFFER[(row - 1) * VGA_COLS + col] =
                 VGA_BUFFER[row * VGA_COLS + col];
         }
     }
-    // Limpa a última linha
+    // Clear the last line
     uint16_t blank = vga_make_entry(' ', term_color);
     for (int col = 0; col < VGA_COLS; col++) {
         VGA_BUFFER[(VGA_ROWS - 1) * VGA_COLS + col] = blank;
@@ -67,7 +67,7 @@ static void vga_scroll(void) {
 }
 
 // ============================================================
-// API pública
+// Public API
 // ============================================================
 
 void vga_init(void) {
@@ -106,7 +106,7 @@ void vga_putchar(char c) {
     } else if (c == '\r') {
         term_col = 0;
     } else if (c == '\t') {
-        // Tab = próxima coluna múltipla de 4
+        // Tab = next column that's a multiple of 4
         term_col = (uint8_t)((term_col + 4) & ~3);
         if (term_col >= VGA_COLS) {
             term_col = 0;
@@ -128,7 +128,7 @@ void vga_putchar(char c) {
         }
     }
 
-    // Scroll se passou da última linha
+    // Scroll if we went past the last line
     if (term_row >= VGA_ROWS) {
         vga_scroll();
     }
@@ -163,7 +163,7 @@ void vga_putdec(uint32_t value) {
         buf[idx++] = '0' + (value % 10);
         value /= 10;
     }
-    // Imprime ao contrário
+    // Print in reverse
     for (int i = idx - 1; i >= 0; i--) {
         vga_putchar(buf[i]);
     }
