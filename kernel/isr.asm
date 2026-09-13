@@ -3,6 +3,8 @@ bits 32
 global idt_flush
 global irq0
 global irq1
+global irq14
+global irq15
 
 ; CPU exception stubs
 global isr0
@@ -72,6 +74,31 @@ irq1:
     push dword 33
     pusha
     mov eax, 33
+    push eax
+    call irq_handler
+    add esp, 4
+    popa
+    add esp, 8
+    iret
+
+; IRQ14/15 (ATA primary/secondary channels, PIC-remapped to 46/47)
+irq14:
+    push dword 0
+    push dword 46
+    pusha
+    mov eax, 46
+    push eax
+    call irq_handler
+    add esp, 4
+    popa
+    add esp, 8
+    iret
+
+irq15:
+    push dword 0
+    push dword 47
+    pusha
+    mov eax, 47
     push eax
     call irq_handler
     add esp, 4

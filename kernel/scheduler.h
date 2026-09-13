@@ -12,6 +12,7 @@ void scheduler_tick(uint32_t tick);
 void scheduler_run_once(void);
 void scheduler_yield(void);
 void scheduler_sleep_current(uint32_t ticks);
+void scheduler_block_current(void);
 void scheduler_dump(void);
 
 #endif

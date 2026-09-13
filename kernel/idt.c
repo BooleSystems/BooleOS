@@ -25,6 +25,8 @@ static isr_handler_t handlers[IDT_SIZE];
 /* IRQ stubs (hardware interrupts) */
 extern void irq0(void);
 extern void irq1(void);
+extern void irq14(void);
+extern void irq15(void);
 
 /* Syscall gate */
 extern void isr128(void);
@@ -164,9 +166,11 @@ void idt_init(void) {
     for (i = 0; i < 32; i++)
         idt_set_gate((uint8_t)i, isr_table[i], 0x08, 0x8E);
 
-    vga_puts(" [3] IRQ gates (32-33)\n");
+    vga_puts(" [3] IRQ gates (32-33, 46-47)\n");
     idt_set_gate(32, irq0, 0x08, 0x8E);
     idt_set_gate(33, irq1, 0x08, 0x8E);
+    idt_set_gate(46, irq14, 0x08, 0x8E);   /* ATA primary channel */
+    idt_set_gate(47, irq15, 0x08, 0x8E);   /* ATA secondary channel */
 
     /* 0xEF = present | DPL=3 | 32-bit trap gate — preserves IF (no implicit cli) */
     vga_puts(" [4] syscall gate (0x80, DPL=3)\n");

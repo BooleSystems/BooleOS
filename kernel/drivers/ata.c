@@ -1,6 +1,15 @@
-/* nullos/kernel/drivers/ata.c — ATA PIO polling, tries all 4 slots */
+/* nullos/kernel/drivers/ata.c — ATA PIO, tries all 4 slots. Sector I/O
+   (ata_read_sector/ata_write_sector) waits for command completion via
+   IRQ14/15 + the scheduler's block/wake primitive instead of busy-wait
+   polling, whenever it's called from a scheduled process. probe() and
+   the reset/detect path stay pure polling — that only ever runs once
+   at boot, before there's anything else to schedule. */
 #include "ata.h"
 #include "../timer.h"
+#include "../process.h"
+#include "../scheduler.h"
+#include "../idt.h"
+#include "../pic.h"
 #include <stdint.h>
 
 /* ── register offsets relative to the channel base ───────── */
@@ -64,6 +73,117 @@ static uint16_t g_base      = 0;    /* data base (e.g. 0x1F0) */
 static uint16_t g_ctrl      = 0;    /* control base (e.g. 0x3F6) */
 static uint8_t  g_drive_sel = 0;    /* 0xA0=master, 0xB0=slave */
 static uint8_t  g_lba_sel   = 0;    /* 0xE0=master LBA, 0xF0=slave LBA */
+
+/* ── IRQ-driven completion wait ──────────────────────────────
+   Only one ATA command is ever in flight at a time (serialized by
+   the exclusion gate below), so a single flag/waiter pair is enough
+   — there is never more than one process legitimately waiting here. */
+static volatile int  g_irq_fired  = 0;
+static process_t    *g_irq_waiter = 0;
+
+/* Short by design: just acknowledges the drive's IRQ line and flips
+   the waiter (if any) back to READY. Never touches the scheduler or
+   does a context switch, so it can't race with one being in progress. */
+static void ata_irq_handler(uint32_t int_no) {
+    (void)int_no;
+    (void)inb(g_base + REG_STATUS);   /* reading Status clears the drive's IRQ line */
+    g_irq_fired = 1;
+    if (g_irq_waiter) {
+        /* only wake it if it's still the same blocked wait we set up —
+           if it was killed (and its slot possibly reused) while
+           waiting, process_exit() already moved it out of BLOCKED */
+        if (g_irq_waiter->state == PROCESS_BLOCKED)
+            g_irq_waiter->state = PROCESS_READY;
+        g_irq_waiter = 0;
+    }
+}
+
+/* Registers the IRQ handler for whichever channel was detected and
+   unmasks it (plus the master's cascade line IRQ2, required for any
+   slave-PIC IRQ — 8-15 — to ever reach the CPU). channel: 0=primary
+   (IRQ14/vector 46), 1=secondary (IRQ15/vector 47). */
+static void ata_irq_init(int channel) {
+    idt_register_handler(channel == 0 ? 46 : 47, ata_irq_handler);
+    pic_unmask_irq(2);
+    pic_unmask_irq(channel == 0 ? 14 : 15);
+}
+
+/* Waits for the ATA IRQ that signals the current command finished.
+   Must only be called with a current process (the caller is
+   responsible for falling back to polling otherwise — see the
+   process_current() checks in ata_read_sector/ata_write_sector).
+
+   Race-free by construction: the "did it already fire?" check and
+   the "go to sleep" transition happen in the same cli/sti section,
+   so an IRQ that arrives early (before we decided to block) is never
+   missed — we just see the flag already set and skip blocking. */
+static void ata_wait_irq(void) {
+    process_t *self = process_current();
+    if (!self) return;
+
+    __asm__ volatile ("cli");
+    if (g_irq_fired) {
+        g_irq_fired = 0;
+        __asm__ volatile ("sti");
+        return;
+    }
+    g_irq_waiter = self;
+    self->state  = PROCESS_BLOCKED;
+    __asm__ volatile ("sti");
+
+    scheduler_block_current();   /* resumes once ata_irq_handler wakes us */
+    g_irq_fired = 0;             /* consume it for the next operation */
+}
+
+/* ── exclusion gate ───────────────────────────────────────────
+   Serializes access to the (single, global) ATA controller state
+   across processes: with IRQ-driven waits a process no longer holds
+   the CPU for the whole operation, so a second process could
+   otherwise issue a competing command on the same registers while
+   the first is still waiting on its IRQ. Waiters block for real
+   (no polling) and recheck the flag after being woken, since more
+   than one waiter can be released at once and only one can win it. */
+static volatile int g_ata_busy               = 0;
+static process_t   *g_gate_waiters[PROCESS_MAX];
+static uint32_t     g_gate_waiter_count      = 0;
+
+static void ata_gate_acquire(void) {
+    for (;;) {
+        __asm__ volatile ("cli");
+        if (!g_ata_busy) {
+            g_ata_busy = 1;
+            __asm__ volatile ("sti");
+            return;
+        }
+
+        process_t *self = process_current();
+        if (!self) {
+            /* boot path: single-threaded at this point, so this is not
+               expected to actually happen — but don't hot-spin if it does */
+            __asm__ volatile ("sti; hlt");
+            continue;
+        }
+
+        if (g_gate_waiter_count < PROCESS_MAX)
+            g_gate_waiters[g_gate_waiter_count++] = self;
+        self->state = PROCESS_BLOCKED;
+        __asm__ volatile ("sti");
+
+        scheduler_block_current();   /* woken by ata_gate_release(); recheck above */
+    }
+}
+
+static void ata_gate_release(void) {
+    __asm__ volatile ("cli");
+    g_ata_busy = 0;
+    for (uint32_t i = 0; i < g_gate_waiter_count; i++) {
+        /* same guard as ata_irq_handler: don't resurrect a killed/reused slot */
+        if (g_gate_waiters[i] && g_gate_waiters[i]->state == PROCESS_BLOCKED)
+            g_gate_waiters[i]->state = PROCESS_READY;
+    }
+    g_gate_waiter_count = 0;
+    __asm__ volatile ("sti");
+}
 
 /* ── helpers (use g_base/g_ctrl) ───────────────────────────── */
 static void ata_delay(void) {
@@ -180,6 +300,7 @@ int ata_init(void) {
                 g_drive_sel = drv_sel[dr];
                 g_lba_sel   = lba_sel[dr];
                 g_present   = 1;
+                ata_irq_init(ch);
                 return 1;
             }
         }
@@ -189,7 +310,9 @@ int ata_init(void) {
 
 int ata_read_sector(uint32_t lba, void *buf) {
     if (!g_present) return -1;
-    if (wait_not_busy() < 0) return -1;
+    ata_gate_acquire();
+
+    if (wait_not_busy() < 0) { ata_gate_release(); return -1; }
 
     outb(g_base + REG_DRIVE_HEAD, g_lba_sel | ((lba >> 24) & 0x0F));
     outb(g_base + REG_SECCOUNT,   1);
@@ -197,19 +320,34 @@ int ata_read_sector(uint32_t lba, void *buf) {
     outb(g_base + REG_LBA_MID,    (uint8_t)(lba >> 8));
     outb(g_base + REG_LBA_HI,     (uint8_t)(lba >> 16));
     outb(g_base + REG_CMD,        CMD_READ);
-    ata_delay();
 
-    if (wait_not_busy() < 0) return -1;
-    if (wait_drq()      < 0) return -1;
+    /* READ SECTORS asserts an IRQ once the sector is ready (BSY=0,
+       DRQ=1 on success). If we're running inside a scheduled process,
+       sleep for that IRQ instead of polling; otherwise (early boot,
+       before the scheduler runs anything) fall back to the original
+       polling wait — there's no process to block/wake yet. */
+    if (process_current()) {
+        ata_wait_irq();
+        uint8_t st = inb(g_base + REG_STATUS);
+        if ((st & ATA_SR_ERR) || !(st & ATA_SR_DRQ)) { ata_gate_release(); return -1; }
+    } else {
+        ata_delay();
+        if (wait_not_busy() < 0) { ata_gate_release(); return -1; }
+        if (wait_drq()      < 0) { ata_gate_release(); return -1; }
+    }
 
     uint16_t *dst = (uint16_t *)buf;
     for (int i = 0; i < 256; i++) dst[i] = inw(g_base + REG_DATA);
+
+    ata_gate_release();
     return 0;
 }
 
 int ata_write_sector(uint32_t lba, const void *buf) {
     if (!g_present) return -1;
-    if (wait_not_busy() < 0) return -1;
+    ata_gate_acquire();
+
+    if (wait_not_busy() < 0) { ata_gate_release(); return -1; }
 
     outb(g_base + REG_DRIVE_HEAD, g_lba_sel | ((lba >> 24) & 0x0F));
     outb(g_base + REG_SECCOUNT,   1);
@@ -219,18 +357,26 @@ int ata_write_sector(uint32_t lba, const void *buf) {
     outb(g_base + REG_CMD,        CMD_WRITE);
     ata_delay();
 
-    if (wait_not_busy() < 0) return -1;
-    if (wait_drq()      < 0) return -1;
+    /* WRITE SECTORS' initial "ready for data" transition (BSY->0,
+       DRQ->1) is NOT IRQ-signaled per the ATA spec — the drive expects
+       the host to already be watching for it, so this part always
+       polls, with or without IRQ mode. It's a short, bounded wait. */
+    if (wait_not_busy() < 0) { ata_gate_release(); return -1; }
+    if (wait_drq()      < 0) { ata_gate_release(); return -1; }
 
     const uint16_t *src = (const uint16_t *)buf;
     for (int i = 0; i < 256; i++) outw(g_base + REG_DATA, src[i]);
 
-    /* confirm that the WRITE command itself finished (BSY=0) and
-       with no ERR — this is the real, physically-written payload,
-       BEFORE any flush. Issuing another command (FLUSH) while BSY
-       is still set would be invalid per the ATA protocol. */
-    if (wait_not_busy() < 0) return -1;
-    if (inb(g_base + REG_STATUS) & ATA_SR_ERR) return -1;
+    /* command completion (BSY=0), on the other hand, IS signaled by
+       IRQ — this is the real, physically-written payload, BEFORE any
+       flush. Issuing another command (FLUSH) while BSY is still set
+       would be invalid per the ATA protocol. */
+    if (process_current()) {
+        ata_wait_irq();
+    } else {
+        if (wait_not_busy() < 0) { ata_gate_release(); return -1; }
+    }
+    if (inb(g_base + REG_STATUS) & ATA_SR_ERR) { ata_gate_release(); return -1; }
 
     /* cache flush: best-effort. The data is already confirmed
        written by the WRITE above (checked right before this); a
@@ -239,6 +385,12 @@ int ata_write_sector(uint32_t lba, const void *buf) {
        mean the data is gone, so this is NOT propagated as a write
        failure. */
     outb(g_base + REG_CMD, CMD_FLUSH);
-    wait_not_busy();
+    if (process_current()) {
+        ata_wait_irq();
+    } else {
+        wait_not_busy();
+    }
+
+    ata_gate_release();
     return 0;
 }

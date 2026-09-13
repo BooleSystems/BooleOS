@@ -107,6 +107,20 @@ void scheduler_sleep_current(uint32_t ticks) {
     switch_back_to_scheduler(process);
 }
 
+/* Switches the current process away from the CPU without touching its
+   state — the caller must have already set it to PROCESS_BLOCKED (or
+   whatever state should keep scheduler_run_once() from picking it back
+   up) before calling this, so nothing can incorrectly mark it READY as
+   part of a plain yield. Whoever owns the event this process is
+   waiting on (an IRQ handler, another process releasing a lock, ...)
+   is responsible for flipping the state back to PROCESS_READY. */
+void scheduler_block_current(void) {
+    process_t *process = process_current();
+    if (!process)
+        return;
+    switch_back_to_scheduler(process);
+}
+
 void scheduler_dump(void) {
     vga_set_color(VGA_CYAN, VGA_BLACK);
     vga_puts("[SCHED] ");

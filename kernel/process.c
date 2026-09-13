@@ -162,6 +162,7 @@ const char *process_state_name(process_state_t state) {
         case PROCESS_READY:    return "ready";
         case PROCESS_RUNNING:  return "running";
         case PROCESS_SLEEPING: return "sleep";
+        case PROCESS_BLOCKED:  return "blocked";
         case PROCESS_ZOMBIE:   return "zombie";
         default:               return "?";
     }

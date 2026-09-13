@@ -13,6 +13,7 @@ typedef enum {
     PROCESS_READY,
     PROCESS_RUNNING,
     PROCESS_SLEEPING,
+    PROCESS_BLOCKED,   /* waiting on an external event (e.g. disk IRQ), not a timer */
     PROCESS_ZOMBIE
 } process_state_t;
 
