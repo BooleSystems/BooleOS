@@ -16,6 +16,8 @@
 #include "multiboot2.h"
 #include "ramfs.h"
 #include "exec.h"
+#include "drivers/ata.h"
+#include "fs/fat16.h"
 
 #define MULTIBOOT2_MAGIC 0x36d76289
 
@@ -149,6 +151,30 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     vga_puts("Inicializando scheduler... ");
     scheduler_init();
     print_ok();
+
+    // ATA
+    print_tag("[ATA]  ");
+    vga_puts("Detectando disco... ");
+    if (ata_init()) {
+        print_ok();
+    } else {
+        vga_set_color(VGA_DARK_GREY, VGA_BLACK);
+        vga_puts("nenhum disco\n");
+        vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+    }
+
+    // FAT16
+    print_tag("[FAT16]");
+    vga_puts(" Inicializando... ");
+    if (fat16_init()) {
+        print_ok();
+    } else {
+        vga_set_color(VGA_DARK_GREY, VGA_BLACK);
+        vga_puts("nenhum disco FAT16\n");
+        vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+    }
+
+    print_separator();
 
     // ramfs + exec("init") — só se o GRUB passou um módulo
     if (has_module) {

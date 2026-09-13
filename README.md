@@ -9,7 +9,7 @@
  | |\  | |_| | | | |_| |___) |
  |_| \_|\__,_|_|_|\___/|____/ 
 
- NullOS v0.9.0 - Fase 9: open/read/close de arquivos ramfs
+ NullOS v0.10.0 - Fase 10: disco persistente (ATA PIO + FAT16)
 ```
 
 ## Overview
@@ -32,7 +32,7 @@ NullOS is an experimental x86 OS written from scratch in C99 and NASM assembly. 
 | **7** | `SYS_READ`, ringbuffer de teclado, shell interativo em userland | ✅ Done |
 | **8** | `SYS_EXEC`, Ctrl+C, foreground PID, copy-from-user | ✅ Done |
 | **9** | `SYS_OPEN`, `SYS_CLOSE`, `SYS_READ` para arquivos da ramfs, tabela de fds por processo | ✅ Done |
-| **10** | Mais syscalls (mmap, seek…), filesystem persistente | ⏳ Planned |
+| **10** | Disco persistente: driver ATA PIO, FAT16 leitura/escrita, `SYS_CREATE`/`SYS_WRITE_FILE`, `touch`, editor salva de verdade | ✅ Done |
 
 ## O que está implementado
 
@@ -76,8 +76,21 @@ NullOS is an experimental x86 OS written from scratch in C99 and NASM assembly. 
 | 10 | `SYS_EXEC` | `exec(name) → pid ou -1` |
 | 11 | `SYS_OPEN` | `open(name) → fd (≥3) ou -1` |
 | 12 | `SYS_CLOSE` | `close(fd) → 0 ou -1` |
+| 13 | `SYS_READ_RAW` | `read_raw() → scancode\|(ctrl<<8)` (bloqueante, sem eco) |
+| 14 | `SYS_GOTOXY` | `gotoxy(col, row) → 0` |
+| 15 | `SYS_CLEAR` | `clear() → 0` |
+| 16 | `SYS_GETARG` | `getarg(buf, len) → bytes ou -1` (argumento passado por `SYS_EXEC`) |
+| 17 | `SYS_KBD_FLUSH` | `kbd_flush() → 0` (esvazia buffers de teclado) |
+| 18 | `SYS_SETCOLOR` | `set_color(fg, bg) → 0` |
+| 19 | `SYS_SET_RAW_MODE` | `set_raw_mode(1/0) → 0` (desliga eco do `SYS_READ`) |
+| 20 | `SYS_WAIT` | `wait(pid) → 0` (bloqueia até o processo terminar) |
+| 21 | `SYS_READDIR` | `readdir() → 0` (lista ramfs + FAT16 via VGA) |
+| 22 | `SYS_WRITE_FILE` | `write_file(fd, buf, len) → 0 ou -1` (grava no FAT16) |
+| 23 | `SYS_CREATE` | `create(name) → fd (≥3) ou -1` (abre se existir, senão cria vazio no FAT16) |
 
-> `SYS_READ` é polimórfico: fd=0 lê do teclado (bloqueante, com eco e backspace); fd≥3 lê de arquivo aberto via `SYS_OPEN`, avança a posição e retorna 0 no EOF.
+> `SYS_READ` é polimórfico: fd=0 lê do teclado (bloqueante, com eco e backspace); fd≥3 lê de arquivo aberto via `SYS_OPEN`/`SYS_CREATE`, avança a posição e retorna 0 no EOF.
+
+> `SYS_WRITE` (fd=1/2) escreve na VGA; arquivos usam `SYS_WRITE_FILE` dedicado, que grava no FAT16 via `vfs_write`/`fat16_write_file` — a ramfs continua somente-leitura.
 
 > **Retorno de syscalls:** `isr128` escreve o retorno do `syscall_handler` no slot EAX do frame do `pusha` antes do `popa`, entregando o valor correto em `eax` para o userland após o `iret`. Inline asm do userland deve usar constraints `"=a"`/`"0"` para que o compilador não assuma eax inalterado após o `int $0x80`.
 
@@ -102,6 +115,17 @@ NullOS is an experimental x86 OS written from scratch in C99 and NASM assembly. 
 - `SYS_CLOSE (12)`: marca o slot como livre
 - `fd_table[PROCESS_MAX][8]` — tabela global indexada pelo slot do processo; `sys_exit` zera todos os fds do processo ao encerrar, evitando vazamento de slots
 - fds 0/1/2 reservados (stdin/stdout/stderr); arquivos começam em fd=3
+
+### Disco persistente: ATA PIO + FAT16
+
+- `kernel/drivers/ata.c`: driver ATA PIO puro, sem IRQ/DMA — sonda os 4 slots possíveis (primary/secondary × master/slave) enviando `IDENTIFY` (0xEC) e descartando dispositivos ATAPI (assinatura `LBA_MID=0x14`/`LBA_HI=0xEB`); `ata_read_sector`/`ata_write_sector` fazem LBA28 com `READ SECTORS` (0x20) / `WRITE SECTORS` (0x30) + `CACHE FLUSH` (0xE7), esperando `BSY` limpar e `DRQ` setar via polling, no mesmo estilo de espera usado pelo teclado e timer
+- `kernel/fs/fat16.c`: lê o BPB do setor 0, cacheia a FAT inteira na heap (`kmalloc`); `fat16_find`/`fat16_readdir` varrem o root directory (nomes 8.3); `fat16_read_at` segue a cadeia de clusters a partir de um offset arbitrário; `fat16_write_file` libera a cadeia antiga, aloca uma nova e reescreve a FAT no disco; `fat16_create` procura uma entrada livre/deletada no root dir e grava um dirent vazio (idempotente — não falha se o arquivo já existe)
+- `kernel/fs/vfs.c`: despachante único usado pelas syscalls — `vfs_open` tenta a ramfs (somente leitura) e depois o FAT16; `vfs_create` chama `vfs_open` primeiro e só cria no FAT16 se não encontrar; `vfs_write` recusa gravação em arquivos da ramfs
+- `SYS_CREATE (23)`: open-or-create — copia o nome do userland, tenta abrir e, se não existir, cria a entrada no FAT16 e retorna o fd já pronto para escrita
+- Boot: `kmain` chama `ata_init()` e `fat16_init()` logo após o scheduler; se não houver disco (ou não for FAT16 válido), o boot segue normalmente e as operações de arquivo em disco retornam -1 sem crashar
+- `tools/make_disk.sh` + alvo `make disk`: gera `build/disk.img` (32 MB, FAT16 via `mkfs.vfat`) só se ainda não existir, preservando dados entre builds; `tools/run_qemu`/`make run` anexa o disco como `-drive file=build/disk.img,format=raw,if=ide`
+- Shell: `touch <nome>` cria um arquivo vazio (`SYS_CREATE` + `SYS_CLOSE`); `ls` lista ramfs e FAT16 separadamente
+- Editor: `load_file` agora cria o arquivo (`SYS_CREATE`) quando ele não existe, mantendo o fd aberto; Ctrl+S grava o buffer inteiro via `SYS_WRITE_FILE` e mostra "salvo" ou "salvo (sem disco)" no rodapé; Ctrl+Q fecha o fd antes de sair
 
 ### Execução de programas e controle de foreground
 - `SYS_EXEC (10)`: recebe ponteiro virtual do usuário para o nome do programa; `sys_exec` copia a string byte a byte do espaço do usuário via `vmm_get_phys_from_dir(cur->cr3, vaddr)` (identity-map), chama `exec()` do kernel e retorna o PID do novo processo ou -1
@@ -132,34 +156,41 @@ kernel/
   ramfs.c/h           ramfs flat (find por nome)
   elf.c/h             ELF32 loader
   exec.c/h            exec(): ramfs → ELF → spawn
-user/
-  init.c              processo de usuário simples: SYS_WRITE + SYS_EXIT
-  spintest.c          processo sem yield: valida preempção via IRQ0
-  shell.c             shell interativo: help/uname/fetch/ps/mem/echo/kill/run/clear/exit
-  link.ld             linker script de usuário (entry @ 0x01000000)
-  Makefile            compila init.elf, spintest.elf e shell.elf
+  drivers/
+    vga.c             VGA text driver
+    ata.c/h           driver ATA PIO (polling, LBA28)
+  fs/
+    fat16.c/h         FAT16 leitura/escrita sobre ATA
+    vfs.c/h           despachante ramfs + FAT16
   memory/
     pmm.c             Physical Memory Manager
     vmm.c             Virtual Memory Manager
     heap.c            kmalloc/kfree
-  drivers/
-    vga.c             VGA text driver
+user/
+  init.c              processo de usuário simples: SYS_WRITE + SYS_EXIT
+  spintest.c          processo sem yield: valida preempção via IRQ0
+  shell.c             shell interativo: help/uname/fetch/ps/mem/ls/touch/echo/kill/run/clear/exit
+  edit.c              editor de texto: abre/cria/salva arquivos no FAT16
+  link.ld             linker script de usuário (entry @ 0x01000000)
+  Makefile            compila init.elf, spintest.elf, shell.elf e edit.elf
 tools/
-  Makefile            Build system (i686-elf-gcc + NASM + grub2-mkrescue)
+  Makefile            Build system (i686-elf-gcc + NASM + grub2-mkrescue), alvo `disk`
   grub.cfg            Configuração do GRUB
-build/                Artefatos (git-ignored)
+  make_disk.sh        gera build/disk.img (FAT16, 32 MB) se ainda não existir
+build/                Artefatos (git-ignored) — inclui disk.img (persiste entre builds)
 ```
 
 ## Build
 
 ```bash
 cd tools
-make          # gera build/nullos.iso
-make run      # lança no QEMU
-make clean    # limpa build/
+make          # gera build/nullos.iso e build/disk.img (só cria o disco se não existir)
+make disk     # força a criação de build/disk.img isoladamente
+make run      # lança no QEMU com o disco anexado (-drive ...,if=ide)
+make clean    # limpa build/ (⚠ apaga também o disk.img — dados persistidos se perdem)
 ```
 
-**Dependências:** `i686-elf-gcc`, `i686-elf-ld`, `nasm`, `grub2-mkrescue`, `qemu-system-x86_64`
+**Dependências:** `i686-elf-gcc`, `i686-elf-ld`, `nasm`, `grub2-mkrescue`, `qemu-system-x86_64`, `mkfs.vfat`/`mcopy` (pacotes `dosfstools`/`mtools`, usados por `tools/make_disk.sh`)
 
 ## Usando a ramfs
 

@@ -23,6 +23,9 @@
 #define SYS_SETCOLOR      18  /* set_color(fg, bg)              → 0            */
 #define SYS_SET_RAW_MODE  19  /* set_raw_mode(1/0) — desativa eco no SYS_READ */
 #define SYS_WAIT          20  /* wait(pid) — bloqueia até pid terminar → 0    */
+#define SYS_READDIR       21  /* readdir() — lista arquivos (ramfs + FAT16) via VGA */
+#define SYS_WRITE_FILE    22  /* write_file(fd, buf, len) — salva no FAT16 → 0/-1  */
+#define SYS_CREATE        23  /* create(name) — abre ou cria arquivo no FAT16 → fd ou -1 */
 
 uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t arg3);
 

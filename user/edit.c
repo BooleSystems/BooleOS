@@ -69,6 +69,20 @@ static void sys_kbd_flush(void) {
     (void)ret;
 }
 
+static int sys_create(const char *name) {
+    int ret;
+    __asm__ volatile ("int $0x80"
+        : "=a"(ret) : "0"(23), "b"(name) : "memory");
+    return ret;
+}
+
+static int sys_write_file(int fd, const char *buf, unsigned len) {
+    int ret;
+    __asm__ volatile ("int $0x80"
+        : "=a"(ret) : "0"(22), "b"(fd), "c"(buf), "d"(len) : "memory");
+    return ret;
+}
+
 static void sys_set_raw_mode(unsigned enable) {
     int ret;
     __asm__ volatile ("int $0x80"
@@ -139,6 +153,7 @@ static unsigned cur      = 0;
 static unsigned top_line = 0;
 static char     filename[64];
 static char     status[64];
+static int      file_fd = -1;   /* fd mantido aberto para escrita */
 
 /* ── navegação ───────────────────────────────────────────────────── */
 static unsigned line_of(unsigned p) {
@@ -272,16 +287,21 @@ static void move_right(void) { if (cur < buf_len) cur++; }
 
 /* ── carrega arquivo ─────────────────────────────────────────────── */
 static void load_file(void) {
-    int fd = sys_open(filename);
-    if (fd < 0) { buf[0] = '\0'; buf_len = 0; return; }
+    file_fd = sys_open(filename);
+    if (file_fd < 0) {
+        /* arquivo novo: cria já aberto para permitir salvar depois */
+        file_fd = sys_create(filename);
+        buf[0] = '\0'; buf_len = 0;
+        return;
+    }
     char tmp;
     while (buf_len < BUF_SIZE - 1) {
-        int r = sys_read_fd(fd, &tmp, 1);
+        int r = sys_read_fd(file_fd, &tmp, 1);
         if (r <= 0) break;
         buf[buf_len++] = tmp;
     }
     buf[buf_len] = '\0';
-    sys_close(fd);
+    /* mantém file_fd aberto para escrita posterior via Ctrl+S */
 }
 
 /* ── entry point ─────────────────────────────────────────────────── */
@@ -306,12 +326,17 @@ void _start(void) {
 
         if (ctrl) {
             if (sc == 0x1F) {      /* Ctrl+S: S = scancode 0x1F */
-                const char *m = "salvo (sem disco)";
+                const char *m;
+                if (file_fd >= 0 && sys_write_file(file_fd, buf, buf_len) == 0)
+                    m = "salvo";
+                else
+                    m = "salvo (sem disco)";
                 unsigned i = 0;
                 while (m[i] && i < 63) { status[i] = m[i]; i++; }
                 status[i] = '\0';
             } else if (sc == 0x10) { /* Ctrl+Q: Q = scancode 0x10 */
                 sys_set_raw_mode(0);
+                if (file_fd >= 0) sys_close(file_fd);
                 sys_clear();
                 sys_gotoxy(0, 0);
                 sys_kbd_flush();

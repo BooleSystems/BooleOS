@@ -53,6 +53,27 @@ static int sys_exec_arg(const char *name, const char *arg) {
     return ret;
 }
 
+static void sys_readdir(void) {
+    int ret;
+    __asm__ volatile ("int $0x80"
+        : "=a"(ret) : "0"(21) : "memory");
+    (void)ret;
+}
+
+static int sys_create(const char *name) {
+    int ret;
+    __asm__ volatile ("int $0x80"
+        : "=a"(ret) : "0"(23), "b"(name) : "memory");
+    return ret;
+}
+
+static int sys_close(int fd) {
+    int ret;
+    __asm__ volatile ("int $0x80"
+        : "=a"(ret) : "0"(12), "b"(fd) : "memory");
+    return ret;
+}
+
 static void sys_wait(int pid) {
     int ret;
     __asm__ volatile ("int $0x80"
@@ -224,6 +245,16 @@ static void cmd_kill(const char *arg) {
     }
 }
 
+static void cmd_touch(const char *arg) {
+    if (!arg || !*arg) { sh_puts("uso: touch <arquivo>\n"); return; }
+    int fd = sys_create(arg);
+    if (fd < 0) {
+        sh_puts("erro: nao foi possivel criar (sem disco?)\n");
+        return;
+    }
+    sys_close(fd);
+}
+
 static void cmd_run(const char *name) {
     if (!name || !*name) { sh_puts("uso: run <programa>\n"); return; }
     int pid = sys_exec(name);
@@ -243,6 +274,8 @@ static const char *help_text =
     "  fetch          info do sistema\n"
     "  ps             tabela de processos\n"
     "  mem            uso de memoria\n"
+    "  ls             lista arquivos\n"
+    "  touch <nome>   cria arquivo vazio\n"
     "  echo <texto>   imprime texto\n"
     "  kill <pid>     encerra processo\n"
     "  run <prog>     executa programa em background\n"
@@ -267,6 +300,10 @@ static void run_command(char *line, int len) {
         cmd_ps();
     } else if (sh_strcmp(line, "mem") == 0) {
         cmd_mem();
+    } else if (sh_strcmp(line, "ls") == 0) {
+        sys_readdir();
+    } else if (sh_strncmp(line, "touch", 5) == 0 && (line[5] == ' ' || line[5] == '\0')) {
+        cmd_touch(line[5] == ' ' ? line + 6 : "");
     } else if (sh_strncmp(line, "echo", 4) == 0 && (line[4] == ' ' || line[4] == '\0')) {
         cmd_echo(line);
     } else if (sh_strncmp(line, "kill", 4) == 0 && (line[4] == ' ' || line[4] == '\0')) {

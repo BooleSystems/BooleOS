@@ -1,4 +1,5 @@
 // nullos/kernel/syscall.c
+#include "serial.h"
 #include "syscall.h"
 #include "process.h"
 #include "scheduler.h"
@@ -9,6 +10,8 @@
 #include "memory/heap.h"
 #include "exec.h"
 #include "memory/vmm.h"
+#include "fs/vfs.h"
+#include "fs/fat16.h"
 #include "ramfs.h"
 #include <stdint.h>
 
@@ -17,15 +20,8 @@
 #define FD_PER_PROC  8
 #define FD_BASE      3   /* 0=stdin,1=stdout,2=stderr reservados */
 
-typedef struct {
-    uint8_t  used;
-    uint32_t offset;   /* byte offset do arquivo na imagem ramfs */
-    uint32_t size;     /* tamanho total do arquivo */
-    uint32_t pos;      /* posição atual de leitura */
-} file_desc_t;
-
 /* indexado por [slot do processo][fd local] */
-static file_desc_t fd_table[PROCESS_MAX][FD_PER_PROC];
+static vfs_fd_t fd_table[PROCESS_MAX][FD_PER_PROC];
 
 /* retorna o slot do processo atual na tabela de processos, ou -1 */
 static int proc_slot(void) {
@@ -74,24 +70,16 @@ static int raw_mode_pid = -1;
 static uint32_t sys_read(uint32_t fd, char *buf, uint32_t len) {
     if (!buf || len == 0) return (uint32_t)-1;
 
-    /* fd >= FD_BASE: leitura de arquivo da ramfs */
+    /* fd >= FD_BASE: leitura de arquivo via VFS */
     if (fd >= FD_BASE) {
         int slot = proc_slot();
         if (slot < 0) return (uint32_t)-1;
         uint32_t idx = fd - FD_BASE;
         if (idx >= FD_PER_PROC) return (uint32_t)-1;
-        file_desc_t *f = &fd_table[slot][idx];
+        vfs_fd_t *f = &fd_table[slot][idx];
         if (!f->used) return (uint32_t)-1;
-        if (!ramfs_base) return (uint32_t)-1;
-
-        uint32_t avail = f->size - f->pos;
-        if (avail == 0) return 0;  /* EOF */
-        if (len > avail) len = avail;
-        uint8_t *src = ramfs_base + f->offset + f->pos;
-        for (uint32_t i = 0; i < len; i++)
-            buf[i] = (char)src[i];
-        f->pos += len;
-        return len;
+        int r = vfs_read(f, buf, len);
+        return (r < 0) ? (uint32_t)-1 : (uint32_t)r;
     }
 
     /* fd == 0: teclado */
@@ -178,6 +166,32 @@ static int copy_user_str(process_t *cur, uint32_t uaddr, char *buf, uint32_t max
 }
 
 static uint32_t sys_open(const char *user_name) {
+    serial_putchar('O'); serial_putchar('P'); serial_putchar('N'); serial_putchar('\n');
+    if (!user_name) { serial_putchar('A'); serial_putchar('\n'); return (uint32_t)-1; }
+    process_t *cur = process_current();
+    if (!cur) { serial_putchar('B'); serial_putchar('\n'); return (uint32_t)-1; }
+    int slot = proc_slot();
+    if (slot < 0) { serial_putchar('C'); serial_putchar('\n'); return (uint32_t)-1; }
+
+    char kname[USER_STR_MAX];
+    if (copy_user_str(cur, (uint32_t)user_name, kname, USER_STR_MAX) < 0) {
+        serial_putchar('D'); serial_putchar('\n'); return (uint32_t)-1;
+    }
+
+    /* acha slot livre */
+    for (uint32_t j = 0; j < FD_PER_PROC; j++) {
+        if (!fd_table[slot][j].used) {
+            if (vfs_open(kname, &fd_table[slot][j]) < 0) {
+                serial_putchar('E'); serial_putchar('\n'); return (uint32_t)-1;
+            }
+            return FD_BASE + j;
+        }
+    }
+    serial_putchar('F'); serial_putchar('\n');
+    return (uint32_t)-1;  /* sem slots livres */
+}
+
+static uint32_t sys_create(const char *user_name) {
     if (!user_name) return (uint32_t)-1;
     process_t *cur = process_current();
     if (!cur) return (uint32_t)-1;
@@ -188,16 +202,10 @@ static uint32_t sys_open(const char *user_name) {
     if (copy_user_str(cur, (uint32_t)user_name, kname, USER_STR_MAX) < 0)
         return (uint32_t)-1;
 
-    uint32_t off, sz;
-    if (!ramfs_find(kname, &off, &sz)) return (uint32_t)-1;
-
-    /* acha slot livre */
     for (uint32_t j = 0; j < FD_PER_PROC; j++) {
         if (!fd_table[slot][j].used) {
-            fd_table[slot][j].used   = 1;
-            fd_table[slot][j].offset = off;
-            fd_table[slot][j].size   = sz;
-            fd_table[slot][j].pos    = 0;
+            if (vfs_create(kname, &fd_table[slot][j]) < 0)
+                return (uint32_t)-1;
             return FD_BASE + j;
         }
     }
@@ -211,7 +219,7 @@ static uint32_t sys_close(uint32_t fd) {
     uint32_t idx = fd - FD_BASE;
     if (idx >= FD_PER_PROC) return (uint32_t)-1;
     if (!fd_table[slot][idx].used) return (uint32_t)-1;
-    fd_table[slot][idx].used = 0;
+    vfs_close(&fd_table[slot][idx]);
     return 0;
 }
 
@@ -250,6 +258,48 @@ static uint32_t sys_getarg(char *user_buf, uint32_t len) {
     return n;
 }
 
+static void puts_padded(const char *s, int width) {
+    int n = 0;
+    while (s[n]) { vga_putchar(s[n++]); }
+    while (n++ < width) vga_putchar(' ');
+}
+
+static uint32_t sys_readdir(void) {
+    int any = 0;
+
+    /* ramfs */
+    if (ramfs_base) {
+        vga_puts("ramfs:\n");
+        /* acessa n_entries e entries diretamente via ramfs_h */
+        uint32_t n = *(uint32_t *)ramfs_base;
+        ramfs_entry_t *entries = (ramfs_entry_t *)(ramfs_base + sizeof(uint32_t));
+        for (uint32_t i = 0; i < n; i++) {
+            vga_puts("  ");
+            puts_padded(entries[i].name, 20);
+            vga_putdec(entries[i].size);
+            vga_puts(" B\n");
+        }
+        any = 1;
+    }
+
+    /* FAT16 */
+    if (fat16_available()) {
+        vga_puts("fat16:\n");
+        char name[13];
+        uint32_t size;
+        for (uint32_t idx = 0; fat16_readdir(idx, name, &size); idx++) {
+            vga_puts("  ");
+            puts_padded(name, 20);
+            vga_putdec(size);
+            vga_puts(" B\n");
+            any = 1;
+        }
+    }
+
+    if (!any) vga_puts("(sem arquivos)\n");
+    return 0;
+}
+
 static uint32_t sys_set_raw_mode(uint32_t enable) {
     process_t *cur = process_current();
     if (!cur) return (uint32_t)-1;
@@ -286,6 +336,35 @@ static uint32_t sys_kill(uint32_t pid) {
     return (uint32_t)-1;
 }
 
+static uint32_t sys_write_file(uint32_t fd, uint32_t user_buf, uint32_t len) {
+    if (fd < FD_BASE) return (uint32_t)-1;
+    int slot = proc_slot();
+    if (slot < 0) return (uint32_t)-1;
+    uint32_t idx = fd - FD_BASE;
+    if (idx >= FD_PER_PROC) return (uint32_t)-1;
+    vfs_fd_t *f = &fd_table[slot][idx];
+    if (!f->used || f->backend != VFS_FAT16) return (uint32_t)-1;
+
+    if (len == 0) return (uint32_t)vfs_write(f, (const char *)0, 0);
+
+    process_t *cur = process_current();
+    if (!cur) return (uint32_t)-1;
+
+    /* copia buf do userland para o kernel (heap) */
+    char *kbuf = (char *)kmalloc(len);
+    if (!kbuf) return (uint32_t)-1;
+
+    for (uint32_t i = 0; i < len; i++) {
+        char *kp = user_kptr(cur, user_buf + i);
+        if (!kp) { kfree(kbuf); return (uint32_t)-1; }
+        kbuf[i] = *kp;
+    }
+
+    int r = vfs_write(f, kbuf, len);
+    kfree(kbuf);
+    return (r < 0) ? (uint32_t)-1 : 0;
+}
+
 uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t arg3) {
     switch (num) {
         case SYS_WRITE:   return sys_write(arg1, (const char *)arg2, arg3);
@@ -313,6 +392,9 @@ uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t ar
         case SYS_SETCOLOR:     vga_set_color((vga_color_t)arg1, (vga_color_t)arg2); return 0;
         case SYS_SET_RAW_MODE: return sys_set_raw_mode(arg1);
         case SYS_WAIT:         return sys_wait(arg1);
+        case SYS_READDIR:      return sys_readdir();
+        case SYS_WRITE_FILE:   return sys_write_file(arg1, arg2, arg3);
+        case SYS_CREATE:       return sys_create((const char *)arg1);
         default:
             vga_set_color(VGA_YELLOW, VGA_BLACK);
             vga_puts("[SYSCALL] numero desconhecido: ");
