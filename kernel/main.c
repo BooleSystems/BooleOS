@@ -18,6 +18,7 @@
 #include "exec.h"
 #include "drivers/ata.h"
 #include "fs/fat16.h"
+#include "drivers/pci.h"
 
 #define MULTIBOOT2_MAGIC 0x36d76289
 
@@ -173,6 +174,14 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
         vga_puts("no FAT16 disk\n");
         vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
     }
+
+    // PCI (after ATA/FAT16: bus enumeration is independent hardware
+    // discovery for future drivers, not on the disk-mount critical path)
+    print_tag("[PCI]  ");
+    vga_puts("Scanning bus... ");
+    pci_scan_bus();
+    print_ok();
+    pci_print_list();
 
     print_separator();
 

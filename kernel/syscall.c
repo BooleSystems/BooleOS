@@ -13,6 +13,7 @@
 #include "fs/vfs.h"
 #include "fs/fat16.h"
 #include "ramfs.h"
+#include "drivers/pci.h"
 #include <stdint.h>
 
 /* ── file descriptor table ─────────────────────────────────── */
@@ -395,6 +396,7 @@ uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t ar
         case SYS_READDIR:      return sys_readdir();
         case SYS_WRITE_FILE:   return sys_write_file(arg1, arg2, arg3);
         case SYS_CREATE:       return sys_create((const char *)arg1);
+        case SYS_PCI_LIST:     pci_print_list(); return 0;
         default:
             vga_set_color(VGA_YELLOW, VGA_BLACK);
             vga_puts("[SYSCALL] unknown number: ");

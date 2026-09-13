@@ -51,6 +51,7 @@ C_SRCS   = $(ROOT)/kernel/main.c \
             $(ROOT)/kernel/memory/heap.c \
             $(ROOT)/kernel/drivers/vga.c \
             $(ROOT)/kernel/drivers/ata.c \
+            $(ROOT)/kernel/drivers/pci.c \
             $(ROOT)/kernel/fs/fat16.c \
             $(ROOT)/kernel/fs/vfs.c
 

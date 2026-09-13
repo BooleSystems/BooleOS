@@ -60,6 +60,13 @@ static void sys_readdir(void) {
     (void)ret;
 }
 
+static void sys_pci_list(void) {
+    int ret;
+    __asm__ volatile ("int $0x80"
+        : "=a"(ret) : "0"(24) : "memory");
+    (void)ret;
+}
+
 static int sys_create(const char *name) {
     int ret;
     __asm__ volatile ("int $0x80"
@@ -275,6 +282,7 @@ static const char *help_text =
     "  ps             process table\n"
     "  mem            memory usage\n"
     "  ls             list files\n"
+    "  lspci          list PCI devices\n"
     "  touch <name>   create an empty file\n"
     "  echo <text>    print text\n"
     "  kill <pid>     terminate a process\n"
@@ -302,6 +310,8 @@ static void run_command(char *line, int len) {
         cmd_mem();
     } else if (sh_strcmp(line, "ls") == 0) {
         sys_readdir();
+    } else if (sh_strcmp(line, "lspci") == 0) {
+        sys_pci_list();
     } else if (sh_strncmp(line, "touch", 5) == 0 && (line[5] == ' ' || line[5] == '\0')) {
         cmd_touch(line[5] == ' ' ? line + 6 : "");
     } else if (sh_strncmp(line, "echo", 4) == 0 && (line[4] == ' ' || line[4] == '\0')) {

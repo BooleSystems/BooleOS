@@ -26,6 +26,7 @@
 #define SYS_READDIR       21  /* readdir() — lists files (ramfs + FAT16) via VGA */
 #define SYS_WRITE_FILE    22  /* write_file(fd, buf, len) — saves to FAT16 → 0/-1 */
 #define SYS_CREATE        23  /* create(name) — opens or creates a FAT16 file → fd or -1 */
+#define SYS_PCI_LIST      24  /* pci_list() — prints the PCI device table via VGA → 0     */
 
 uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t arg3);
 
