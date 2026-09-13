@@ -36,6 +36,13 @@ NullOS is an experimental x86 OS written from scratch in C99 and NASM assembly. 
 | **11** | PCI bus enumeration (legacy Configuration Mechanism #1), device table, `SYS_PCI_LIST`/`lspci` | ✅ Done |
 | **12** | ATA IRQ-driven I/O: IRQ14/15 handlers, process blocking instead of busy-wait, exclusion gate, `PROCESS_BLOCKED` | ✅ Done |
 | **13** | `fork()`: full address-space duplication, fabricated child kernel stack (resumes via `isr128_resume`), fd table duplication, `SYS_FORK` | ✅ Done |
+| **14** | Inter-process pipes + a real `waitpid()`; the shell gains `cmd1 \| cmd2` redirection built on top of the existing `fork()` | 🔜 Planned |
+| **15** | Copy-on-write `fork()`: defer the address-space copy until the first write instead of duplicating everything upfront (the classic optimization for the `fork()`+`exec()` pattern) | 🔜 Planned |
+| **16** | FAT16 subdirectories (today only the root directory exists) | 🔜 Planned |
+| **17** | `e1000` network driver (already visible in Phase 11's PCI enumeration) + a minimal TCP/IP stack; initial goal is answering `ping` | 🔜 Planned |
+| **18** | AHCI (modern SATA) driver — requires switching the QEMU machine to `-machine q35` (ICH9), since the default i440FX chipset doesn't expose AHCI | 🔜 Planned |
+| **19** | USB HID via the xHCI controller, so keyboard/mouse work on modern hardware without a physical PS/2 port | 🔜 Planned |
+| **20** | Linear framebuffer (VBE) + a simple GUI (rectangular windows, mouse), replacing VGA text mode | 🔜 Planned |
 
 ## What's implemented
 
