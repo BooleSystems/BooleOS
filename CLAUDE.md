@@ -104,3 +104,26 @@
 - Isso vale mesmo que o pedido original não mencione o README
   explicitamente — a atualização da documentação é parte implícita
   de "fase concluída", não uma tarefa separada que precisa ser pedida.
+
+## Memória de trabalho (PROGRESS.md)
+
+- TODA sessão nova deve ler PROGRESS.md ANTES de começar qualquer
+  tarefa. Ele existe porque a sessão não tem memória do que foi
+  decidido ou descoberto em sessões anteriores além do que está no
+  código e no git log — PROGRESS.md preenche essa lacuna com
+  decisões de arquitetura não-óbvias e dívidas técnicas conhecidas.
+- PROGRESS.md deve ser atualizado como parte da MESMA tarefa sempre
+  que uma decisão de arquitetura nova for tomada, ou uma dívida
+  técnica nova for identificada ou resolvida — mesma convenção já
+  aplicada ao README.md pra fases concluídas (não é uma tarefa
+  separada que precisa ser pedida).
+- PROGRESS.md não deve duplicar conteúdo do README.md (descrições de
+  fase, tabelas de syscall, etc.) — só referenciar a seção relevante.
+  O README continua sendo a documentação pública do projeto;
+  PROGRESS.md é memória de trabalho interna pra sessões futuras.
+- Se PROGRESS.md passar de ~200-300 linhas, a próxima sessão que
+  notar isso deve consolidar antes de adicionar mais conteúdo:
+  dívidas técnicas já resolvidas devem ser removidas (não empilhadas
+  como histórico — isso é o que o git log já serve pra registrar), e
+  decisões de arquitetura antigas mas ainda relevantes devem ficar
+  mais concisas em vez de acumular indefinidamente.
