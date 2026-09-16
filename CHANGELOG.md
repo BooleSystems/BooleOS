@@ -1,0 +1,278 @@
+# Changelog
+
+All notable changes to NullOS are documented in this file, grouped by the
+version/phase they shipped in. Format loosely follows
+[Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+
+This file was reconstructed retroactively from `git log` (commit messages
+and diffs) cross-referenced with what `README.md` documented at each point
+in the project's history. Where the commit history doesn't have enough
+detail to say exactly what changed, that's stated explicitly instead of
+being guessed at. See `PROGRESS.md` for the architecture-decision/tech-debt
+memory this changelog doesn't duplicate.
+
+**A note on version numbers:** the project's own README version banner
+was bumped inconsistently in a few places, and was never bumped at all
+past `v0.10.1` even though Phases 11–13 were completed afterward. Those
+inconsistencies are called out inline below rather than silently
+"corrected", and `[0.11.0]`–`[0.13.0]` for Phases 11–13 are this
+changelog's own numbering (following the `Phase N → v0.N.0` pattern the
+project used through Phase 10), not a version string that ever actually
+appeared in the repo.
+
+## [0.13.0] - Phase 13: fork()
+
+Not reflected in the README's own version banner (still reads `v0.10.1`
+at this point in the repo) — see the note above.
+
+### Added
+- `fork()`: duplicates the parent's full address space (new CR3, new page
+  directory/tables, physical pages copied page-by-page)
+- Race-safe slot allocation for the new child process (`process.c`)
+- File descriptor table duplication from parent to child
+- `SYS_FORK` syscall, plus `user/forktest.c` demonstrating parent/child
+  divergence via the syscall's return value
+- Child process resumes via `isr128_resume` + `g_syscall_frame` (fabricated
+  ring-3 return context), instead of the normal process bootstrap path —
+  see `PROGRESS.md` for why
+- `fork_free_address_space()`: unwinds a partially-built child's address
+  space if the copy runs out of memory partway through
+
+### Known limitations introduced/left open in this phase
+- `process_spawn()`/`process_spawn_user()`'s free-slot scan is still not
+  `cli`/`sti`-protected against a concurrent race — explicitly flagged as
+  out of scope for this phase (see `PROGRESS.md`)
+
+## [0.12.0] - Phase 12: IRQ-driven ATA
+
+Not reflected in the README's own version banner — see the note above.
+
+### Changed
+- ATA read/write completion is now signaled by IRQ14/15 instead of
+  busy-wait polling; the process blocks (`PROCESS_BLOCKED`) instead of
+  spinning while waiting for the drive
+- Added an exclusion gate around ATA operations so a second process
+  can't issue a command while another is still waiting on its IRQ
+- IDT gains the IRQ14/15 handlers; `isr.asm` wakes the correct waiting
+  process from the IRQ context
+
+## [0.11.0] - Phase 11: PCI bus enumeration
+
+Not reflected in the README's own version banner — see the note above.
+
+### Added
+- PCI configuration-space access via the legacy Configuration Mechanism
+  #1 (ports `0xCF8`/`0xCFC`)
+- Bus enumeration at boot, building a device table
+- `SYS_PCI_LIST` syscall and the `lspci` shell command, which reprints
+  the table captured at boot without rescanning the bus
+
+## [0.10.1] - Phase 10: English translation
+
+### Changed
+- Translated all code, comments, and UI/boot strings from Portuguese to
+  English project-wide. No functional changes.
+
+## [0.10.0] - Phase 10: persistent disk (ATA PIO + FAT16)
+
+This entry also folds in the editor/`SYS_WAIT`/raw-mode/`SYS_GETARG` work
+from the `editor: cursor correto, sem eco duplicado, SYS_WAIT, raw mode`
+commit, which landed chronologically *before* this phase's own commit but
+was never given its own version bump in the README — the `v0.10.0` README
+diff is what first documents those syscalls (numbers 13–19 in the syscall
+table), so this changelog follows the README's own grouping rather than
+inventing an intermediate version number that never existed in the repo.
+
+### Added
+- `kernel/drivers/ata.c`: ATA PIO driver (no IRQ/DMA yet — that comes in
+  Phase 12), probing all 4 possible slots (primary/secondary ×
+  master/slave) via `IDENTIFY` (0xEC), skipping ATAPI devices
+- `ata_read_sector`/`ata_write_sector`: LBA28 `READ SECTORS`(0x20) /
+  `WRITE SECTORS`(0x30) + `CACHE FLUSH`(0xE7)
+- `kernel/fs/fat16.c`: FAT16 driver — reads the BPB, caches the whole FAT
+  in the kernel heap, `fat16_find`/`fat16_readdir` scan the root
+  directory, `fat16_read_at` follows the cluster chain from an arbitrary
+  offset, `fat16_write_file` frees the old chain and writes a new one,
+  `fat16_create` writes a new (idempotent) root-dir entry
+- `kernel/fs/vfs.c`: single dispatcher used by the syscalls — tries the
+  (read-only) ramfs first, then FAT16; refuses writes to ramfs files
+- `SYS_CREATE`, `SYS_WRITE_FILE`, `SYS_READDIR` syscalls
+- `SYS_READ_RAW`, `SYS_GOTOXY`, `SYS_CLEAR`, `SYS_GETARG`,
+  `SYS_KBD_FLUSH`, `SYS_SETCOLOR`, `SYS_SET_RAW_MODE`, `SYS_WAIT`
+  syscalls
+- `user/edit.c`: text editor with a real status bar/cursor, raw
+  keyboard mode (no echo, no duplicated input), Ctrl+S save via
+  `SYS_WRITE_FILE`, Ctrl+Q to close and exit; creates the file via
+  `SYS_CREATE` if it doesn't already exist
+- Shell: `touch` (creates an empty file via `SYS_CREATE`+`SYS_CLOSE`);
+  `ls` lists ramfs and FAT16 entries separately
+- `tools/make_disk.sh` + `make disk` target: generates
+  `build/disk.img` (32 MB, FAT16 via `mkfs.vfat`) only if it doesn't
+  already exist, so on-disk data persists across rebuilds
+
+### Fixed
+- **ATA probe race condition**: the reset-detection wait used a fixed
+  ~400ns delay and assumed that was enough time for `BSY` to clear,
+  instead of actually polling the status register's `BSY` bit with a
+  real (~1s) timeout — the delay wasn't guaranteed to cover how long a
+  real reset takes. Replaced with `wait_bsy_clear_after_reset()`, which
+  polls the real bit.
+- **Cache-flush false negative**: `ata_write_sector` used to be able to
+  report a failure if the trailing `CACHE FLUSH` (0xE7) command timed
+  out, even though the actual `WRITE SECTORS` payload had already been
+  confirmed written beforehand. A flush timeout only means the drive
+  didn't confirm the cache was committed to media within the deadline —
+  it does not mean the write was lost — so the flush outcome is no
+  longer propagated as a write failure (see `PROGRESS.md` for the full
+  rationale, since this is easy to "fix" back into a false failure).
+- **FAT16 dirent out-of-bounds name compare**: 8.3 filenames are stored
+  as two separate fixed-size struct fields, `name[8]` and `ext[3]`.
+  Comparing past the end of `name[8]` to reach the extension (rather
+  than building an explicit 11-byte buffer from both fields) is
+  undefined behavior in C, and produced a bug where debug prints showed
+  the right bytes but the logical comparison still failed. Fixed by
+  building an explicit `uint8_t[11]` buffer before comparing. The exact
+  same inline comparison logic was duplicated in `fat16_write_file`
+  (separately from `fat16_find`) and got the same fix applied there too
+  — see `PROGRESS.md` for why this duplication is still flagged as tech
+  debt going into Phase 16.
+
+## [0.9.0] - Phase 9: `SYS_OPEN`/`SYS_CLOSE`/`SYS_READ` for ramfs files
+
+### Added
+- `SYS_OPEN` (`open(name) → fd`), `SYS_CLOSE` syscalls
+- Per-process file descriptor table (`fd_table[PROCESS_MAX][8]`); fds
+  0/1/2 reserved for stdin/stdout/stderr, files start at fd 3;
+  `sys_exit` clears a process's fds on exit to avoid leaking slots
+- `SYS_READ` becomes polymorphic: fd 0 still reads from the keyboard
+  (blocking, with echo/backspace); fd ≥ 3 reads from a file opened via
+  `SYS_OPEN`, advances the file position, and returns 0 at EOF
+
+## [0.8.0] - Phase 8: `SYS_EXEC`, Ctrl+C, foreground PID
+
+### Added
+- `SYS_EXEC` syscall: copies the program name from user space via
+  `vmm_get_phys_from_dir` (identity-map), calls the kernel's `exec()`,
+  returns the new process's PID
+- Shell tracks the `foreground_pid` of the last exec'd process; Ctrl+C
+  in the keyboard handler sends it a kill instead of only working on
+  the shell itself
+- `run <prog>` shell command
+
+## [0.7.0] - Phase 7: `SYS_READ` + interactive userland shell
+
+### Added
+- Keyboard ringbuffer (256 chars) fed from IRQ1; echo moved out of the
+  IRQ handler and into `SYS_READ`
+- `SYS_READ` (fd 0): polls the ringbuffer with `scheduler_sleep_current(1)`
+  between attempts so it doesn't starve the scheduler; handles echo and
+  backspace
+- `user/shell.c`: interactive `> ` prompt loop (`sys_read` →
+  `run_command`); commands `help`, `uname`, `fetch`, `ps`, `mem`,
+  `echo`, `kill`, `clear`, `exit`
+- `fetch`: ASCII banner with OS/Arch/Uptime/free PMM/free heap/running
+  process count
+- `SYS_UPTIME`, `SYS_MEMINFO`, `SYS_PS`, `SYS_KILL` syscalls
+
+### Fixed
+- `process_exit()` now actually frees the process's table slot on
+  `SYS_EXIT` (previously the slot wasn't being reliably released)
+
+## [0.6.0] - Phase 6: syscall return values + IRQ0 preemption
+
+### Added
+- `user/spintest.c`: a process that never calls `yield()`, used to
+  validate that preemption actually works
+- `scheduler_tick`/IRQ0-driven preemption: a process that hogs the CPU
+  without yielding is now preempted automatically after a fixed tick
+  slice
+
+### Fixed
+- `isr128` (the `int 0x80` handler) now writes `syscall_handler`'s
+  return value into the `pusha` frame's `EAX` slot before `popa`, so
+  the syscall's return value actually reaches userland in `eax` after
+  `iret` (previously userland could see a stale/wrong `eax`). Userland
+  inline asm needed `"=a"`/`"0"` constraints so the compiler doesn't
+  assume `eax` is unchanged across `int $0x80`.
+
+## [0.5.0] - Phase 5: ramfs + ELF32 loader + `exec()`
+
+### Added
+- Multiboot2 module tag parser
+- Flat ramfs format: `[uint32_t n] [entry×n: name[32]+offset+size] [data...]`
+  and `ramfs_find()` by name
+- ELF32 loader: validates the magic, iterates `PT_LOAD` segments,
+  allocates physical pages, maps them into the process's CR3, copies
+  segment data
+- `exec(name)`: ramfs lookup → new CR3 → `elf_load` → user stack →
+  `scheduler_spawn_user`
+- `user/init.c`: minimal user process (`SYS_WRITE` + `SYS_EXIT`) used
+  to validate the whole ramfs → ELF → usermode pipeline
+- `kmain` calls `exec()` for the GRUB-provided module(s) at boot
+
+## [0.4.0] - Phase 3b + Phase 4: context switch, exception handlers, ring 3 usermode, syscalls
+
+The project's own version banner used `v0.4.0` for **both** of these —
+Phase 4 shipped without its own version bump (the README diff at the
+Phase 4 commit changes the banner text but keeps the same `v0.4.0` it
+already had from Phase 3b). Combined into one entry here rather than
+inventing a version number the project never actually used.
+
+### Added (Phase 3b)
+- Per-process context switch and per-process CR3
+- CPU exception handlers (previously only IRQs/syscalls were handled)
+
+### Fixed (Phase 3b)
+- Fixed a page-directory/stack collision in the VMM (`PAGE_DIR` was
+  overlapping with stack memory)
+
+### Added (Phase 4)
+- TSS setup for a per-process kernel stack (SS0:ESP0)
+- Ring 3 usermode via `jump_to_usermode` (`iret` with CS=0x1B, SS=0x23)
+- Syscall gate: `int 0x80`, DPL=3, convention `eax=num, ebx/ecx/edx=args`
+- `process_spawn_user()`
+
+## [0.3.0] - Phase 3a: cooperative scheduler
+
+### Added
+- Process table
+- Cooperative round-robin scheduler (no preemption yet — added in
+  Phase 6)
+
+## [0.2.0] - Phase 2: PMM, VMM, kernel heap
+
+### Added
+- Physical Memory Manager (page bitmap)
+- Virtual Memory Manager: 32-bit paging with an identity-mapped low
+  region
+- Kernel heap (`kmalloc`/`kfree`, first-fit)
+
+## [0.1.0] - Phase 1: GDT, IDT, PIC, PIT, PS/2 keyboard
+
+### Added
+- Global Descriptor Table (ring 0 + ring 3 code/data segments)
+- Interrupt Descriptor Table with CPU exception handlers
+- Remapped 8259 PIC (IRQs 0–15 → vectors 32–47)
+- PIT configured at 100 Hz
+- PS/2 keyboard driver
+
+### Fixed
+- Relocated the IDT to `0x200000` (commit message just says "IDT
+  movida para 0x200000, Fase 1 completa"; the same fix message appears
+  twice in the log in immediate succession — granular detail on what
+  specifically was wrong at the original address isn't available from
+  the commit history, so this is recorded honestly as "IDT relocated,
+  reason not further documented" rather than invented)
+
+## [0.0.1] - Phase 0: boot + VGA driver
+
+### Added
+- Multiboot2-compliant bootloader entry (`boot/boot.asm`, `linker.ld`)
+- VGA text-mode (80×25, color) output driver
+- Initial `README.md` and project scaffolding
+
+Granular per-commit detail beyond this is not available — this very
+early range of the project's history (before phase numbers were used
+consistently in commit messages) was committed generically; grouping
+here reflects that, rather than forcing an artificial split the commit
+log doesn't actually support.

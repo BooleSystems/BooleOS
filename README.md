@@ -16,6 +16,8 @@
 
 NullOS is an experimental x86 OS written from scratch in C99 and NASM assembly. It boots via GRUB (Multiboot2), runs kernel and user processes with memory isolation, handles syscalls from ring 3 via `int 0x80`, and loads user programs from a flat ramfs image passed as a GRUB module.
 
+See CHANGELOG.md for version history.
+
 ## Roadmap
 
 | Phase | Description | Status |
