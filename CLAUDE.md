@@ -95,15 +95,36 @@
   
   ## Documentação
 
+- Estrutura de documentação (a partir da reorganização pós-Fase 14):
+  README.md é um ÍNDICE ENXUTO (overview curto, banner de versão,
+  tabela de fases JÁ CONCLUÍDAS, links pra ROADMAP.md e pra cada
+  docs/<assunto>.md, instruções de build, license) — não repete
+  conteúdo técnico detalhado. ROADMAP.md guarda o planejamento de
+  fases FUTURAS (ainda não concluídas), com goal/approach/risco/
+  dependências de cada uma. docs/<assunto>.md (um arquivo por sistema
+  técnico, ex: docs/memory.md, docs/scheduler.md, docs/syscalls.md,
+  docs/filesystem.md, docs/security.md, docs/pci.md, docs/shell.md,
+  docs/kernel.md) guarda a descrição detalhada de cada sistema —
+  é aqui que vai o "o que foi implementado" de uma feature nova, não
+  no README.
 - SEMPRE que uma fase/feature nova for concluída e eu confirmar que
-  o teste passou, atualize o README.md como parte da MESMA tarefa
-  (não espere um pedido separado): banner de versão, tabela de
-  roadmap (marcar fase como Done), seção de syscalls (se adicionou
-  syscall nova), lista de arquivos/estrutura (se adicionou arquivo
-  novo), e qualquer seção descritiva relevante à feature.
-- Isso vale mesmo que o pedido original não mencione o README
-  explicitamente — a atualização da documentação é parte implícita
-  de "fase concluída", não uma tarefa separada que precisa ser pedida.
+  o teste passou, atualize a documentação como parte da MESMA tarefa
+  (não espere um pedido separado): banner de versão e tabela de fases
+  concluídas no README.md; o docs/<assunto>.md relevante (crie um
+  novo arquivo se a feature não se encaixa em nenhum existente, e
+  linke-o a partir do README) com a descrição detalhada da feature;
+  docs/syscalls.md se adicionou syscall nova; lista de
+  arquivos/estrutura no README se adicionou arquivo novo; e mova a
+  entrada correspondente de ROADMAP.md pra tabela de concluídas do
+  README se a fase estava lá planejada.
+- Isso vale mesmo que o pedido original não mencione o README ou
+  docs/ explicitamente — a atualização da documentação é parte
+  implícita de "fase concluída", não uma tarefa separada que precisa
+  ser pedida.
+- Nunca invente um novo arquivo docs/ ou uma reorganização de
+  documentação por conta própria fora desse fluxo de fim-de-fase —
+  se não estiver claro em qual docs/<assunto>.md uma informação nova
+  deveria entrar, pergunte antes de decidir.
 
 ## Memória de trabalho (PROGRESS.md)
 
@@ -117,10 +138,11 @@
   técnica nova for identificada ou resolvida — mesma convenção já
   aplicada ao README.md pra fases concluídas (não é uma tarefa
   separada que precisa ser pedida).
-- PROGRESS.md não deve duplicar conteúdo do README.md (descrições de
-  fase, tabelas de syscall, etc.) — só referenciar a seção relevante.
-  O README continua sendo a documentação pública do projeto;
-  PROGRESS.md é memória de trabalho interna pra sessões futuras.
+- PROGRESS.md não deve duplicar conteúdo do README.md/ROADMAP.md/
+  docs/ (descrições de fase, tabelas de syscall, etc.) — só
+  referenciar o arquivo/seção relevante. README/ROADMAP/docs
+  continuam sendo a documentação pública do projeto; PROGRESS.md é
+  memória de trabalho interna pra sessões futuras.
 - Se PROGRESS.md passar de ~200-300 linhas, a próxima sessão que
   notar isso deve consolidar antes de adicionar mais conteúdo:
   dívidas técnicas já resolvidas devem ser removidas (não empilhadas
@@ -133,12 +155,25 @@
 - kernel/version.h é a ÚNICA fonte de verdade pro número de versão
   do projeto (`NULLOS_VERSION`, `NULLOS_PHASE`, `NULLOS_PHASE_DESC`,
   e as strings compostas `NULLOS_BANNER`/`NULLOS_SHORT_BANNER`).
-  SEMPRE que uma fase for concluída, o ÚNICO arquivo que precisa ser
-  editado pra atualizar a versão é esse header — seguindo o padrão
+- Esquema `MAJOR.MINOR.PATCH` (a partir da v0.14.1): MINOR é
+  reservado EXCLUSIVAMENTE pro número de fase concluída — nunca pule,
+  nunca invente um MINOR que não corresponda a uma fase real
+  concluída e documentada na tabela de fases concluídas do README
+  (`NULLOS_PHASE` segue o mesmo número). PATCH é pra trabalho
+  intermediário que NÃO constitui uma fase nova — reorganização de
+  documentação, ferramentas de teste (ex: `user/selftest.c`), pequenas
+  funções aditivas que não mudam comportamento visível do usuário
+  (ex: `pci_device_count()`) — incrementa a partir do PATCH atual sem
+  tocar em MINOR/`NULLOS_PHASE`/`NULLOS_PHASE_DESC`. Um bump de PATCH:
+  NÃO adiciona linha na tabela de fases do README (fases concluídas
+  só avançam em MINOR), tem sua própria entrada no CHANGELOG.md
+  (`## [MAJOR.MINOR.PATCH] - <resumo curto>`, deixando claro que não é
+  fase nova), e é registrado em PROGRESS.md → "Current status" como
+  versão atual sem alterar qual foi a última fase concluída. SEMPRE
+  que uma fase for concluída, o ÚNICO arquivo que precisa ser editado
+  pra atualizar a versão é esse header — seguindo o padrão
   `NULLOS_VERSION = "N.0"` / `NULLOS_PHASE = "N"` onde N é o número
-  da fase (a versão é EXATAMENTE igual ao número de fase; nunca
-  pule, nunca invente um número que não corresponda a uma fase real
-  concluída e documentada no README).
+  da fase (PATCH reseta pra `0` numa fase nova).
 - NENHUM outro arquivo deve ter string de versão hardcoded a partir
   de agora — nem kernel/main.c (usa `NULLOS_BANNER` de version.h),
   nem user/shell.c (usa `NULLOS_SHORT_BANNER`, incluído via `-I` no
@@ -153,12 +188,15 @@
   que não é C, gerada em build-time a partir dele), não corrigida
   manualmente toda vez que a versão mudar.
 - Antes de finalizar qualquer fase, faça um checklist explícito:
-  kernel/version.h atualizado? README atualizado? CHANGELOG
-  atualizado? PROGRESS.md atualizado (se aplicável)? syscall.h
-  conferido contra a tabela de syscalls do README (ver regra abaixo)?
-  PROGRESS.md conferido como fonte primária do número de fase (ver
-  regra abaixo)? Só considere a fase "concluída" quando todos esses
-  pontos estiverem sincronizados no mesmo commit.
+  kernel/version.h atualizado? README (tabela de fases concluídas)
+  atualizado? docs/<assunto>.md relevante atualizado com o detalhe
+  da feature? ROADMAP.md com a fase removida/movida se estava
+  planejada lá? CHANGELOG atualizado? PROGRESS.md atualizado (se
+  aplicável)? syscall.h conferido contra a tabela de syscalls de
+  docs/syscalls.md (ver regra abaixo)? PROGRESS.md conferido como
+  fonte primária do número de fase (ver regra abaixo)? Só considere
+  a fase "concluída" quando todos esses pontos estiverem
+  sincronizados no mesmo commit.
 - NUNCA invente um número de versão pra uma fase que não existe ou
   não foi pedida — se não tiver certeza do número de fase correto,
   pergunte antes de decidir, não assuma.
@@ -166,23 +204,23 @@
 ## Convenções de fim de fase (números de syscall)
 
 - kernel/syscall.h é a ÚNICA fonte de verdade pros números de
-  syscall (os `#define SYS_*`). Sempre que a tabela de syscalls do
-  README.md for escrita ou atualizada, rode um `grep` em syscall.h
-  e confira CADA número da tabela contra o valor real do `#define`
-  correspondente antes de escrever — nunca reafirme um número "de
-  memória" (do que foi discutido na conversa) nem copie de uma
-  versão anterior do README sem checar, mesmo que pareça óbvio que
-  não mudou.
+  syscall (os `#define SYS_*`). Sempre que a tabela de syscalls de
+  docs/syscalls.md for escrita ou atualizada, rode um `grep` em
+  syscall.h e confira CADA número da tabela contra o valor real do
+  `#define` correspondente antes de escrever — nunca reafirme um
+  número "de memória" (do que foi discutido na conversa) nem copie
+  de uma versão anterior do arquivo sem checar, mesmo que pareça
+  óbvio que não mudou.
 - Ao concluir qualquer fase que adicione, remova, ou renumere uma
   syscall, o checklist de fim de fase (ver seção de versionamento
   acima) DEVE incluir explicitamente: "grep no syscall.h pra
-  confirmar que os números atuais batem com o que o README
+  confirmar que os números atuais batem com o que docs/syscalls.md
   documenta" — isso é tão obrigatório quanto atualizar o banner de
   versão, não uma checagem opcional.
 - Se o grep encontrar qualquer divergência (número que mudou, syscall
   nova sem entrada na tabela, ou entrada na tabela sem `#define`
-  correspondente), corrija o README imediatamente como parte da
-  mesma tarefa — não deixe a divergência documentada "pra depois".
+  correspondente), corrija docs/syscalls.md imediatamente como parte
+  da mesma tarefa — não deixe a divergência documentada "pra depois".
 
 ## Convenções de fim de fase (número de fase / roadmap)
 

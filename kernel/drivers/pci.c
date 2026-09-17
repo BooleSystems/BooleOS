@@ -94,6 +94,14 @@ int pci_scan_bus(void) {
     return (int)g_device_count;
 }
 
+/* Returns the count from the last pci_scan_bus() call, without
+   rescanning — the numeric counterpart to pci_print_list()'s VGA
+   dump, so a caller (e.g. SYS_PCI_LIST) can check "found anything?"
+   without parsing text output. */
+int pci_device_count(void) {
+    return (int)g_device_count;
+}
+
 /* ── reporting ───────────────────────────────────────────────────── */
 
 static void print_hex_padded(uint32_t value, int digits) {

@@ -22,6 +22,44 @@ called out inline rather than silently "corrected", and `[0.11.0]`–
 Phase 10), not a version string that ever actually appeared in the repo
 at the time.
 
+## [0.14.1] - Documentation reorganization + selftest tool
+
+Not a new phase — intermediate work between phases, versioned as a PATCH
+bump under the convention established here: PATCH is for work that
+doesn't change user-facing behavior or complete a phase (doc
+reorganization, test tooling, small additive functions), MINOR stays
+reserved exclusively for a completed phase number (see CLAUDE.md,
+"Convenções de fim de fase (versionamento)").
+
+### Changed
+- Documentation reorganized out of a single growing `README.md`:
+  `README.md` is now a lean index (overview, completed-phases table
+  0–14, links, build instructions); `ROADMAP.md` holds the detailed
+  planning for future Phases 15–21 (moved verbatim); `docs/*.md` holds
+  one file per technical system (`kernel.md`, `memory.md`,
+  `scheduler.md`, `syscalls.md`, `filesystem.md`, `security.md`,
+  `pci.md`, `shell.md`, `testing.md`, plus the pre-existing
+  `setup.md`). No technical content was dropped, only moved — see
+  `CLAUDE.md`'s "Documentação" section for where new content should go
+  from here on.
+- `kernel/syscall.c`: `SYS_PCI_LIST` now returns the PCI device count
+  (via the new `pci_device_count()`, see below) instead of always
+  `0`. Additive — the shell's `lspci` command already discarded the
+  return value, so no existing caller's behavior changes.
+
+### Added
+- `user/selftest.c`: automated regression suite, runnable via
+  `run selftest` from the shell. 7 checks (memory/`SYS_MEMINFO`,
+  `fork()` PID validity, file create, file write/read roundtrip, the
+  Phase 10 duplicate-create regression, invalid-pointer rejection via
+  the Phase 14 validation path, PCI enumeration ≥ 1 device) plus one
+  informational cleanup note (no delete/unlink syscall exists yet).
+  See `docs/testing.md` for the full breakdown and known limitations.
+- `kernel/drivers/pci.c`/`pci.h`: `pci_device_count()` — returns the
+  device count from the last `pci_scan_bus()` call without rescanning,
+  added so `user/selftest.c` can assert "found ≥ 1 device"
+  programmatically instead of parsing `pci_print_list()`'s VGA output.
+
 ## [0.14.0] - Phase 14: kernel memory-safety hardening
 
 Fixes 4 confirmed bugs found in a memory-safety audit, all sharing the

@@ -34,4 +34,8 @@ int pci_scan_bus(void);
    the same style as the other boot-time device logs. */
 void pci_print_list(void);
 
+/* Returns the device count from the last pci_scan_bus() call, without
+   rescanning (same table pci_print_list() reads from). */
+int pci_device_count(void);
+
 #endif

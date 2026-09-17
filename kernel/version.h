@@ -17,7 +17,7 @@
 #ifndef NULLOS_VERSION_H
 #define NULLOS_VERSION_H
 
-#define NULLOS_VERSION      "0.14.0"
+#define NULLOS_VERSION      "0.14.1"
 #define NULLOS_PHASE        "14"
 #define NULLOS_PHASE_DESC   "user pointer validation"
 

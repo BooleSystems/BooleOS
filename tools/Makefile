@@ -66,6 +66,7 @@ SPINTEST_ELF = $(BUILD)/user/spintest.elf
 SHELL_ELF    = $(BUILD)/user/shell.elf
 EDIT_ELF     = $(BUILD)/user/edit.elf
 FORKTEST_ELF = $(BUILD)/user/forktest.elf
+SELFTEST_ELF = $(BUILD)/user/selftest.elf
 RAMFS_IMG    = $(BUILD)/ramfs.img
 DISK_IMG     = $(BUILD)/disk.img
 GRUB_CFG_IN  = $(ROOT)/tools/grub.cfg.in
@@ -105,9 +106,9 @@ $(KERNEL_ELF): $(ALL_OBJS)
 	@echo "  LD   $@"
 	$(LD) $(LDFLAGS) -o $@ $(ALL_OBJS)
 
-$(RAMFS_IMG): $(INIT_ELF) $(SPINTEST_ELF) $(SHELL_ELF) $(EDIT_ELF) $(FORKTEST_ELF)
+$(RAMFS_IMG): $(INIT_ELF) $(SPINTEST_ELF) $(SHELL_ELF) $(EDIT_ELF) $(FORKTEST_ELF) $(SELFTEST_ELF)
 	@echo "  RAMFS $@"
-	python3 $(ROOT)/tools/make_ramfs.py $@ init=$(INIT_ELF) spintest=$(SPINTEST_ELF) shell=$(SHELL_ELF) edit=$(EDIT_ELF) forktest=$(FORKTEST_ELF)
+	python3 $(ROOT)/tools/make_ramfs.py $@ init=$(INIT_ELF) spintest=$(SPINTEST_ELF) shell=$(SHELL_ELF) edit=$(EDIT_ELF) forktest=$(FORKTEST_ELF) selftest=$(SELFTEST_ELF)
 
 # Generates the GRUB menu config from the template, substituting the
 # version straight out of kernel/version.h — the single source of

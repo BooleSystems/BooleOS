@@ -7,8 +7,16 @@ to carry forward the "why" behind non-obvious code, and the list of known
 technical debt, so it doesn't get silently rediscovered (or re-broken) every
 session.
 
-Do not duplicate README content here (phase descriptions, syscall tables,
-build instructions, file structure). Link to the README section instead.
+Do not duplicate README/docs content here (phase descriptions, syscall
+tables, build instructions, file structure). Link to the relevant
+README/docs/ section instead. Documentation is split as follows:
+`README.md` is a lean index (completed-phases table, links, build
+instructions); `ROADMAP.md` holds future/planned phases; `docs/<system>.md`
+holds detailed per-system technical content (see `README.md` →
+"Documentation" for the current list of docs/ files and what each covers).
+When documenting a new system in detail, add/extend a `docs/<system>.md`
+file and link it from `README.md` — don't put system detail back into
+`README.md` itself.
 
 ## Current status
 
@@ -20,11 +28,18 @@ boundary, fixing 4 confirmed ring 3 → ring 0 memory read/write bugs
 `sys_open`/`sys_create`/`sys_exec`/`sys_getarg` via `user_kptr()`; also
 removed leftover debug output in `sys_open` and centralized the
 version string in `kernel/version.h`.
-See `README.md` → Roadmap table + "What's implemented" (Usermode and
-syscalls) + CHANGELOG.md `[0.14.0]` for full detail.
+See `README.md` → "Completed phases" table + `docs/security.md` +
+`docs/syscalls.md` + CHANGELOG.md `[0.14.0]` for full detail.
 
-Future roadmap: see `README.md` → "Future roadmap — detailed planning
-(Phases 15–21)" for the full per-phase breakdown and priority order.
+Current version: **0.14.1** (PATCH bump, not a new phase) — intermediate
+work done after Phase 14 without completing Phase 15: documentation
+reorganization (README/ROADMAP.md/docs/*.md) and `user/selftest.c` +
+`pci_device_count()`. See CHANGELOG.md `[0.14.1]` and `docs/testing.md`.
+Per the versioning convention in CLAUDE.md, MINOR only ever equals a
+completed phase number — still 14 until Phase 15 actually lands.
+
+Future roadmap: see `ROADMAP.md` for the full per-phase breakdown and
+priority order (Phases 15–21).
 
 ## Architecture decisions (non-obvious from reading the code alone)
 
@@ -115,6 +130,14 @@ Future roadmap: see `README.md` → "Future roadmap — detailed planning
   "macros only, nothing kernel-internal" property before it's safe to
   include from `user/`.
 
+- **`SYS_PCI_LIST` now returns the device count instead of always `0`**
+  (`kernel/syscall.c`, `kernel/drivers/pci.c/h` → `pci_device_count()`).
+  Changed alongside adding `user/selftest.c` (see `docs/testing.md`),
+  which needed a way to assert "PCI enumeration found ≥ 1 device"
+  without parsing `pci_print_list()`'s VGA text output. `lspci` in the
+  shell still just discards the return value, so this is additive —
+  no existing caller's behavior changed.
+
 ## Known technical debt
 
 - **Duplicated dirent lookup: `fat16_find` vs. `fat16_write_file`**
@@ -125,8 +148,8 @@ Future roadmap: see `README.md` → "Future roadmap — detailed planning
   they're separate code paths. Both currently build an explicit 11-byte
   buffer correctly (see the comment at `fat16.c:319`), but the duplication
   itself is still there — Phase 17 (FAT16 subdirectories) is flagged in
-  the README roadmap as a good point to unify this into one function
-  before extending it further.
+  ROADMAP.md as a good point to unify this into one function before
+  extending it further.
 
 - **`process_exit()` never frees `process->cr3` or its mapped pages**
   (`kernel/process.c`, comment above `process_exit`). A process's entire
@@ -146,6 +169,20 @@ Future roadmap: see `README.md` → "Future roadmap — detailed planning
   still don't. Two processes spawning concurrently (e.g. from two
   different IRQ-resumed contexts) could theoretically race on the same
   `PROCESS_UNUSED` slot.
+
+- **No unlink/delete syscall exists yet** (surfaced by `user/selftest.c`,
+  see `docs/testing.md`). Any file created for testing (or by a user)
+  can be overwritten but never removed from FAT16. `fat16_write_file`/
+  `fat16_create` would need a sibling that frees the cluster chain and
+  marks the dirent deleted (0xE5) instead of just adding a new syscall
+  number — the FAT16 side has no delete path at all right now.
+
+- **No syscall exposes `kmalloc()` to userland** (surfaced by
+  `user/selftest.c`'s memory test, see `docs/testing.md`). The closest
+  available userland-visible memory operation is `SYS_MEMINFO`, which
+  only reads `pmm_free_pages()`/`heap_free_bytes()` — it doesn't
+  allocate anything itself. Not a bug, just means there's currently no
+  way to test a real heap allocation from userland.
 
 ## Maintenance rule for this file
 
