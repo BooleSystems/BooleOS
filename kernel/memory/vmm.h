@@ -40,6 +40,15 @@ void vmm_map_user_page(uint32_t pd_phys, uint32_t virt, uint32_t phys);
 // Resolves virt->phys in an arbitrary page directory (identity-mapped)
 uint32_t vmm_get_phys_from_dir(uint32_t pd_phys, uint32_t virt);
 
+// Same as above, but returns 0 unless the mapping also carries VMM_USER
+// (on both the PDE and the PTE) — i.e. only resolves addresses actually
+// meant to be reachable from ring 3. Use this, not vmm_get_phys_from_dir(),
+// to validate a userland-supplied pointer before a syscall reads/writes
+// through it: vmm_get_phys_from_dir() would also happily resolve the
+// shared kernel identity map (0-8MB) that every process's directory
+// clones, since that mapping IS present — just not meant for userland.
+uint32_t vmm_get_user_phys_from_dir(uint32_t pd_phys, uint32_t virt);
+
 // Debug
 void vmm_dump(void);
 

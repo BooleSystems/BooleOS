@@ -2,6 +2,7 @@
 // kmain() - Phase 5: ramfs + ELF loader + exec()
 
 #include <stdint.h>
+#include "version.h"
 #include "drivers/vga.h"
 #include "serial.h"
 #include "gdt.h"
@@ -54,7 +55,7 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     vga_puts(" | |\\  | |_| | | | |_| |___) |\n");
     vga_puts(" |_| \\_|\\__,_|_|_|\\___/|____/ \n\n");
     vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
-    vga_puts(" NullOS v0.10.1 - Phase 10: persistent disk (ATA PIO + FAT16)\n\n");
+    vga_puts(" " NULLOS_BANNER "\n\n");
 
     print_separator();
 

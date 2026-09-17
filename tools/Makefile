@@ -68,6 +68,9 @@ EDIT_ELF     = $(BUILD)/user/edit.elf
 FORKTEST_ELF = $(BUILD)/user/forktest.elf
 RAMFS_IMG    = $(BUILD)/ramfs.img
 DISK_IMG     = $(BUILD)/disk.img
+GRUB_CFG_IN  = $(ROOT)/tools/grub.cfg.in
+GRUB_CFG     = $(BUILD)/grub.cfg
+VERSION_H    = $(ROOT)/kernel/version.h
 
 .PHONY: all clean run dirs user disk
 
@@ -106,12 +109,22 @@ $(RAMFS_IMG): $(INIT_ELF) $(SPINTEST_ELF) $(SHELL_ELF) $(EDIT_ELF) $(FORKTEST_EL
 	@echo "  RAMFS $@"
 	python3 $(ROOT)/tools/make_ramfs.py $@ init=$(INIT_ELF) spintest=$(SPINTEST_ELF) shell=$(SHELL_ELF) edit=$(EDIT_ELF) forktest=$(FORKTEST_ELF)
 
-$(KERNEL_ISO): $(KERNEL_ELF) $(RAMFS_IMG)
+# Generates the GRUB menu config from the template, substituting the
+# version straight out of kernel/version.h — the single source of
+# truth for the version string (see CLAUDE.md). Never hand-edit the
+# generated file; edit grub.cfg.in (wording) or version.h (version).
+$(GRUB_CFG): $(GRUB_CFG_IN) $(VERSION_H)
+	@echo "  GEN  $@"
+	@mkdir -p $(BUILD)
+	@V=$$(sed -n 's/^#define NULLOS_VERSION *"\(.*\)"/\1/p' $(VERSION_H)); \
+	sed "s/@NULLOS_VERSION@/$$V/" $(GRUB_CFG_IN) > $@
+
+$(KERNEL_ISO): $(KERNEL_ELF) $(RAMFS_IMG) $(GRUB_CFG)
 	@echo "  ISO  $@"
 	@mkdir -p $(ISO_DIR)/boot/grub
 	@cp $(KERNEL_ELF) $(ISO_DIR)/boot/nullos.elf
 	@cp $(RAMFS_IMG)  $(ISO_DIR)/boot/ramfs.img
-	@cp $(ROOT)/tools/grub.cfg $(ISO_DIR)/boot/grub/grub.cfg
+	@cp $(GRUB_CFG)   $(ISO_DIR)/boot/grub/grub.cfg
 	grub2-mkrescue -o $@ $(ISO_DIR)
 	@echo "  OK"
 

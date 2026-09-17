@@ -127,3 +127,82 @@
   como histórico — isso é o que o git log já serve pra registrar), e
   decisões de arquitetura antigas mas ainda relevantes devem ficar
   mais concisas em vez de acumular indefinidamente.
+
+## Convenções de fim de fase (versionamento)
+
+- kernel/version.h é a ÚNICA fonte de verdade pro número de versão
+  do projeto (`NULLOS_VERSION`, `NULLOS_PHASE`, `NULLOS_PHASE_DESC`,
+  e as strings compostas `NULLOS_BANNER`/`NULLOS_SHORT_BANNER`).
+  SEMPRE que uma fase for concluída, o ÚNICO arquivo que precisa ser
+  editado pra atualizar a versão é esse header — seguindo o padrão
+  `NULLOS_VERSION = "N.0"` / `NULLOS_PHASE = "N"` onde N é o número
+  da fase (a versão é EXATAMENTE igual ao número de fase; nunca
+  pule, nunca invente um número que não corresponda a uma fase real
+  concluída e documentada no README).
+- NENHUM outro arquivo deve ter string de versão hardcoded a partir
+  de agora — nem kernel/main.c (usa `NULLOS_BANNER` de version.h),
+  nem user/shell.c (usa `NULLOS_SHORT_BANNER`, incluído via `-I` no
+  Makefile de user/, já que version.h só tem macros de texto, sem
+  tipo/função de kernel — seguro de incluir em código de userland),
+  nem tools/grub.cfg (gerado em build-time a partir de
+  tools/grub.cfg.in + kernel/version.h pela regra "GEN grub.cfg" no
+  Makefile — nunca edite build/grub.cfg diretamente, é sobrescrito a
+  cada build). Se descobrir uma string de versão hardcoded em
+  qualquer lugar novo, ela é um bug de duplicação e deve ser
+  substituída por uma referência a version.h (ou, se for um arquivo
+  que não é C, gerada em build-time a partir dele), não corrigida
+  manualmente toda vez que a versão mudar.
+- Antes de finalizar qualquer fase, faça um checklist explícito:
+  kernel/version.h atualizado? README atualizado? CHANGELOG
+  atualizado? PROGRESS.md atualizado (se aplicável)? syscall.h
+  conferido contra a tabela de syscalls do README (ver regra abaixo)?
+  PROGRESS.md conferido como fonte primária do número de fase (ver
+  regra abaixo)? Só considere a fase "concluída" quando todos esses
+  pontos estiverem sincronizados no mesmo commit.
+- NUNCA invente um número de versão pra uma fase que não existe ou
+  não foi pedida — se não tiver certeza do número de fase correto,
+  pergunte antes de decidir, não assuma.
+
+## Convenções de fim de fase (números de syscall)
+
+- kernel/syscall.h é a ÚNICA fonte de verdade pros números de
+  syscall (os `#define SYS_*`). Sempre que a tabela de syscalls do
+  README.md for escrita ou atualizada, rode um `grep` em syscall.h
+  e confira CADA número da tabela contra o valor real do `#define`
+  correspondente antes de escrever — nunca reafirme um número "de
+  memória" (do que foi discutido na conversa) nem copie de uma
+  versão anterior do README sem checar, mesmo que pareça óbvio que
+  não mudou.
+- Ao concluir qualquer fase que adicione, remova, ou renumere uma
+  syscall, o checklist de fim de fase (ver seção de versionamento
+  acima) DEVE incluir explicitamente: "grep no syscall.h pra
+  confirmar que os números atuais batem com o que o README
+  documenta" — isso é tão obrigatório quanto atualizar o banner de
+  versão, não uma checagem opcional.
+- Se o grep encontrar qualquer divergência (número que mudou, syscall
+  nova sem entrada na tabela, ou entrada na tabela sem `#define`
+  correspondente), corrija o README imediatamente como parte da
+  mesma tarefa — não deixe a divergência documentada "pra depois".
+
+## Convenções de fim de fase (número de fase / roadmap)
+
+- PROGRESS.md é a fonte PRIMÁRIA de qual foi a última fase concluída
+  — não README.md, não CHANGELOG.md. Isso é deliberado: PROGRESS.md
+  é o arquivo de contexto lido no início de toda sessão nova (ver
+  seção "Memória de trabalho" acima), então se ele estiver certo, uma
+  sessão futura já começa com a informação correta mesmo que não
+  tenha lido README/CHANGELOG ainda.
+- Sempre que precisar confirmar ou atualizar "qual é a fase atual" —
+  seja pra decidir o próximo número de fase, seja pra revisar se o
+  banner/roadmap/changelog estão em dia — confira PRIMEIRO o que
+  PROGRESS.md → "Current status" diz, e trate README.md/CHANGELOG.md
+  como precisando ser conferidos CONTRA esse valor, nunca o
+  contrário. Se os três divergirem, PROGRESS.md é o desempate
+  (e a divergência em si já é um bug de sincronização a ser
+  corrigido nos outros dois).
+- Isso existe porque já aconteceu nesta sessão: o banner de versão
+  ficou 4 fases atrasado (preso em "Fase 10" com as Fases 11-13 já
+  concluídas) sem que ninguém percebesse até uma auditoria explícita
+  pedir a conferência. Uma sessão que confia cegamente no README/
+  CHANGELOG sem checar contra PROGRESS.md pode repetir esse mesmo
+  erro silenciosamente.

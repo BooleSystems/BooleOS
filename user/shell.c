@@ -1,5 +1,7 @@
 /* nullos/user/shell.c — interactive shell */
 
+#include "version.h"
+
 typedef unsigned int uint32_t;
 
 /* ── syscall wrappers ───────────────────────────────────────────── */
@@ -139,7 +141,7 @@ static char *sh_uitoa(uint32_t v, char *buf, unsigned int bufsz) {
 /* ── commands ───────────────────────────────────────────────────── */
 
 static void cmd_uname(void) {
-    sh_puts("NullOS v0.10.1 i686\n");
+    sh_puts(NULLOS_SHORT_BANNER " i686\n");
 }
 
 static void cmd_fetch(void) {
@@ -161,7 +163,7 @@ static void cmd_fetch(void) {
     char *n;
 
     /* line 0: logo + OS */
-    sh_puts(logo[0]); sh_puts("  OS: NullOS v0.10.1 i686\n");
+    sh_puts(logo[0]); sh_puts("  OS: " NULLOS_SHORT_BANNER " i686\n");
 
     /* line 1: logo + Arch */
     sh_puts(logo[1]); sh_puts("  Arch: i686\n");

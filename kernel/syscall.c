@@ -1,5 +1,4 @@
 // nullos/kernel/syscall.c
-#include "serial.h"
 #include "syscall.h"
 #include "process.h"
 #include "scheduler.h"
@@ -40,6 +39,82 @@ static int slot_of(process_t *p) {
             return (int)i;
     }
     return -1;
+}
+
+/* Resolves a byte in cur's virtual address space to its identity-mapped
+   physical address — but ONLY if that byte's page is both mapped and
+   user-accessible (VMM_USER) in cur's OWN directory, via
+   vmm_get_user_phys_from_dir(). This is deliberately stricter than the
+   plain vmm_get_phys_from_dir(): every process's directory clones the
+   kernel's own PDE0/PDE1 (identity map of the first 8MB — kernel heap,
+   page tables, IDT, ...), so that region always resolves as "present",
+   but it's mapped VMM_KERNEL, not VMM_USER. Every caller in this file
+   that touches a userland-supplied address — directly or through
+   copy_from_user()/copy_to_user()/copy_user_str() below — goes through
+   this, so none of them can be pointed at that shared kernel region.
+   See PROGRESS.md for the full writeup (this used to only check
+   "present", which is what let sys_write/sys_read/sys_write_file/
+   sys_meminfo, and separately sys_open/sys_create/sys_exec/sys_getarg
+   via copy_user_str(), treat that region as a legitimate buffer). */
+static char *user_kptr(process_t *cur, uint32_t uaddr) {
+    uint32_t phys = vmm_get_user_phys_from_dir(cur->cr3, uaddr);
+    if (!phys) return (char *)0;
+    return (char *)((phys & ~0xFFFu) | (uaddr & 0xFFFu));
+}
+
+/* ── user pointer validation / safe copy ─────────────────────────
+   Central point every syscall that touches a userland pointer MUST go
+   through before reading or writing it (or, for a bounded/whole-range
+   check, calling user_kptr() one byte at a time — see copy_user_str()
+   below — is an acceptable, already-existing alternative, since it
+   goes through the same VMM_USER-checked resolution). Before this
+   existed, sys_write, sys_read, sys_write_file and sys_meminfo all
+   dereferenced a raw userland-supplied address directly — a process
+   could pass a kernel address as its "buffer" and the kernel would
+   happily read kernel memory out to it (info leak) or write into it
+   (kernel memory corruption / trivial privilege escalation from ring
+   3), or just crash the whole machine on any unmapped address, since
+   exception_handler() halts unconditionally on a page fault. */
+static int user_ptr_valid(process_t *cur, uint32_t uaddr, uint32_t len) {
+    if (!cur || len == 0) return 0;
+    if (uaddr + len < uaddr) return 0;   /* reject address-space wraparound */
+
+    uint32_t page      = uaddr & ~0xFFFu;
+    uint32_t last_page  = (uaddr + len - 1) & ~0xFFFu;
+    for (;;) {
+        if (!vmm_get_user_phys_from_dir(cur->cr3, page)) return 0;
+        if (page == last_page) break;
+        page += 0x1000u;
+    }
+    return 1;
+}
+
+/* Copies len bytes from cur's userland address usrc into the kernel
+   buffer kdst. Validates the WHOLE range up front — nothing is copied
+   if any byte of it turns out to be unmapped, so callers never see a
+   partially-filled buffer on failure. */
+static int copy_from_user(process_t *cur, void *kdst, uint32_t usrc, uint32_t len) {
+    if (!user_ptr_valid(cur, usrc, len)) return -1;
+    uint8_t *dst = (uint8_t *)kdst;
+    for (uint32_t i = 0; i < len; i++) {
+        char *kp = user_kptr(cur, usrc + i);
+        if (!kp) return -1;
+        dst[i] = (uint8_t)*kp;
+    }
+    return 0;
+}
+
+/* Same as copy_from_user, opposite direction: writes len bytes from the
+   kernel buffer ksrc into cur's userland address udst. */
+static int copy_to_user(process_t *cur, uint32_t udst, const void *ksrc, uint32_t len) {
+    if (!user_ptr_valid(cur, udst, len)) return -1;
+    const uint8_t *src = (const uint8_t *)ksrc;
+    for (uint32_t i = 0; i < len; i++) {
+        char *kp = user_kptr(cur, udst + i);
+        if (!kp) return -1;
+        *kp = (char)src[i];
+    }
+    return 0;
 }
 
 /* ── SYS_FORK support ──────────────────────────────────────────
@@ -91,8 +166,15 @@ static uint32_t sys_fork(void) {
 static uint32_t sys_write(uint32_t fd, const char *buf, uint32_t len) {
     (void)fd;  // stdout only for now
     if (!buf) return (uint32_t)-1;
-    for (uint32_t i = 0; i < len; i++)
-        vga_putchar(buf[i]);
+    if (len == 0) return 0;
+
+    process_t *cur = process_current();
+    if (!user_ptr_valid(cur, (uint32_t)buf, len)) return (uint32_t)-1;
+
+    for (uint32_t i = 0; i < len; i++) {
+        char *kp = user_kptr(cur, (uint32_t)buf + i);
+        vga_putchar(*kp);
+    }
     return len;
 }
 
@@ -123,8 +205,17 @@ static uint32_t sys_getpid(void) {
 /* PID of the process in raw mode (no keyboard echo); -1 = none */
 static int raw_mode_pid = -1;
 
+/* file reads are staged through a small kernel buffer and copied out
+   with copy_to_user() in chunks, instead of ever handing the VFS/FAT16
+   backends the raw userland pointer directly — see the comment on
+   user_ptr_valid() above for why. */
+#define SYS_READ_CHUNK 128
+
 static uint32_t sys_read(uint32_t fd, char *buf, uint32_t len) {
     if (!buf || len == 0) return (uint32_t)-1;
+
+    process_t *cur = process_current();
+    if (!user_ptr_valid(cur, (uint32_t)buf, len)) return (uint32_t)-1;
 
     /* fd >= FD_BASE: file read via VFS */
     if (fd >= FD_BASE) {
@@ -134,8 +225,24 @@ static uint32_t sys_read(uint32_t fd, char *buf, uint32_t len) {
         if (idx >= FD_PER_PROC) return (uint32_t)-1;
         vfs_fd_t *f = &fd_table[slot][idx];
         if (!f->used) return (uint32_t)-1;
-        int r = vfs_read(f, buf, len);
-        return (r < 0) ? (uint32_t)-1 : (uint32_t)r;
+
+        uint32_t total = 0;
+        while (total < len) {
+            char     kchunk[SYS_READ_CHUNK];
+            uint32_t want = len - total;
+            if (want > SYS_READ_CHUNK) want = SYS_READ_CHUNK;
+
+            int r = vfs_read(f, kchunk, want);
+            if (r < 0) return (total > 0) ? total : (uint32_t)-1;
+            if (r == 0) break;   /* EOF */
+
+            if (copy_to_user(cur, (uint32_t)buf + total, kchunk, (uint32_t)r) < 0)
+                return (total > 0) ? total : (uint32_t)-1;
+
+            total += (uint32_t)r;
+            if ((uint32_t)r < want) break;   /* short read: EOF mid-chunk */
+        }
+        return total;
     }
 
     /* fd == 0: keyboard */
@@ -149,7 +256,8 @@ static uint32_t sys_read(uint32_t fd, char *buf, uint32_t len) {
 
         if (c == 0x03) {
             vga_puts("^C\n");
-            buf[0] = 0x03;
+            char ctrlc = 0x03;
+            if (copy_to_user(cur, (uint32_t)buf, &ctrlc, 1) < 0) return (uint32_t)-1;
             return 1;
         }
 
@@ -164,7 +272,9 @@ static uint32_t sys_read(uint32_t fd, char *buf, uint32_t len) {
             continue;
         }
 
-        buf[n++] = (char)c;
+        char ch = (char)c;
+        if (copy_to_user(cur, (uint32_t)buf + n, &ch, 1) < 0) return (uint32_t)-1;
+        n++;
 
         if (c == '\n')
             break;
@@ -176,16 +286,30 @@ static uint32_t sys_uptime(void) {
     return timer_get_ticks();
 }
 
-static uint32_t sys_meminfo(uint32_t *pmm_out, uint32_t *heap_out, uint32_t *procs_out) {
-    if (pmm_out)   *pmm_out   = pmm_free_pages();
-    if (heap_out)  *heap_out  = heap_free_bytes();
-    if (procs_out) {
+/* pmm_uaddr/heap_uaddr/procs_uaddr are raw userland addresses (0 = "skip
+   this one", matching the old NULL-pointer-skips-it behavior) — each is
+   copied out individually via copy_to_user() rather than dereferenced
+   directly, so a bad address just fails that one output instead of
+   writing 4 bytes wherever it happened to point. */
+static uint32_t sys_meminfo(uint32_t pmm_uaddr, uint32_t heap_uaddr, uint32_t procs_uaddr) {
+    process_t *cur = process_current();
+    if (!cur) return (uint32_t)-1;
+
+    uint32_t pmm_val = pmm_free_pages();
+    if (pmm_uaddr && copy_to_user(cur, pmm_uaddr, &pmm_val, sizeof(pmm_val)) < 0)
+        return (uint32_t)-1;
+
+    uint32_t heap_val = heap_free_bytes();
+    if (heap_uaddr && copy_to_user(cur, heap_uaddr, &heap_val, sizeof(heap_val)) < 0)
+        return (uint32_t)-1;
+
+    if (procs_uaddr) {
         uint32_t n = 0;
         for (uint32_t i = 0; i < PROCESS_MAX; i++) {
             process_t *p = process_at(i);
             if (p && p->state != PROCESS_UNUSED) n++;
         }
-        *procs_out = n;
+        if (copy_to_user(cur, procs_uaddr, &n, sizeof(n)) < 0) return (uint32_t)-1;
     }
     return 0;
 }
@@ -199,13 +323,6 @@ static uint32_t sys_ps(void) {
 static char exec_arg[64];
 
 #define USER_STR_MAX 64
-
-/* resolves a byte in cur's virtual address space to its identity-mapped physical address */
-static char *user_kptr(process_t *cur, uint32_t uaddr) {
-    uint32_t phys = vmm_get_phys_from_dir(cur->cr3, uaddr);
-    if (!phys) return (char *)0;
-    return (char *)((phys & ~0xFFFu) | (uaddr & 0xFFFu));
-}
 
 /* copies a string from the user's virtual address into a kernel buf */
 static int copy_user_str(process_t *cur, uint32_t uaddr, char *buf, uint32_t maxlen) {
@@ -222,28 +339,24 @@ static int copy_user_str(process_t *cur, uint32_t uaddr, char *buf, uint32_t max
 }
 
 static uint32_t sys_open(const char *user_name) {
-    serial_putchar('O'); serial_putchar('P'); serial_putchar('N'); serial_putchar('\n');
-    if (!user_name) { serial_putchar('A'); serial_putchar('\n'); return (uint32_t)-1; }
+    if (!user_name) return (uint32_t)-1;
     process_t *cur = process_current();
-    if (!cur) { serial_putchar('B'); serial_putchar('\n'); return (uint32_t)-1; }
+    if (!cur) return (uint32_t)-1;
     int slot = proc_slot();
-    if (slot < 0) { serial_putchar('C'); serial_putchar('\n'); return (uint32_t)-1; }
+    if (slot < 0) return (uint32_t)-1;
 
     char kname[USER_STR_MAX];
-    if (copy_user_str(cur, (uint32_t)user_name, kname, USER_STR_MAX) < 0) {
-        serial_putchar('D'); serial_putchar('\n'); return (uint32_t)-1;
-    }
+    if (copy_user_str(cur, (uint32_t)user_name, kname, USER_STR_MAX) < 0)
+        return (uint32_t)-1;
 
     /* find a free slot */
     for (uint32_t j = 0; j < FD_PER_PROC; j++) {
         if (!fd_table[slot][j].used) {
-            if (vfs_open(kname, &fd_table[slot][j]) < 0) {
-                serial_putchar('E'); serial_putchar('\n'); return (uint32_t)-1;
-            }
+            if (vfs_open(kname, &fd_table[slot][j]) < 0)
+                return (uint32_t)-1;
             return FD_BASE + j;
         }
     }
-    serial_putchar('F'); serial_putchar('\n');
     return (uint32_t)-1;  /* no free slots */
 }
 
@@ -392,6 +505,15 @@ static uint32_t sys_kill(uint32_t pid) {
     return (uint32_t)-1;
 }
 
+/* Caps a single write_file() call well above anything a real file this
+   OS deals with needs (edit.c's whole buffer is 4096 bytes) and well
+   below the heap's total capacity, so one write can't hog the entire
+   kernel heap. This is on top of, not instead of, the kmalloc() overflow
+   fix in heap.c — that fix stops a huge len from ever under-allocating,
+   this one stops a large-but-not-overflowing len from being handed to
+   kmalloc at all. */
+#define SYS_WRITE_FILE_MAX_LEN (64u * 1024u)
+
 static uint32_t sys_write_file(uint32_t fd, uint32_t user_buf, uint32_t len) {
     if (fd < FD_BASE) return (uint32_t)-1;
     int slot = proc_slot();
@@ -402,18 +524,18 @@ static uint32_t sys_write_file(uint32_t fd, uint32_t user_buf, uint32_t len) {
     if (!f->used || f->backend != VFS_FAT16) return (uint32_t)-1;
 
     if (len == 0) return (uint32_t)vfs_write(f, (const char *)0, 0);
+    if (len > SYS_WRITE_FILE_MAX_LEN) return (uint32_t)-1;
 
     process_t *cur = process_current();
     if (!cur) return (uint32_t)-1;
 
-    /* copies buf from userland into the kernel (heap) */
+    /* copies buf from userland into the kernel (heap), validated */
     char *kbuf = (char *)kmalloc(len);
     if (!kbuf) return (uint32_t)-1;
 
-    for (uint32_t i = 0; i < len; i++) {
-        char *kp = user_kptr(cur, user_buf + i);
-        if (!kp) { kfree(kbuf); return (uint32_t)-1; }
-        kbuf[i] = *kp;
+    if (copy_from_user(cur, kbuf, user_buf, len) < 0) {
+        kfree(kbuf);
+        return (uint32_t)-1;
     }
 
     int r = vfs_write(f, kbuf, len);
@@ -429,7 +551,7 @@ uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t ar
         case SYS_GETPID:  return sys_getpid();
         case SYS_READ:    return sys_read(arg1, (char *)arg2, arg3);
         case SYS_UPTIME:  return sys_uptime();
-        case SYS_MEMINFO: return sys_meminfo((uint32_t *)arg1, (uint32_t *)arg2, (uint32_t *)arg3);
+        case SYS_MEMINFO: return sys_meminfo(arg1, arg2, arg3);
         case SYS_PS:      return sys_ps();
         case SYS_KILL:    return sys_kill(arg1);
         case SYS_EXEC:    return sys_exec((const char *)arg1, arg2);

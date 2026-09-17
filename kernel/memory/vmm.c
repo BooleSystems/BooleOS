@@ -71,6 +71,27 @@ uint32_t vmm_get_phys_from_dir(uint32_t pd_phys, uint32_t virt) {
     return (pt[ti] & 0xFFFFF000) | (virt & 0xFFF);
 }
 
+/* Same as vmm_get_phys_from_dir(), but additionally requires VMM_USER on
+   both the PDE and the PTE — i.e. only resolves addresses a ring-3
+   process is actually meant to touch. vmm_get_phys_from_dir() returns a
+   physical address for ANY present mapping, including the shared
+   kernel identity map (PDE 0/1, cloned into every process's directory
+   by vmm_create_directory() with VMM_KERNEL — PRESENT|WRITABLE, no
+   VMM_USER — so it never satisfies this check). This is what syscalls
+   validating a userland-supplied pointer must use instead: without the
+   USER-bit check, a process could hand the kernel an address inside
+   its own cloned 0-8MB identity map (kernel heap, page tables, ...) and
+   have it treated as "mapped, therefore fine to read/write". */
+uint32_t vmm_get_user_phys_from_dir(uint32_t pd_phys, uint32_t virt) {
+    uint32_t di = virt >> 22;
+    uint32_t ti = (virt >> 12) & 0x3FF;
+    pde_t *pd = (pde_t *)pd_phys;
+    if (!(pd[di] & VMM_PRESENT) || !(pd[di] & VMM_USER)) return 0;
+    pte_t *pt = (pte_t *)(pd[di] & 0xFFFFF000);
+    if (!(pt[ti] & VMM_PRESENT) || !(pt[ti] & VMM_USER)) return 0;
+    return (pt[ti] & 0xFFFFF000) | (virt & 0xFFF);
+}
+
 uint32_t vmm_get_kernel_directory(void) {
     return (uint32_t)PAGE_DIR_ADDR;
 }

@@ -1,0 +1,24 @@
+## nullos/tools/grub.cfg.in
+## GRUB configuration TEMPLATE for NullOS. The menu entry's version
+## placeholder below is substituted with the version from
+## kernel/version.h by the "GEN grub.cfg" rule in tools/Makefile — do
+## not hardcode a version string here, and do not edit build/grub.cfg
+## directly (it's generated and gets overwritten on the next build).
+
+set timeout=3
+set default=0
+
+insmod all_video
+insmod multiboot2
+
+menuentry "NullOS v@NULLOS_VERSION@" {
+    multiboot2 /boot/nullos.elf
+    module2    /boot/ramfs.img
+    boot
+}
+
+menuentry "NullOS (serial debug mode)" {
+    multiboot2 /boot/nullos.elf debug
+    module2    /boot/ramfs.img
+    boot
+}

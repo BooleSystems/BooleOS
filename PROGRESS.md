@@ -12,12 +12,19 @@ build instructions, file structure). Link to the README section instead.
 
 ## Current status
 
-Last completed phase: **Phase 13** — `fork()` with full address-space copy,
-race-safe slot allocation, fd table duplication (`SYS_FORK`).
-See `README.md` → Roadmap table + "What's implemented" for full detail.
+Last completed phase: **Phase 14** — kernel memory-safety hardening:
+`user_ptr_valid()`/`copy_from_user()`/`copy_to_user()` at the syscall
+boundary, fixing 4 confirmed ring 3 → ring 0 memory read/write bugs
+(`sys_write`, `sys_read`, `sys_write_file`, `sys_meminfo`) plus a
+`kmalloc()` integer-overflow bug; extended to close the same gap in
+`sys_open`/`sys_create`/`sys_exec`/`sys_getarg` via `user_kptr()`; also
+removed leftover debug output in `sys_open` and centralized the
+version string in `kernel/version.h`.
+See `README.md` → Roadmap table + "What's implemented" (Usermode and
+syscalls) + CHANGELOG.md `[0.14.0]` for full detail.
 
 Future roadmap: see `README.md` → "Future roadmap — detailed planning
-(Phases 14–20)" for the full per-phase breakdown and priority order.
+(Phases 15–21)" for the full per-phase breakdown and priority order.
 
 ## Architecture decisions (non-obvious from reading the code alone)
 
@@ -68,6 +75,46 @@ Future roadmap: see `README.md` → "Future roadmap — detailed planning
   (a flush timeout looking like "nothing was written") — recorded here so
   it isn't "fixed" back into a false failure by a future session.
 
+- **Userland pointer validation is centralized in `kernel/syscall.c`,
+  not `kernel/memory/vmm.c`** (`user_ptr_valid()`, `copy_from_user()`,
+  `copy_to_user()`, added in Phase 14). Every syscall that reads or
+  writes through a userland-supplied address MUST go through one of
+  these before touching it — see the block comment above
+  `user_ptr_valid()` for the full rationale. The key mechanism they're
+  built on is `vmm_get_user_phys_from_dir()` (`kernel/memory/vmm.c`),
+  which is deliberately stricter than the pre-existing
+  `vmm_get_phys_from_dir()`: it also requires `VMM_USER` on both the
+  PDE and PTE, not just "present". This distinction is the whole fix —
+  every process's page directory clones the kernel's own PDE0/PDE1 (the
+  identity-mapped first 8MB: kernel heap, page tables, ...), so that
+  region is always "present" in every process, just never `VMM_USER`.
+  A validator that only checked "present" (like the one first tried
+  during this fix) would still treat that shared kernel region as a
+  legitimate buffer.
+  `user_kptr()` itself (the byte-resolution helper `copy_from_user()`/
+  `copy_to_user()`/`copy_user_str()` are all built on) was initially
+  left resolving through the looser `vmm_get_phys_from_dir()` — the
+  same gap, just reachable through `sys_open`/`sys_create`/`sys_exec`/
+  `sys_getarg`'s filename/argument strings instead of an
+  arbitrary-length buffer. Closed in the same phase by switching
+  `user_kptr()` to `vmm_get_user_phys_from_dir()` too, which fixed all
+  four call sites at once with no change needed in any of them.
+
+- **`kernel/version.h` is a plain-macro header shared across the
+  kernel/userland boundary** (added end of Phase 14). It's the single
+  source of truth for the version string — `kernel/main.c`'s boot
+  banner, `user/shell.c`'s `fetch`/`uname`, and `tools/grub.cfg`
+  (generated at build time from `tools/grub.cfg.in` via a Makefile
+  rule) all read from it, so the version can no longer drift between
+  them the way it already had twice. `user/shell.c` including a header
+  that lives under `kernel/` looks like it violates the kernel/
+  userland separation, but it's safe here specifically because
+  version.h contains only string/text `#define`s — no kernel types,
+  structs, or function declarations a userland translation unit
+  shouldn't see. Any future shared-header candidate needs the same
+  "macros only, nothing kernel-internal" property before it's safe to
+  include from `user/`.
+
 ## Known technical debt
 
 - **Duplicated dirent lookup: `fat16_find` vs. `fat16_write_file`**
@@ -77,7 +124,7 @@ Future roadmap: see `README.md` → "Future roadmap — detailed planning
   `fat16_find` but left in place in the `fat16_write_file` copy, since
   they're separate code paths. Both currently build an explicit 11-byte
   buffer correctly (see the comment at `fat16.c:319`), but the duplication
-  itself is still there — Phase 16 (FAT16 subdirectories) is flagged in
+  itself is still there — Phase 17 (FAT16 subdirectories) is flagged in
   the README roadmap as a good point to unify this into one function
   before extending it further.
 
@@ -88,7 +135,7 @@ Future roadmap: see `README.md` → "Future roadmap — detailed planning
   leak: slots stay safely reusable because `process_spawn()`/
   `process_fork()` always allocate a fresh `cr3` for whatever runs next in
   that slot, but physical memory is never returned to the PMM. Relevant
-  to Phase 15 (copy-on-write fork), which will need real refcounting
+  to Phase 16 (copy-on-write fork), which will need real refcounting
   before this can be fixed properly.
 
 - **`process_spawn()`/`process_spawn_user()` scan for a free slot without

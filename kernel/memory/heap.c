@@ -83,6 +83,14 @@ void heap_init(void) {
 void *kmalloc(size_t size) {
     if (size == 0) return 0;
 
+    // Reject anything that could never fit before doing any arithmetic on
+    // it: a size close to UINT32_MAX would overflow the "align to 4 bytes"
+    // step below (size + 3 wrapping past 0), silently handing back a much
+    // smaller block than requested. The heap can never satisfy more than
+    // HEAP_MAX - HEAP_START bytes anyway, so this is a real limit, not an
+    // arbitrary one.
+    if (size > (HEAP_MAX - HEAP_START)) return 0;
+
     // Align to 4 bytes
     size = (size + 3) & ~3U;
 

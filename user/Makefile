@@ -12,7 +12,8 @@ CFLAGS = -m32 \
           -nostdlib \
           -O2 \
           -Wall \
-          -Wextra
+          -Wextra \
+          -I../kernel
 
 .PHONY: all clean
 
@@ -26,7 +27,7 @@ $(BUILD)/spintest.elf: spintest.c link.ld
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -T link.ld -o $@ spintest.c
 
-$(BUILD)/shell.elf: shell.c link.ld
+$(BUILD)/shell.elf: shell.c link.ld ../kernel/version.h
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -T link.ld -o $@ shell.c
 

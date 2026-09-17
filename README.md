@@ -9,7 +9,7 @@
  | |\  | |_| | | | |_| |___) |
  |_| \_|\__,_|_|_|\___/|____/ 
 
- NullOS v0.10.1 - Phase 10: persistent disk (ATA PIO + FAT16)
+ NullOS v0.14.0 - Phase 14: user pointer validation
 ```
 
 ## Overview
@@ -38,70 +38,71 @@ See CHANGELOG.md for version history.
 | **11** | PCI bus enumeration (legacy Configuration Mechanism #1), device table, `SYS_PCI_LIST`/`lspci` | ✅ Done |
 | **12** | ATA IRQ-driven I/O: IRQ14/15 handlers, process blocking instead of busy-wait, exclusion gate, `PROCESS_BLOCKED` | ✅ Done |
 | **13** | `fork()`: full address-space duplication, fabricated child kernel stack (resumes via `isr128_resume`), fd table duplication, `SYS_FORK` | ✅ Done |
-| **14** | Inter-process pipes + a real `waitpid()`; the shell gains `cmd1 \| cmd2` redirection built on top of the existing `fork()` | 🔜 Planned |
-| **15** | Copy-on-write `fork()`: defer the address-space copy until the first write instead of duplicating everything upfront (the classic optimization for the `fork()`+`exec()` pattern) | 🔜 Planned |
-| **16** | FAT16 subdirectories (today only the root directory exists) | 🔜 Planned |
-| **17** | `e1000` network driver (already visible in Phase 11's PCI enumeration) + a minimal TCP/IP stack; initial goal is answering `ping` | 🔜 Planned |
-| **18** | AHCI (modern SATA) driver — requires switching the QEMU machine to `-machine q35` (ICH9), since the default i440FX chipset doesn't expose AHCI | 🔜 Planned |
-| **19** | USB HID via the xHCI controller, so keyboard/mouse work on modern hardware without a physical PS/2 port | 🔜 Planned |
-| **20** | Linear framebuffer (via the Multiboot2 framebuffer tag) + a simple GUI (rectangular windows, mouse), replacing VGA text mode | 🔜 Planned |
+| **14** | Kernel memory-safety hardening: `user_ptr_valid()`/`copy_from_user()`/`copy_to_user()` validate every userland pointer a syscall touches, closing 4 confirmed ring 3 → ring 0 arbitrary memory read/write bugs (`sys_write`, `sys_read`, `sys_write_file`, `sys_meminfo`), a `kmalloc()` integer-overflow bug, and (via the same fix in `user_kptr()`) the same gap in `sys_open`/`sys_create`/`sys_exec`/`sys_getarg`; leftover debug output removed from `sys_open`; version string centralized in `kernel/version.h` | ✅ Done |
+| **15** | Inter-process pipes + a real `waitpid()`; the shell gains `cmd1 \| cmd2` redirection built on top of the existing `fork()` | 🔜 Planned |
+| **16** | Copy-on-write `fork()`: defer the address-space copy until the first write instead of duplicating everything upfront (the classic optimization for the `fork()`+`exec()` pattern) | 🔜 Planned |
+| **17** | FAT16 subdirectories (today only the root directory exists) | 🔜 Planned |
+| **18** | `e1000` network driver (already visible in Phase 11's PCI enumeration) + a minimal TCP/IP stack; initial goal is answering `ping` | 🔜 Planned |
+| **19** | AHCI (modern SATA) driver — requires switching the QEMU machine to `-machine q35` (ICH9), since the default i440FX chipset doesn't expose AHCI | 🔜 Planned |
+| **20** | USB HID via the xHCI controller, so keyboard/mouse work on modern hardware without a physical PS/2 port | 🔜 Planned |
+| **21** | Linear framebuffer (via the Multiboot2 framebuffer tag) + a simple GUI (rectangular windows, mouse), replacing VGA text mode | 🔜 Planned |
 
-## Future roadmap — detailed planning (Phases 14–20)
+## Future roadmap — detailed planning (Phases 15–21)
 
-The table above gives the one-line summary of each planned phase. This section expands each one with its goal, intended approach, main risk, and dependencies on other phases, as of the current planning pass. No code has changed as part of this — this is a documentation-only update.
+The table above gives the one-line summary of each planned phase. This section expands each one with its goal, intended approach, main risk, and dependencies on other phases, as of the current planning pass. No code has changed as part of this — this is a documentation-only update. (Phases 15–21 here were Phases 14–20 before Phase 14 was taken by the security-hardening work above — see CHANGELOG.md.)
 
-#### Phase 14 — Inter-process pipes + `waitpid()`
+#### Phase 15 — Inter-process pipes + `waitpid()`
 
 - **Goal:** the shell supports `cmd1 | cmd2`; `waitpid(pid)` blocks until one *specific* process terminates (not just the generic `sys_wait`).
 - **Approach:** a pipe is a circular buffer allocated on the kernel heap, following the same pattern as the existing keyboard ringbuffer, with a read fd and a write fd. Built on top of `fork()` (Phase 13) plus fd redirection into the read/write ends of the pipe. `waitpid` reuses the `PROCESS_BLOCKED` state introduced in Phase 12.
 - **Main risk:** a writer blocking on a full pipe and a reader blocking on an empty pipe at the same time — the same class of deadlock hazard that Phase 12 (IRQ-driven ATA) already required care around.
 - **Depends on:** Phase 13 (`fork()`) — already done.
 
-#### Phase 15 — Copy-on-write `fork()`
+#### Phase 16 — Copy-on-write `fork()`
 
 - **Goal:** `fork()` no longer copies all physical memory up front; the parent's pages become read-only and shared until the first write.
 - **Approach:** requires a smart page-fault handler (exception 14) that distinguishes a COW fault from a real fault, allocates a new page on demand, copies the data, and remaps it read-write. Needs a per-physical-page refcount in the PMM (which likely doesn't exist yet) to know when it's safe to free a shared page.
 - **Main risk:** without a correct refcount, one process can free a page the other is still using.
-- **Depends on:** Phase 13 (`fork()`). Recommended after Phase 14 (pipes) is stable, to avoid debugging two new features at once.
+- **Depends on:** Phase 13 (`fork()`). Recommended after Phase 15 (pipes) is stable, to avoid debugging two new features at once.
 
-#### Phase 16 — FAT16 subdirectories
+#### Phase 17 — FAT16 subdirectories
 
 - **Goal:** `mkdir`, `cd`, and commands (`ls`/`edit`/`touch`) accept a path with a subfolder (e.g. `edit docs/notes.txt`), not just a flat name at the root.
 - **Approach:** FAT16 natively supports this (a dirent with the `ATTR_DIRECTORY` attribute points to a cluster holding another dirent table). Needs: a path parser (split on `/`), recursive navigation reusing the existing dirent lookup logic, and `fat16_mkdir` (creates a directory-attribute entry and allocates a cluster containing `.` and `..`).
 - **Main risk / opportunity:** a good moment to refactor the dirent lookup that's currently duplicated between `fat16_find` and `fat16_write_file` (known tech debt — an out-of-bounds bug was previously fixed in one copy but not the other). Unifying it into a single function before extending to subdirectories avoids repeating that bug a third time.
-- **Depends on:** nothing beyond Phase 10 (already done). Can be done at any time, independent of the process-related phases (14/15).
+- **Depends on:** nothing beyond Phase 10 (already done). Can be done at any time, independent of the process-related phases (15/16).
 
-#### Phase 17 — `e1000` network driver + minimal TCP/IP
+#### Phase 18 — `e1000` network driver + minimal TCP/IP
 
 - **Goal:** a modest starting point — respond to `ping` (ICMP echo request).
 - **Approach:** the `e1000` device was already detected via PCI enumeration in Phase 11. Steps: (a) use `pci.c` to find the device's memory BAR and map it via the VMM (it's memory-mapped I/O, unlike port I/O as used by ATA); (b) initialize RX/TX descriptor rings (the Intel datasheet is well documented publicly); (c) parse Ethernet frames; (d) implement ARP; (e) implement enough of IP+ICMP to answer a ping.
-- **Main risk:** the largest scope in the roadmap — recommended to split into sub-phases (17a: raw driver sending/receiving a frame; 17b: ARP; 17c: IP+ICMP) rather than attempting it all at once.
-- **Depends on:** Phase 11 (PCI) — already done. Independent of Phases 14–16.
+- **Main risk:** the largest scope in the roadmap — recommended to split into sub-phases (18a: raw driver sending/receiving a frame; 18b: ARP; 18c: IP+ICMP) rather than attempting it all at once.
+- **Depends on:** Phase 11 (PCI) — already done. Independent of Phases 15–17.
 
-#### Phase 18 — AHCI driver (modern SATA)
+#### Phase 19 — AHCI driver (modern SATA)
 
 - **Goal:** disk access on a real SATA controller via AHCI, not just the legacy emulated IDE.
 - **Approach:** requires switching the QEMU machine to `-machine q35` (the ICH9 chipset exposes AHCI; the default i440FX chipset doesn't). AHCI uses memory-mapped registers (BAR5) with a "command list" + "FIS" structure, quite different from the current ATA PIO interface. The VFS interface (`vfs_read`/`vfs_write`) shouldn't need to change — only the driver underneath it.
 - **Main risk / note:** switching QEMU machine type also changes which PCI devices get enumerated (different chipset = different IDs) — this is expected, not a bug, but can be confusing if tested without knowing this in advance.
-- **Depends on:** Phase 11 (PCI). Recommended after Phase 17 (networking), since networking doesn't require a chipset switch — this isolates the environment change to a single phase.
+- **Depends on:** Phase 11 (PCI). Recommended after Phase 18 (networking), since networking doesn't require a chipset switch — this isolates the environment change to a single phase.
 
-#### Phase 19 — USB HID via the xHCI controller
+#### Phase 20 — USB HID via the xHCI controller
 
 - **Goal:** keyboard/mouse working over USB — essential for running on modern hardware without a physical PS/2 port.
 - **Approach:** xHCI has its own descriptor structures and considerably more state than AHCI, with a full USB protocol stack on top (device enumeration, descriptors, endpoints, control and interrupt transfers).
-- **Main risk:** by far the largest scope/complexity phase in the entire roadmap — recommended to treat as its own sub-roadmap (19a: enumerate the xHCI controller; 19b: port reset; 19c: enumerate the connected device; 19d: parse HID reports; etc.) rather than one monolithic phase.
-- **Depends on:** Phase 11 (PCI). Technically independent of Phases 14–18, but recommended to come last among the driver phases since it's the largest complexity jump.
+- **Main risk:** by far the largest scope/complexity phase in the entire roadmap — recommended to treat as its own sub-roadmap (20a: enumerate the xHCI controller; 20b: port reset; 20c: enumerate the connected device; 20d: parse HID reports; etc.) rather than one monolithic phase.
+- **Depends on:** Phase 11 (PCI). Technically independent of Phases 15–19, but recommended to come last among the driver phases since it's the largest complexity jump.
 
-#### Phase 20 — Linear framebuffer + simple GUI
+#### Phase 21 — Linear framebuffer + simple GUI
 
 - **Goal:** move off VGA text mode into a real graphics mode (pixels), with rectangular windows and mouse support.
 - **Approach:** GRUB2/Multiboot2 can hand over a linear framebuffer directly via a Multiboot2 protocol tag (no need for a real GPU driver like VBE/BIOS calls, which don't work anymore once protected mode has been entered) — just request it in `grub.cfg` and read the physical address from the structure.
-- **Main risk / note:** without a working mouse (Phase 19), a "GUI" with no decent input has limited value — recommended after Phase 19, even though the framebuffer itself has no technical dependency on USB.
-- **Depends on:** none technically, but gains much more value after Phase 19 (mouse).
+- **Main risk / note:** without a working mouse (Phase 20), a "GUI" with no decent input has limited value — recommended after Phase 20, even though the framebuffer itself has no technical dependency on USB.
+- **Depends on:** none technically, but gains much more value after Phase 20 (mouse).
 
 ### Recommended priority order
 
-**Phase 16 → Phase 14 → Phase 17 → Phase 15 → Phase 18 → Phase 19 → Phase 20.**
+**Phase 17 → Phase 15 → Phase 18 → Phase 16 → Phase 19 → Phase 20 → Phase 21.**
 
 Rationale: start with the lowest-risk work that doesn't require changing the test environment, and save the highest-complexity / environment-changing phases for last.
 
@@ -115,6 +116,7 @@ Rationale: start with the lowest-risk work that doesn't require changing the tes
 - Remapped 8259 PIC (IRQs 0–15 → vectors 32–47)
 - PIT configured at 100 Hz
 - PS/2 keyboard driver
+- Version string centralized in `kernel/version.h` (`NULLOS_VERSION`/`NULLOS_PHASE`/`NULLOS_PHASE_DESC`, plus the composed `NULLOS_BANNER`/`NULLOS_SHORT_BANNER`) — the boot banner (`kernel/main.c`), the userland shell's `fetch`/`uname` (`user/shell.c`, which includes this header directly since it's plain text macros with no kernel types), and the GRUB menu label (`tools/grub.cfg`, generated at build time from `tools/grub.cfg.in`) all read from this one place
 
 ### Memory
 - PMM: physical page bitmap (64 MB)
@@ -132,6 +134,8 @@ Rationale: start with the lowest-risk work that doesn't require changing the tes
 - `jump_to_usermode` via `iret` with ring 3 segments (CS=0x1B, SS=0x23)
 - Isolation via per-process CR3
 - Syscall gate: `int 0x80`, convention `eax=num, ebx=arg1, ecx=arg2, edx=arg3`
+- Userland pointer validation: every syscall that reads or writes through a userland-supplied address (`sys_write`, `sys_read`, `sys_write_file`, `sys_meminfo`) goes through `user_ptr_valid()`/`copy_from_user()`/`copy_to_user()` (`kernel/syscall.c`), which confirm the whole `[addr, addr+len)` range is mapped **and** `VMM_USER` (via `vmm_get_user_phys_from_dir()`) before touching a single byte — a process can no longer point a syscall at the kernel's own identity-mapped memory (heap, page tables, ...) to read or corrupt it
+- The same `VMM_USER` check is enforced for filename/argument strings too: `user_kptr()` — the shared byte-resolution helper `copy_user_str()` is built on, used by `sys_open`, `sys_create`, `sys_exec`, and `sys_getarg` — resolves through `vmm_get_user_phys_from_dir()` as well, so those four syscalls got the same fix with no changes of their own
 
 | num | name | signature |
 |-----|------|------------|
@@ -248,6 +252,7 @@ boot/
   linker.ld           Memory layout (kernel @ 0x100000)
 kernel/
   main.c              kmain: initialization and the scheduler loop
+  version.h           Single source of truth for the version string
   gdt.c/asm           Global Descriptor Table
   idt.c               Interrupt Descriptor Table + exception handler
   isr.asm             Exception stubs and the syscall gate (isr128)
@@ -285,7 +290,7 @@ user/
   Makefile            builds init.elf, spintest.elf, shell.elf, edit.elf, and forktest.elf
 tools/
   Makefile            Build system (i686-elf-gcc + NASM + grub2-mkrescue), `disk` target
-  grub.cfg            GRUB configuration
+  grub.cfg.in         GRUB configuration template (version substituted at build time from kernel/version.h → build/grub.cfg)
   make_disk.sh        generates build/disk.img (FAT16, 32 MB) if it doesn't already exist
 build/                Build artifacts (git-ignored) — includes disk.img (persists across builds)
 ```
@@ -318,7 +323,7 @@ To load an `init` program:
    [ELF bytes]
    ```
 
-3. Add it to `grub.cfg`:
+3. Add it to `grub.cfg.in`:
    ```
    module2 /boot/ramfs.img
    ```

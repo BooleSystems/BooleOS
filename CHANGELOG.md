@@ -13,12 +13,127 @@ memory this changelog doesn't duplicate.
 
 **A note on version numbers:** the project's own README version banner
 was bumped inconsistently in a few places, and was never bumped at all
-past `v0.10.1` even though Phases 11–13 were completed afterward. Those
-inconsistencies are called out inline below rather than silently
-"corrected", and `[0.11.0]`–`[0.13.0]` for Phases 11–13 are this
-changelog's own numbering (following the `Phase N → v0.N.0` pattern the
-project used through Phase 10), not a version string that ever actually
-appeared in the repo.
+past `v0.10.1` even though Phases 11–13 were completed afterward — until
+Phase 14 (below), which is the first phase since Phase 10 to actually
+update the banner (now `v0.14.0`). Those older inconsistencies are
+called out inline rather than silently "corrected", and `[0.11.0]`–
+`[0.13.0]` for Phases 11–13 are this changelog's own numbering
+(following the `Phase N → v0.N.0` pattern the project used through
+Phase 10), not a version string that ever actually appeared in the repo
+at the time.
+
+## [0.14.0] - Phase 14: kernel memory-safety hardening
+
+Fixes 4 confirmed bugs found in a memory-safety audit, all sharing the
+same root cause: a syscall receiving a userland pointer and reading or
+writing through it without validating that the address actually
+belongs to (and is accessible by) the calling process. Since every
+process's page directory clones the kernel's own PDE0/PDE1 (the
+identity-mapped first 8MB — kernel heap, page tables, IDT, ...), any of
+these let a ring 3 process read or corrupt kernel memory it was never
+meant to touch — a trivial privilege escalation primitive, not just a
+crash bug. This phase also extends the same fix to the rest of the
+syscall surface that touches a userland pointer (filename/argument
+strings), fixes the `kmalloc()` bug the `sys_write_file` fix depends
+on, removes unrelated leftover debug output found along the way, and
+closes out with a build-tooling cleanup (a single source of truth for
+the version string) — all landed as part of this one phase/version,
+not spread across several.
+
+### Added
+- `kernel/syscall.c`: `user_ptr_valid(cur, uaddr, len)` — checks that
+  every page in `[uaddr, uaddr+len)` is mapped in the calling process's
+  own address space AND carries `VMM_USER` (not just "present" — the
+  shared kernel identity map is present in every process's directory
+  too, just not `VMM_USER`)
+- `kernel/syscall.c`: `copy_from_user()` / `copy_to_user()` — validate
+  a range with `user_ptr_valid()` and only then copy it byte-by-byte
+  via the existing `user_kptr()` translation; copy nothing if any part
+  of the range is invalid (no partial copies on failure)
+- `kernel/memory/vmm.c`/`vmm.h`: `vmm_get_user_phys_from_dir()` — like
+  the existing `vmm_get_phys_from_dir()`, but returns 0 unless the PDE
+  *and* PTE both have `VMM_USER` set. This is the actual mechanism
+  `user_ptr_valid()` (and, below, `user_kptr()`) is built on: without
+  the `VMM_USER` check, a validator that only tested "is this address
+  mapped at all" would still treat the shared kernel identity map as a
+  valid target.
+- `kernel/version.h`: single source of truth for the OS version
+  (`NULLOS_VERSION`, `NULLOS_PHASE`, `NULLOS_PHASE_DESC`, and the
+  composed `NULLOS_BANNER`/`NULLOS_SHORT_BANNER`) — see "Changed"
+  below for why and where it's used.
+
+### Fixed
+- **`sys_write`** — read `buf[0..len)` directly from a raw userland
+  pointer with no validation; a process could point it at kernel memory
+  (heap, page tables) and have the kernel print it out, or at any
+  unmapped address and crash the whole machine (see the `idt.c` note
+  below). Now validates the whole range with `user_ptr_valid()` before
+  reading a single byte.
+- **`sys_read`** — wrote into a raw userland pointer with no
+  validation, for both the keyboard path and the file-read (VFS) path;
+  this was a write primitive into arbitrary kernel memory from ring 3,
+  the most severe of the four. Now stages file reads through a small
+  bounded kernel buffer and keyboard input through single-byte kernel
+  locals, copying each chunk out via `copy_to_user()`.
+- **`sys_write_file` + `kmalloc()`** — two chained bugs: (a) `kmalloc`'s
+  `size = (size + 3) & ~3U` alignment step overflowed for a `size` near
+  `UINT32_MAX`, silently handing back a much smaller block than
+  requested; (b) `sys_write_file`'s copy loop then used the *original*
+  (unclamped) `len` to copy userland data into that undersized block —
+  a real, exploitable kernel heap overflow with attacker-controlled
+  length and content. Fixed in both places: `kmalloc()` now rejects any
+  `size` above `HEAP_MAX - HEAP_START` before doing any arithmetic on
+  it (so the alignment step can no longer wrap), and `sys_write_file`
+  separately rejects `len` above a 64KB cap before ever calling
+  `kmalloc`, then uses `copy_from_user()` instead of a manual
+  unvalidated per-byte loop.
+- **`sys_meminfo`** — wrote its three `uint32_t` results directly
+  through raw userland pointers with no validation, an arbitrary
+  4-byte write to any address in the calling process's page directory.
+  Now takes the three addresses as plain `uint32_t` and writes each one
+  out via `copy_to_user()` (a `0` address is treated as "skip this
+  output", matching the previous NULL-pointer-skips-it behavior).
+- **`sys_open`, `sys_create`, `sys_exec`, `sys_getarg`** — same root
+  cause as the four bugs above, just reached through a filename or
+  `SYS_EXEC` argument string instead of an arbitrary-length buffer:
+  `user_kptr()` (the byte-resolution helper `copy_from_user()`/
+  `copy_to_user()` above are built on, and that `copy_user_str()` — the
+  string-copy helper these four syscalls use — is also built on)
+  resolved addresses through the plain `vmm_get_phys_from_dir()`
+  (present-only, no `VMM_USER` check). `user_kptr()` now resolves
+  through `vmm_get_user_phys_from_dir()` instead, which fixes all four
+  syscalls at once with no change needed in any of them individually.
+
+### Changed
+- `kernel/syscall.c`: removed leftover debug instrumentation in
+  `sys_open` (`serial_putchar('O')...'F'` markers) — temporary
+  debugging left behind from an earlier session, against the project's
+  own convention of removing it once the investigation is done. The
+  now-unused `#include "serial.h"` was dropped along with it.
+- Single source of truth for the version string: it had drifted
+  independently in `kernel/main.c`'s boot banner, `user/shell.c`'s
+  `fetch`/`uname` commands, and `tools/grub.cfg`'s menu entry — three
+  places to remember to update by hand, which had already been missed
+  twice. All three now read from the new `kernel/version.h`:
+  - `kernel/main.c` prints `NULLOS_BANNER` instead of a literal string.
+  - `user/shell.c` includes `kernel/version.h` directly (it's plain
+    text macros, no kernel types/functions, so it's safe for a
+    userland compilation unit to include) and uses
+    `NULLOS_SHORT_BANNER`; `user/Makefile` gained `-I../kernel` so the
+    include resolves.
+  - `tools/grub.cfg` is no longer a static file — it's generated at
+    build time as `build/grub.cfg` from a new `tools/grub.cfg.in`
+    template by a `GEN grub.cfg` Makefile rule that pulls the version
+    straight out of `kernel/version.h` via `sed`. The old
+    `tools/grub.cfg` was renamed to `tools/grub.cfg.in`.
+  - This is also the first time since Phase 10 that the boot banner
+    was actually bumped — it had been stuck reading `v0.10.1 - Phase
+    10` through Phases 11, 12 and 13 (see the version-numbers note at
+    the top of this file), each of which shipped without updating it.
+    The banner now reads `v0.14.0 - Phase 14: user pointer validation`,
+    and from here on the banner's version is kept in lock step with
+    the phase number as each phase lands, per the convention
+    documented in CLAUDE.md.
 
 ## [0.13.0] - Phase 13: fork()
 
