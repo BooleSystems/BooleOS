@@ -9,7 +9,7 @@
  | |\  | |_| | | | |_| |___) |
  |_| \_|\__,_|_|_|\___/|____/ 
 
- NullOS v0.14.1 - Phase 14: user pointer validation
+ NullOS v0.14.2 - Phase 14: user pointer validation
 ```
 
 ## Overview

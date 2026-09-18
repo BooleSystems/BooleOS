@@ -209,8 +209,15 @@
   planejada lá? CHANGELOG atualizado? PROGRESS.md atualizado (se
   aplicável)? syscall.h conferido contra a tabela de syscalls de
   docs/syscalls.md (ver regra abaixo)? PROGRESS.md conferido como
-  fonte primária do número de fase (ver regra abaixo)? Só considere
-  a fase "concluída" quando todos esses pontos estiverem
+  fonte primária do número de fase (ver regra abaixo)? bloco de
+  banner ASCII hardcoded no README.md (o bloco de código logo no
+  topo, com "NullOS vX.Y.Z - Phase N: ...") conferido e atualizado
+  pra versão nova — ele NÃO é gerado automaticamente a partir de
+  version.h como o banner de boot real ou o grub.cfg, precisa ser
+  editado manualmente toda vez (isso já causou o mesmo problema mais
+  de uma vez: primeiro na Fase 14 original, depois de novo no bump
+  pra 0.14.2)? Só considere a fase "concluída" quando todos esses
+  pontos estiverem
   sincronizados no mesmo commit.
 - NUNCA invente um número de versão pra uma fase que não existe ou
   não foi pedida — se não tiver certeza do número de fase correto,
