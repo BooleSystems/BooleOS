@@ -1,6 +1,6 @@
 # Memory management
 
-- PMM: physical page bitmap (64 MB)
+- PMM: physical page bitmap, capped at 8192 pages (`PMM_MAX_PAGES`, `kernel/memory/pmm.h`) × 4KB pages = 32 MB tracked, regardless of how much RAM QEMU is actually given (`-m 256M` in `tools/Makefile`'s `run` target) — pages beyond the cap are simply never tracked/allocatable
 - VMM: 32-bit paging with 0–8 MB identity map, per-process directories
 - Kernel heap: `kmalloc`/`kfree` with first-fit
 

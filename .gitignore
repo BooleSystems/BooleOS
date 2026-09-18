@@ -1,1 +1,11 @@
 build/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.*.un~
+.DS_Store
+Thumbs.db

@@ -73,7 +73,16 @@ GRUB_CFG_IN  = $(ROOT)/tools/grub.cfg.in
 GRUB_CFG     = $(BUILD)/grub.cfg
 VERSION_H    = $(ROOT)/kernel/version.h
 
-.PHONY: all clean run dirs user disk
+QEMU_FLAGS = -boot d \
+              -cdrom $(KERNEL_ISO) \
+              -drive file=$(DISK_IMG),format=raw,if=ide \
+              -m 256M \
+              -serial stdio \
+              -no-reboot \
+              -no-shutdown \
+              -display sdl
+
+.PHONY: all clean run debug dirs user disk
 
 all: dirs user $(KERNEL_ISO) $(DISK_IMG)
 	@echo ""
@@ -136,15 +145,23 @@ $(DISK_IMG):
 disk: $(DISK_IMG)
 
 run: $(KERNEL_ISO) $(DISK_IMG)
-	qemu-system-x86_64 \
-		-boot d \
-		-cdrom $(KERNEL_ISO) \
-		-drive file=$(DISK_IMG),format=raw,if=ide \
-		-m 256M \
-		-serial stdio \
-		-no-reboot \
-		-no-shutdown \
-		-display sdl
+	qemu-system-x86_64 $(QEMU_FLAGS)
+
+# GDB debugging, two terminals:
+#   terminal 1: make debug        (QEMU starts paused, GDB stub on :1234)
+#   terminal 2: gdb $(KERNEL_ELF)
+#               (gdb) target remote :1234
+#               (gdb) continue / step / break kmain / etc.
+# Uses qemu-system-i386, not qemu-system-x86_64, as the root fix: the
+# x86_64 binary's gdbstub always reports the 64-bit register set over
+# the wire regardless of -cpu, which GDB rejects with "g packet reply
+# is too long" — that's a property of the binary, not the emulated
+# CPU, so -cpu alone (previously -cpu qemu32) can't fix it. The i386
+# binary reports plain i386 as expected. -cpu qemu32 is kept anyway
+# for a plain 32-bit CPU with no long-mode extensions. Debug-only:
+# `run` keeps using qemu-system-x86_64 as always.
+debug: $(KERNEL_ISO) $(DISK_IMG)
+	qemu-system-i386 $(QEMU_FLAGS) -cpu qemu32 -s -S
 
 clean:
 	@rm -rf $(BUILD)

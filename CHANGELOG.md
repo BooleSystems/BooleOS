@@ -22,6 +22,110 @@ called out inline rather than silently "corrected", and `[0.11.0]`–
 Phase 10), not a version string that ever actually appeared in the repo
 at the time.
 
+## [Unreleased]
+
+Intermediate work accumulates here under the standard Keep a Changelog
+sections below, without a `kernel/version.h` bump — see CLAUDE.md's
+versioning convention ("Unreleased" section) for when/how this gets
+renamed to a real version number instead.
+
+## [0.14.2] - Docs audit fixes, LICENSE, push-rule convention, `make debug`
+
+Not a new phase — same PATCH convention as 0.14.1 (see CLAUDE.md,
+"Convenções de fim de fase (versionamento)"): doc corrections, a new
+Makefile debug target, and repo-config housekeeping, none of which
+change the completed-phases count (still 14) or user-facing kernel
+behavior beyond the new opt-in `make debug`.
+
+### Added
+- `tools/Makefile`: new `debug` target — reuses `run`'s `QEMU_FLAGS`
+  variable (extracted from the inline flag list `run` used to have)
+  plus `-cpu qemu32 -s -S`, so QEMU starts paused with a GDB stub on
+  `:1234`. Debug-only (not added to `run`): it also uses
+  `qemu-system-i386` instead of `qemu-system-x86_64` — the root fix
+  for a "g packet reply is too long" GDB connection failure. That
+  turned out to be a property of the `x86_64` binary itself (its
+  gdbstub always reports the 64-bit register set over the wire
+  regardless of `-cpu`), not the emulated CPU, so an earlier attempt
+  at fixing it with `-cpu qemu32` alone on the `x86_64` binary didn't
+  work; `qemu-system-i386` (same `qemu-system-x86` package on Fedora)
+  reports plain `i386` as expected. `docs/setup.md` documents the
+  two-terminal flow (`make debug`, then `gdb build/nullos.elf` +
+  `target remote :1234`, no manual `set architecture` needed),
+  replacing the note that said no such target existed.
+- `LICENSE`: the file never existed despite `README.md` promising MIT
+  since the start of the repo. Added the standard MIT text, copyright
+  `2026 TheShannonDev`.
+- `docs/kernel.md`: `kernel/serial.c/h` — an entire driver, initialized
+  first in `kmain` and mirrored by every `vga_putchar()` call — wasn't
+  mentioned anywhere in `docs/`. Added a "Kernel base" bullet and a
+  file-list entry.
+
+### Changed
+- `.gitignore`: added common editor/IDE junk patterns (`.vscode/`,
+  `.idea/`, `*.swp`/`*.swo`, `*~`, `.*.un~`, `.DS_Store`, `Thumbs.db`)
+  as a preventive measure — none currently present in the repo, but
+  standard practice to cover. No dead/unused rules found to remove.
+- `README.md`: "## License" now links to `[LICENSE](LICENSE)` instead
+  of just stating "MIT" with no reference to an actual file.
+- `CLAUDE.md`: added an explicit "Regra de push" — `git push` is only
+  recommended/done when at least one code file (`.c`/`.h`/`.asm`) was
+  touched in the task; pure documentation changes (`README.md`,
+  `ROADMAP.md`, `CHANGELOG.md`, `docs/*.md`, `PROGRESS.md`) stay
+  committed locally without a push, unless the doc change is
+  retroactively correcting an omission from an already-pushed code
+  version (in which case push is allowed). When unclear, ask before
+  suggesting push.
+
+### Fixed
+- `docs/setup.md`: cross-compiler instructions said `x86_64-elf-gcc`
+  throughout (crosstool-ng target `x86_64-unknown-elf`, PATH
+  `x-tools/x86_64-unknown-elf/bin`) — wrong architecture; every build
+  actually targets 32-bit i686 (`-m32` / `-m elf_i386` in
+  `tools/Makefile`/`user/Makefile`). Corrected to `i686-elf-gcc` /
+  `i686-unknown-elf` throughout, and reframed i686 as the primary
+  target instead of a "simpler alternative" footnote.
+- `docs/setup.md`: Docker instructions referenced `ghcr.io/osdev/osdev-env`,
+  an image the project doesn't actually use — the real working script
+  `tools/docker_build.sh` pulls `randomdude/gcc-cross-i686-elf`
+  (overridable via `NULLOS_DOCKER_IMAGE`). Corrected, and `tools/setup_env.sh`
+  (the actual per-distro dependency-install script) is now mentioned.
+- `docs/setup.md`: the example QEMU boot banner hardcoded a stale
+  `v0.0.1 - Phase 0`. Replaced with a generic `vX.Y.Z - Phase N: <desc>`
+  placeholder plus the real current boot-log tag sequence, pointing to
+  `kernel/version.h`/`docs/kernel.md` instead of a number that would
+  just go stale again next phase.
+- `docs/setup.md`: claimed a `make debug` target exists — it doesn't,
+  per `tools/Makefile`. Removed the claim; noted the manual GDB
+  alternative instead.
+- `docs/setup.md`: `tools/run_qemu.sh` was implied to attach
+  `disk.img` like `make run` does — checked its source, it doesn't
+  (no `-drive` flag at all). Now flagged explicitly so it isn't
+  confused with `make run`.
+- `docs/setup.md`: "Debug via serial" described serial output as a
+  future Phase 1 addition — false; `kernel/serial.c` already exists
+  and every `vga_putchar()` call already mirrors to it. Fixed.
+- `docs/setup.md`: dependency list was missing `dosfstools`/`mtools`
+  (needed by `tools/make_disk.sh`) and `python3` (needed by
+  `tools/make_ramfs.py`); neither is installed by `setup_env.sh`
+  either. Both now called out.
+- `docs/memory.md`: PMM capacity said "64 MB" — wrong. `PMM_MAX_PAGES`
+  (8192) × `PAGE_SIZE` (4096) = 32 MB, independent of how much RAM
+  QEMU is actually given. Corrected with the exact constants cited.
+- `docs/filesystem.md`: attributed disk-attaching behavior to both
+  `tools/run_qemu`/`make run` — only `make run` actually attaches
+  `disk.img`; `run_qemu.sh` is a separate, older script that doesn't.
+  Corrected.
+- `docs/shell.md`: commands list omitted `lspci`, a real shell command
+  present in `user/shell.c`'s help text and dispatch table. Added.
+- `docs/kernel.md`: "Using the ramfs" described a stale/nonexistent
+  workflow (a "to be implemented" `tools/mkramfs` tool, manually
+  editing `grub.cfg.in` per program) — `tools/make_ramfs.py` has long
+  since been implemented and is invoked automatically by
+  `tools/Makefile`, and `grub.cfg.in` already has a permanent ramfs
+  module line. Rewritten to describe the real current workflow (the
+  same steps used to add `user/selftest.c`).
+
 ## [0.14.1] - Documentation reorganization + selftest tool
 
 Not a new phase — intermediate work between phases, versioned as a PATCH

@@ -163,17 +163,32 @@
   intermediário que NÃO constitui uma fase nova — reorganização de
   documentação, ferramentas de teste (ex: `user/selftest.c`), pequenas
   funções aditivas que não mudam comportamento visível do usuário
-  (ex: `pci_device_count()`) — incrementa a partir do PATCH atual sem
-  tocar em MINOR/`NULLOS_PHASE`/`NULLOS_PHASE_DESC`. Um bump de PATCH:
-  NÃO adiciona linha na tabela de fases do README (fases concluídas
-  só avançam em MINOR), tem sua própria entrada no CHANGELOG.md
-  (`## [MAJOR.MINOR.PATCH] - <resumo curto>`, deixando claro que não é
-  fase nova), e é registrado em PROGRESS.md → "Current status" como
-  versão atual sem alterar qual foi a última fase concluída. SEMPRE
-  que uma fase for concluída, o ÚNICO arquivo que precisa ser editado
-  pra atualizar a versão é esse header — seguindo o padrão
-  `NULLOS_VERSION = "N.0"` / `NULLOS_PHASE = "N"` onde N é o número
-  da fase (PATCH reseta pra `0` numa fase nova).
+  (ex: `pci_device_count()`), correções de documentação — e NÃO
+  toca em MINOR/`NULLOS_PHASE`/`NULLOS_PHASE_DESC`.
+- **Fluxo "Unreleased" (substitui/refina a regra anterior de "bump
+  imediato de PATCH a cada tarefa pequena"):** trabalho intermediário
+  pequeno entra em CHANGELOG.md sob uma seção `## [Unreleased]` no
+  topo do arquivo (seguindo as subsecções padrão do Keep a Changelog:
+  Added/Changed/Fixed/Security etc.), SEM tocar em kernel/version.h.
+  Isso pode se acumular ao longo de várias tarefas — não é preciso
+  "fechar" a cada uma. `kernel/version.h` só é atualizado (bump de
+  PATCH) quando o usuário pedir explicitamente pra "fechar" essa
+  versão — seja porque acumulou itens suficientes em `[Unreleased]`,
+  seja porque quer dar push com um número formal. Fechar uma versão
+  significa: renomear a seção `## [Unreleased]` do CHANGELOG pra
+  `## [MAJOR.MINOR.PATCH] - <resumo>` (com as entradas que já estavam
+  lá dentro, sem reescrever o conteúdo), e SÓ NESSE MOMENTO editar
+  `kernel/version.h`. Daqui pra frente, NUNCA faça bump de
+  `kernel/version.h` automaticamente ao fim de uma tarefa pequena —
+  espere o pedido explícito de "fechar" a versão. Isso não muda a
+  regra de fase: uma fase concluída (bump de MINOR) ainda dispara o
+  checklist completo de fim de fase abaixo, incluindo o bump de
+  version.h no mesmo commit — a seção `[Unreleased]` é só pro PATCH
+  intermediário entre fases. SEMPRE que uma fase for concluída, o
+  ÚNICO arquivo que precisa ser editado pra atualizar a versão é esse
+  header — seguindo o padrão `NULLOS_VERSION = "N.0"` /
+  `NULLOS_PHASE = "N"` onde N é o número da fase (PATCH reseta pra
+  `0` numa fase nova).
 - NENHUM outro arquivo deve ter string de versão hardcoded a partir
   de agora — nem kernel/main.c (usa `NULLOS_BANNER` de version.h),
   nem user/shell.c (usa `NULLOS_SHORT_BANNER`, incluído via `-I` no
@@ -200,6 +215,27 @@
 - NUNCA invente um número de versão pra uma fase que não existe ou
   não foi pedida — se não tiver certeza do número de fase correto,
   pergunte antes de decidir, não assuma.
+
+## Regra de push
+
+- REGRA DE PUSH: só recomendar/fazer `git push` quando pelo menos um
+  arquivo de código (`.c`, `.h`, `.asm`) tiver sido modificado nesta
+  tarefa — mesmo que a mudança seja não-funcional (só comentário, só
+  formatação, refactor sem mudança de comportamento). Mudança de
+  código sempre libera push.
+- EXCEÇÃO: documentação pura (`README.md`, `ROADMAP.md`,
+  `CHANGELOG.md`, `docs/*.md`, `PROGRESS.md`) sozinha NÃO libera push
+  — o trabalho fica commitado localmente mas não é empurrado pro
+  remoto — A MENOS QUE a mudança de documentação seja para corrigir
+  um esquecimento de uma versão de código JÁ PUSHADA anteriormente
+  (por exemplo: descobrir que o README nunca documentou uma syscall
+  que já existe no código desde uma versão anterior, e corrigir isso
+  agora). Nesse caso específico, a correção de documentação "atualiza
+  retroativamente" uma versão já lançada e portanto libera push mesmo
+  sem mudança de código nesta tarefa.
+- Quando incerto se uma mudança de documentação se qualifica para a
+  exceção, pergunte ao usuário antes de sugerir push, em vez de
+  assumir.
 
 ## Convenções de fim de fase (números de syscall)
 

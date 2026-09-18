@@ -14,7 +14,7 @@
 - `kernel/fs/vfs.c`: the single dispatcher used by the syscalls — `vfs_open` tries ramfs (read-only) and then FAT16; `vfs_create` calls `vfs_open` first and only creates on FAT16 if not found; `vfs_write` refuses to write to ramfs files
 - `SYS_CREATE (23)`: open-or-create — copies the name from userland, tries to open it, and if it doesn't exist, creates the entry on FAT16 and returns the fd ready for writing
 - Boot: `kmain` calls `ata_init()` and `fat16_init()` right after the scheduler; if there's no disk (or it's not valid FAT16), boot continues normally and on-disk file operations return -1 without crashing
-- `tools/make_disk.sh` + the `make disk` target: generates `build/disk.img` (32 MB, FAT16 via `mkfs.vfat`) only if it doesn't already exist, preserving data across builds; `tools/run_qemu`/`make run` attaches the disk as `-drive file=build/disk.img,format=raw,if=ide`
+- `tools/make_disk.sh` + the `make disk` target: generates `build/disk.img` (32 MB, FAT16 via `mkfs.vfat`) only if it doesn't already exist, preserving data across builds; `make run` (the `tools/Makefile` target — NOT `tools/run_qemu.sh`, a separate, older standalone script that boots the ISO without attaching any disk at all) attaches the disk as `-drive file=build/disk.img,format=raw,if=ide`
 - Shell: `touch <name>` creates an empty file (`SYS_CREATE` + `SYS_CLOSE`); `ls` lists ramfs and FAT16 separately
 - Editor: `load_file` now creates the file (`SYS_CREATE`) when it doesn't exist, keeping the fd open; Ctrl+S writes the whole buffer via `SYS_WRITE_FILE` and shows "saved" or "saved (no disk)" in the footer; Ctrl+Q closes the fd before exiting
 

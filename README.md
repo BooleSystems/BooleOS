@@ -136,4 +136,4 @@ See [docs/setup.md](docs/setup.md) for toolchain installation details.
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).

@@ -3,7 +3,7 @@
 - Keyboard ringbuffer (256 chars) in IRQ1; echo removed from the handler
 - `SYS_READ (fd=0)`: reads from the ringbuffer with polling + `scheduler_sleep_current(1)` to avoid starving; echoes input and handles backspace
 - `user/shell`: loop `> ` → `sys_read` → `run_command`
-- Commands: `help`, `uname`, `fetch`, `ps`, `mem`, `ls`, `touch <name>`, `echo <text>`, `kill <pid>`, `run <prog>`, `edit <file>`, `clear`, `exit`
+- Commands: `help`, `uname`, `fetch`, `ps`, `mem`, `ls`, `lspci`, `touch <name>`, `echo <text>`, `kill <pid>`, `run <prog>`, `edit <file>`, `clear`, `exit`
 - `fetch`: ASCII banner with OS, Arch, Uptime, free PMM, free Heap, running Procs
 - No background debug tasks — VGA is exclusive to the shell
 

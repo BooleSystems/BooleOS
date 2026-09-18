@@ -8,6 +8,7 @@
 - Remapped 8259 PIC (IRQs 0–15 → vectors 32–47)
 - PIT configured at 100 Hz
 - PS/2 keyboard driver
+- Serial driver (`kernel/serial.c/h`): `serial_init()` runs first in `kmain`, before VGA; `vga_putchar()` mirrors every character to serial automatically (see CLAUDE.md's debug-instrumentation rules — never write to serial manually after a call that already goes through `vga_puts()`/`vga_putchar()`, or output gets duplicated)
 - Version string centralized in `kernel/version.h` (`NULLOS_VERSION`/`NULLOS_PHASE`/`NULLOS_PHASE_DESC`, plus the composed `NULLOS_BANNER`/`NULLOS_SHORT_BANNER`) — the boot banner (`kernel/main.c`), the userland shell's `fetch`/`uname` (`user/shell.c`, which includes this header directly since it's plain text macros with no kernel types), and the GRUB menu label (`tools/grub.cfg`, generated at build time from `tools/grub.cfg.in`) all read from this one place
 
 ## Program loading
@@ -19,24 +20,24 @@
 
 ## Using the ramfs
 
-To load an `init` program:
+`tools/make_ramfs.py` (fully implemented, not a stub) builds the ramfs
+image automatically as part of `make`/`make all` — nothing needs to be
+done by hand at build time, and `grub.cfg.in` already has a permanent
+`module2 /boot/ramfs.img` line for every boot entry.
 
-1. Compile the program as a static ELF32:
-   ```bash
-   i686-elf-gcc -m32 -nostdlib -static -o init init.c
-   ```
+To add a new user program to the ramfs (the same steps used to add
+`user/selftest.c` — see `docs/testing.md`):
 
-2. Create the ramfs image (tool to be implemented in `tools/mkramfs`):
-   ```
-   [uint32_t n_entries=1]
-   [name="init\0..." offset=X size=Y]
-   [ELF bytes]
-   ```
-
-3. Add it to `grub.cfg.in`:
-   ```
-   module2 /boot/ramfs.img
-   ```
+1. Write `user/<name>.c` (see `user/forktest.c` for a minimal example:
+   raw `int $0x80` syscall wrappers, no libc, entry point `_start`).
+2. Add a build rule for it to `user/Makefile` (a `$(BUILD)/<name>.elf`
+   target, and add that target to `all`'s dependency list).
+3. In `tools/Makefile`: add a `<NAME>_ELF = $(BUILD)/user/<name>.elf`
+   variable, add it to `$(RAMFS_IMG)`'s prerequisite list, and add
+   `<name>=$(<NAME>_ELF)` to the `make_ramfs.py` invocation's argument
+   list.
+4. `make clean && make` — the new program is now in `build/ramfs.img`
+   and runnable from the shell via `run <name>`.
 
 ## Relevant files
 
@@ -47,6 +48,7 @@ boot/
 kernel/
   main.c              kmain: initialization and the scheduler loop
   version.h           Single source of truth for the version string
+  serial.c/h          Serial driver (initialized before VGA; mirrored by vga_putchar())
   gdt.c/asm           Global Descriptor Table
   idt.c               Interrupt Descriptor Table + exception handler
   isr.asm             Exception stubs and the syscall gate (isr128)
