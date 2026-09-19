@@ -1,11 +1,10 @@
 # NullOS — Future roadmap
 
-Completed phases (0–15) are documented in `README.md`. This file covers
+Completed phases (0–16) are documented in `README.md`. This file covers
 planned, not-yet-started phases only.
 
 | Phase | Description | Status |
 |------|-----------|--------|
-| **16** | Inter-process pipes + a real `waitpid()`; the shell gains `cmd1 \| cmd2` redirection built on top of the existing `fork()` | 🔜 Planned |
 | **17** | Copy-on-write `fork()`: defer the address-space copy until the first write instead of duplicating everything upfront (the classic optimization for the `fork()`+`exec()` pattern) | 🔜 Planned |
 | **18** | `e1000` network driver (already visible in Phase 11's PCI enumeration) + a minimal TCP/IP stack; initial goal is answering `ping` | 🔜 Planned |
 | **19** | AHCI (modern SATA) driver — requires switching the QEMU machine to `-machine q35` (ICH9), since the default i440FX chipset doesn't expose AHCI | 🔜 Planned |
@@ -13,23 +12,16 @@ planned, not-yet-started phases only.
 | **21** | Linear framebuffer (via the Multiboot2 framebuffer tag) + a simple GUI (rectangular windows, mouse), replacing VGA text mode | 🔜 Planned |
 | **22** | Formal syscall deprecation and compatibility strategy — evolve/fix existing syscalls without breaking already-compiled user programs, once the project reaches v1.0.0 | 🔜 Planned |
 
-## Detailed planning (Phases 16–22)
+## Detailed planning (Phases 17–22)
 
-The table above gives the one-line summary of each planned phase. This section expands each one with its goal, intended approach, main risk, and dependencies on other phases, as of the current planning pass. No code has changed as part of this — this is a documentation-only update. (Phases 15–21 here were Phases 14–20 before Phase 14 was taken by the security-hardening work — see CHANGELOG.md. They were renumbered a second time when FAT16 subdirectories — originally planned and listed here as "Phase 17" — was actually implemented ahead of the two process-related phases that preceded it in this list, landing as Phase 15 instead; see CHANGELOG.md `[0.15.0]`. The phases below were 15, 16, 18, 19, 20, 21, 22 before that: only the first two shifted by one, everything from the former network phase onward kept its number.)
-
-### Phase 16 — Inter-process pipes + `waitpid()`
-
-- **Goal:** the shell supports `cmd1 | cmd2`; `waitpid(pid)` blocks until one *specific* process terminates (not just the generic `sys_wait`).
-- **Approach:** a pipe is a circular buffer allocated on the kernel heap, following the same pattern as the existing keyboard ringbuffer, with a read fd and a write fd. Built on top of `fork()` (Phase 13) plus fd redirection into the read/write ends of the pipe. `waitpid` reuses the `PROCESS_BLOCKED` state introduced in Phase 12.
-- **Main risk:** a writer blocking on a full pipe and a reader blocking on an empty pipe at the same time — the same class of deadlock hazard that Phase 12 (IRQ-driven ATA) already required care around.
-- **Depends on:** Phase 13 (`fork()`) — already done.
+The table above gives the one-line summary of each planned phase. This section expands each one with its goal, intended approach, main risk, and dependencies on other phases, as of the current planning pass. No code has changed as part of this — this is a documentation-only update. (Phases 15–21 here were Phases 14–20 before Phase 14 was taken by the security-hardening work — see CHANGELOG.md. They were renumbered a second time when FAT16 subdirectories — originally planned and listed here as "Phase 17" — was actually implemented ahead of the two process-related phases that preceded it in this list, landing as Phase 15 instead; see CHANGELOG.md `[0.15.0]`. The phases below were 15, 16, 18, 19, 20, 21, 22 before that: only the first two shifted by one, everything from the former network phase onward kept its number. Phase 16, inter-process pipes + real `waitpid()`, was completed as planned — see `[0.16.0]` in CHANGELOG.md and Phase 16 in README.md.)
 
 ### Phase 17 — Copy-on-write `fork()`
 
 - **Goal:** `fork()` no longer copies all physical memory up front; the parent's pages become read-only and shared until the first write.
 - **Approach:** requires a smart page-fault handler (exception 14) that distinguishes a COW fault from a real fault, allocates a new page on demand, copies the data, and remaps it read-write. Needs a per-physical-page refcount in the PMM (which likely doesn't exist yet) to know when it's safe to free a shared page.
 - **Main risk:** without a correct refcount, one process can free a page the other is still using.
-- **Depends on:** Phase 13 (`fork()`). Recommended after Phase 16 (pipes) is stable, to avoid debugging two new features at once.
+- **Depends on:** Phase 13 (`fork()`) — already done. Phase 16 (pipes), previously recommended as a prerequisite to avoid debugging two new features at once, is also already done.
 
 ### Phase 18 — `e1000` network driver + minimal TCP/IP
 
@@ -71,6 +63,6 @@ The table above gives the one-line summary of each planned phase. This section e
 
 ## Recommended priority order
 
-**Phase 16 → Phase 18 → Phase 17 → Phase 19 → Phase 20 → Phase 21.**
+**Phase 18 → Phase 17 → Phase 19 → Phase 20 → Phase 21.**
 
-Rationale: start with the lowest-risk work that doesn't require changing the test environment, and save the highest-complexity / environment-changing phases for last. (FAT16 subdirectories, formerly first in this list as "Phase 17", is now done — see Phase 15 in `README.md`.)
+Rationale: start with the lowest-risk work that doesn't require changing the test environment, and save the highest-complexity / environment-changing phases for last. (FAT16 subdirectories, formerly first in this list as "Phase 17", is now done — see Phase 15 in `README.md`. Phase 16, inter-process pipes + real `waitpid()`, is also now done — see Phase 16 in `README.md`.)

@@ -31,6 +31,11 @@
 #define SYS_FORK          25  /* fork() — duplicates the caller → child's pid (parent), 0 (child), -1 on failure */
 #define SYS_CHDIR         26  /* chdir(path) — changes the caller's FAT16 cwd → 0 or -1 (cwd unchanged on failure) */
 #define SYS_MKDIR         27  /* mkdir(path) — creates a directory on FAT16 → 0 or -1 */
+#define SYS_PIPE          28  /* pipe(fds[2]) — creates a pipe; fds[0]=read end, fds[1]=write end → 0 or -1 */
+#define SYS_EXEC_PIPE     29  /* exec_pipe(name, stdin_fd, stdout_fd) — like exec(), but the new
+                                  process's fd 0/1 are redirected to the caller's already-open
+                                  stdin_fd/stdout_fd (each may be (uint32_t)-1 for "no redirect") →
+                                  pid or -1 */
 
 uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t arg3);
 

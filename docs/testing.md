@@ -29,8 +29,10 @@ Expected output shape (exact wording may evolve as tests are added):
 [PASS] file write/read roundtrip inside selftest_dir
 [PASS] fork() child inherits cwd_cluster (marker created by child found in selftest_dir)
 [PASS] subdirectory files do not leak into the root
+[PASS] pipe write/read roundtrip
+[PASS] pipe read returns EOF after writer closes
 [INFO] cleanup: no delete/unlink/rmdir syscall exists yet - st_root.txt and selftest_dir/ (with its files) left on disk (harmless)
-Selftest: 11/11 passed
+Selftest: 13/13 passed
 ```
 
 A `[FAIL] <name>: <reason>` line pinpoints which subsystem broke without
@@ -103,10 +105,52 @@ needing to reproduce the bug by hand first.
     that same 8.3 identity, was mistaken for a leaked subdirectory
     file). That was a test-naming bug, not a `dir_lookup()` bug — the
     kernel correctly scopes lookups by directory throughout.
-12. **Cleanup** — not a PASS/FAIL check: there's no delete/unlink/rmdir
+12. **Pipe write/read roundtrip** — `nos_pipe()` gives both ends to
+    this same process, so the roundtrip is fully testable without
+    `fork()`/`SYS_EXEC_PIPE`: writes known content to the write end,
+    reads it back from the read end, compares byte-for-byte. See
+    [pipes.md](pipes.md).
+13. **Pipe EOF after writer closes** — closes the write end (the last
+    reference to it, since this process never forked or `dup`'d it),
+    then reads from the (now permanently empty) read end and checks
+    it returns `0` immediately instead of blocking. This is the same
+    symmetric-close protocol [pipes.md](pipes.md) describes
+    (`pipe_release_write()` waking a blocked reader), just observed
+    here on an already-empty pipe rather than caught mid-block. A
+    real two-process pipeline needs a second, independent process on
+    the other end — that's the whole point of `SYS_EXEC_PIPE` — so
+    it isn't something this single-process automated test can
+    substitute for; see "Manual test: a real pipeline" below instead.
+14. **Cleanup** — not a PASS/FAIL check: there's no delete/unlink/rmdir
     syscall yet, so `st_root.txt`, `selftest_dir/`, and the two
     files inside it are left on disk. Noted in the output as a known
     limitation, not a failure.
+
+## Manual test: a real pipeline (`cmd1 | cmd2`)
+
+Automated `selftest` coverage stops at single-process pipe mechanics
+(tests 12-13 above) — a real pipeline needs two independent processes
+launched via `SYS_EXEC_PIPE`, which is exactly what the shell's
+`cmd1 | cmd2` exercises. None of the shell's builtins (`ps`, `echo`,
+...) can sit on either side of a real pipe (they write straight to VGA
+via syscalls that never touch fd 1), so `user/cat.c` was added
+specifically as a minimal pipe sink, and `forktest` — which already
+writes several lines via `nos_write(1, ...)` — works as an incidental
+source. From the shell:
+
+```
+forktest | cat
+```
+
+Expected: the same lines `run forktest` alone would print (`forktest:
+calling fork()...`, two `forktest: created fk<pid>.txt in cwd` lines,
+one parent line, one child line — order may interleave, that's normal
+scheduler behavior, not a bug), this time arriving via the pipe and
+re-printed by `cat`. The shell's prompt only returns after **both**
+processes have exited (`run_pipeline()` waits on both pids) — see
+[pipes.md](pipes.md) for the full design, including why the shell
+itself must close its own copies of both pipe fds for `cat` to ever
+see EOF and exit.
 
 ## Known limitations
 
@@ -120,9 +164,13 @@ needing to reproduce the bug by hand first.
   "can this name be opened at the root" instead.
 - Test 1 doesn't perform a real heap allocation, since no syscall
   exposes `kmalloc()` to userland.
+- Tests 12-13 can't cover a real two-process pipeline (that needs
+  `SYS_EXEC_PIPE`, which spawns an independent process) — see "Manual
+  test: a real pipeline" above for the coverage that does.
 
 ## Relevant files
 
 ```
 user/selftest.c    the test suite itself (see docs/shell.md for the file list)
+user/cat.c          minimal pipe sink, used for the manual pipeline test above
 ```

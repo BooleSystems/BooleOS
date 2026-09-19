@@ -22,12 +22,106 @@ called out inline rather than silently "corrected", and `[0.11.0]`–
 Phase 10), not a version string that ever actually appeared in the repo
 at the time.
 
-## [Unreleased]
+## [0.16.0] - Phase 16: pipes and real waitpid
 
-Intermediate work accumulates here under the standard Keep a Changelog
-sections below, without a `kernel/version.h` bump — see CLAUDE.md's
-versioning convention ("Unreleased" section) for when/how this gets
-renamed to a real version number instead.
+Confirmed via manual QEMU testing (`forktest | cat`), including
+serial-only temporary instrumentation (removed once confirmed) in
+`sys_wait()`/`pipe_read()`/`pipe_write()`/`sys_exec_pipe()`: both
+`stdin_redirect`/`stdout_redirect` were set on the two spawned
+processes (not left at `-1`), real bytes flowed through
+`pipe_write()`/`pipe_read()` (not a VGA bypass), `sys_wait()` genuinely
+blocked on each pid until it exited, and the shell's `> ` prompt only
+reappeared after both children had actually exited.
+
+### Added
+- **Inter-process pipes and a real `waitpid()`, with the shell gaining
+  `cmd1 | cmd2`.**
+  - `kernel/pipe.c/h` (new): a fixed pool of `PIPE_MAX=8` pipes, each a
+    static 512-byte circular buffer (no `kmalloc`, nothing to leak —
+    matches `process_table`/`g_gate_waiters`'s existing static-pool
+    style), with the same `PROCESS_BLOCKED`/`scheduler_block_current()`
+    blocking pattern `kernel/drivers/ata.c`'s `ata_wait_irq()` already
+    established, applied symmetrically to both directions, plus
+    refcounted ends so a writer/reader exiting or closing wakes the
+    other side into EOF / broken-pipe instead of a permanent block.
+    Single waiter per direction, deliberately (matches `ata.c`'s own
+    `g_irq_waiter` precedent — `cmd1 | cmd2` never needs more than
+    one reader/one writer per pipe). See `docs/pipes.md` for the full
+    design.
+  - `kernel/fs/vfs.h/.c`: two new backends, `VFS_PIPE_READ`/
+    `VFS_PIPE_WRITE`, plus a new `vfs_dup()` (bumps a pipe's refcount
+    when its fd is duplicated by `fork()` or `SYS_EXEC_PIPE` — a
+    no-op for ramfs/FAT16, which were never refcounted).
+  - New syscalls `SYS_PIPE (28)` and `SYS_EXEC_PIPE (29)`. Launching a
+    pipeline stage deliberately does **not** use `fork()` +
+    `dup2()` + `exec()` (the POSIX idiom) — NullOS's `exec()` spawns a
+    brand-new process rather than replacing the caller's image, so
+    that idiom would leave a stray extra process per stage, the same
+    wrong assumption that caused the Phase 15 `cwd_cluster` bug.
+    `SYS_EXEC_PIPE(name, stdin_fd, stdout_fd)` threads the redirect
+    through `exec()`'s existing parameter chain instead (the same
+    shape `cwd_cluster` was threaded through in Phase 15), seeding the
+    new process's `fd_table` directly since `exec()` doesn't copy it
+    the way `fork()` does.
+  - `process_spawn_user()` gained a `start_blocked` parameter (also
+    threaded through `scheduler_spawn_user()`/`exec()`): `SYS_EXEC_PIPE`
+    spawns the new process `PROCESS_BLOCKED`, seeds its `fd_table`, and
+    only then calls the new `process_make_ready()` — closing a real
+    race window (a preemptive tick between spawn and seeding could
+    otherwise run the process with a redirect pointing at nothing),
+    the same discipline `process_fork()` already uses for its own
+    child.
+  - `process_t` gained `stdin_redirect`/`stdout_redirect` (`-1` =
+    default keyboard/VGA, unchanged behavior for everything but
+    `SYS_EXEC_PIPE`-launched processes) — `sys_read()`/`sys_write()`
+    resolve fd 0/1/2 through these before doing anything else, so a
+    piped program needs zero pipe-awareness of its own (see
+    `user/cat.c`).
+  - **`SYS_WAIT`'s interface didn't change** (it already took a
+    specific pid) — its implementation did: real blocking
+    (`process_t.waiting_for_pid` + `PROCESS_BLOCKED`, woken by
+    `process_exit()`) instead of polling every 100ms
+    (`scheduler_sleep_current(10)`).
+  - **Fixed**: `sys_exit()`'s fd cleanup used to zero
+    `fd_table[slot][j].used` directly, bypassing `vfs_close()` —
+    harmless before (ramfs/FAT16 had nothing to release), but the only
+    path that would ever release a pipe end on process exit. Now calls
+    `vfs_close()` per used fd. `sys_fork()`'s fd-table duplication now
+    also calls `vfs_dup()` on each copied entry, for the same
+    refcounting reason.
+  - `user/lib/nullos.h/.c`: `nos_pipe()`, `nos_exec_pipe()`.
+  - `user/shell.c`: `cmd1 | cmd2` (`run_pipeline()`) — creates the
+    pipe, launches both stages via `nos_exec_pipe()`, and (critically)
+    closes the shell's own copies of both raw pipe fds before waiting
+    on either child, since nothing else would ever drop their
+    refcounts to 0 otherwise (see `docs/pipes.md`).
+  - `user/cat.c` (new): minimal pipe sink (reads stdin, writes
+    stdout) — added because no existing program could meaningfully
+    sit on either end of a real pipe (the shell's builtins write
+    straight to VGA, never through fd 1). Used for the manual
+    `forktest | cat` test (`docs/testing.md`).
+  - `user/selftest.c`: two new tests (pipe write/read roundtrip; EOF
+    after the writer closes), both exercised within the single
+    selftest process itself (`nos_pipe()` hands both ends to the same
+    process, so no `fork()`/`SYS_EXEC_PIPE` is needed for these) —
+    `run selftest` now reports 13/13 instead of 11/11. A real
+    two-process pipeline is covered by the manual test above instead.
+
+### Fixed
+- **`kernel/keyboard.c` had no Shift key handling at all**, discovered
+  because it blocked typing Phase 16's own `cmd1 | cmd2` in the shell
+  (`Shift+\` never produced `|`) — also affected `Shift+5` never
+  producing `%`. Not a wrong entry in an existing shifted table: there
+  was no shifted table and no Shift press/release tracking at all
+  (only `ctrl_pressed` existed), so every character always came from
+  the single unshifted `scancode_map` regardless of Shift. Fixed by
+  tracking Shift (scancodes `0x2A`/`0x36` press, `0xAA`/`0xB6`
+  release) and adding a second, index-matched `scancode_map_shift`
+  table (standard US QWERTY). The raw-scancode path used by
+  `user/edit.c`'s own separate `sc_map` table has the identical gap
+  and was deliberately left unfixed here (out of scope — this fix
+  targeted the shell's `SYS_READ`/ASCII path specifically); see
+  `PROGRESS.md`'s "Known technical debt".
 
 ## [0.15.1] - libnos: shared user-space syscall wrapper library
 

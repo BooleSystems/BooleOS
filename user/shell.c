@@ -179,6 +179,69 @@ static void cmd_cd(const char *arg) {
     }
 }
 
+/* Trims leading/trailing spaces (and a trailing '\n'/'\r', in case
+   this is the tail end of the raw input line) in place, returning a
+   pointer into the same buffer. */
+static char *sh_trim(char *s) {
+    while (*s == ' ') s++;
+    unsigned n = sh_strlen(s);
+    while (n > 0 && (s[n - 1] == ' ' || s[n - 1] == '\n' || s[n - 1] == '\r'))
+        s[--n] = '\0';
+    return s;
+}
+
+/* "cmd1 | cmd2": creates a pipe, launches both sides via
+   SYS_EXEC_PIPE (cmd1's stdout redirected to the pipe's write end,
+   cmd2's stdin to its read end), then — critically — closes the
+   shell's OWN copies of both raw pipe fds before waiting on either
+   child. See docs/pipes.md for why that close is not optional: fork()
+   never happens here (SYS_EXEC_PIPE spawns each stage directly, see
+   its own doc comment in kernel/syscall.c), but the shell's own
+   fd_table entries from nos_pipe() are a real, separate reference to
+   each end — if left open, cmd1 exiting would drop the write end's
+   refcount to 1 (the shell's own lingering copy), never reaching 0,
+   and cmd2 would block forever waiting for an EOF that can no longer
+   arrive. Neither pipeline stage can take an exec-style argument in
+   this first cut — SYS_EXEC_PIPE's 3 registers are fully spent on
+   name+stdin_fd+stdout_fd, with no room left for one (a real, stated
+   scope limit, not an oversight). */
+static void run_pipeline(const char *cmd1, const char *cmd2) {
+    int fds[2];
+    if (nos_pipe(fds) != 0) {
+        sh_puts("pipe: could not create pipe\n");
+        return;
+    }
+    int read_fd = fds[0], write_fd = fds[1];
+
+    int pid1 = nos_exec_pipe(cmd1, -1, write_fd);
+    if (pid1 < 0) {
+        sh_puts("pipe: program not found: ");
+        sh_puts(cmd1);
+        sh_puts("\n");
+        nos_close(read_fd);
+        nos_close(write_fd);
+        return;
+    }
+
+    int pid2 = nos_exec_pipe(cmd2, read_fd, -1);
+    if (pid2 < 0) {
+        sh_puts("pipe: program not found: ");
+        sh_puts(cmd2);
+        sh_puts("\n");
+        nos_close(read_fd);
+        nos_close(write_fd);
+        nos_kill((uint32_t)pid1);
+        return;
+    }
+
+    /* the shell needs neither raw end anymore — see the comment above */
+    nos_close(read_fd);
+    nos_close(write_fd);
+
+    nos_wait(pid1);
+    nos_wait(pid2);
+}
+
 static void cmd_run(const char *name) {
     if (!name || !*name) { sh_puts("usage: run <program>\n"); return; }
     int pid = nos_exec(name, 0);
@@ -207,6 +270,8 @@ static const char *help_text =
     "  kill <pid>     terminate a process\n"
     "  run <prog>     run a program in the background\n"
     "  edit <file>    open the text editor\n"
+    "  cmd1 | cmd2    pipe cmd1's stdout into cmd2's stdin (both must\n"
+    "                 be programs, not builtins — e.g. \"forktest | cat\")\n"
     "  clear          clear the screen\n"
     "  exit           exit the shell\n";
 
@@ -278,8 +343,28 @@ void _start(void) {
         }
         line[n] = '\0';
 
-        /* extracts run's PID before dispatching the command */
-        if (sh_strncmp(line, "edit", 4) == 0 && (line[4] == ' ' || line[4] == '\0')) {
+        /* "cmd1 | cmd2" — checked first, before any other dispatch,
+           so it can never be shadowed by "edit"/"run" special-casing
+           below (a pipeline's LHS could itself be named "run..." as
+           plain text, e.g. "run1 | cat", and must still split on '|'
+           correctly). Splitting on '|' commits to pipeline handling
+           for the rest of this line — including the invalid-usage
+           case below — since '|' is never a valid character in any
+           other command form here. */
+        char *bar = 0;
+        for (char *p = line; *p; p++) { if (*p == '|') { bar = p; break; } }
+
+        if (bar) {
+            *bar = '\0';
+            char *cmd1 = sh_trim(line);
+            char *cmd2 = sh_trim(bar + 1);
+            if (!*cmd1 || !*cmd2) {
+                sh_puts("usage: cmd1 | cmd2\n");
+            } else {
+                foreground_pid = 0;
+                run_pipeline(cmd1, cmd2);
+            }
+        } else if (sh_strncmp(line, "edit", 4) == 0 && (line[4] == ' ' || line[4] == '\0')) {
             char *arg = line[4] == ' ' ? line + 5 : "";
             unsigned int alen = sh_strlen(arg);
             if (alen > 0 && arg[alen - 1] == '\n') arg[alen - 1] = '\0';

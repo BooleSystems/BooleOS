@@ -62,4 +62,16 @@ int nos_fork(void);
 int nos_chdir(const char *path);
 int nos_mkdir(const char *path);
 
+/* SYS_PIPE (Phase 16) — creates a pipe; fds[0] becomes the read end,
+   fds[1] the write end, both plain fds usable with nos_read()/
+   nos_write() like any other. Returns 0 on success, -1 on failure. */
+int nos_pipe(int fds[2]);
+
+/* SYS_EXEC_PIPE (Phase 16) — like nos_exec(name, 0), except the new
+   process's fd 0/1 are redirected to the caller's already-open
+   stdin_fd/stdout_fd. Pass -1 for either to leave that stream
+   un-redirected (default keyboard/VGA). Used by the shell's
+   "cmd1 | cmd2" — see docs/pipes.md. */
+int nos_exec_pipe(const char *name, int stdin_fd, int stdout_fd);
+
 #endif

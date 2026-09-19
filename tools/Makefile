@@ -46,6 +46,7 @@ C_SRCS   = $(ROOT)/kernel/main.c \
             $(ROOT)/kernel/tss.c \
             $(ROOT)/kernel/process.c \
             $(ROOT)/kernel/scheduler.c \
+            $(ROOT)/kernel/pipe.c \
             $(ROOT)/kernel/memory/pmm.c \
             $(ROOT)/kernel/memory/vmm.c \
             $(ROOT)/kernel/memory/heap.c \
@@ -67,6 +68,7 @@ SHELL_ELF    = $(BUILD)/user/shell.elf
 EDIT_ELF     = $(BUILD)/user/edit.elf
 FORKTEST_ELF = $(BUILD)/user/forktest.elf
 SELFTEST_ELF = $(BUILD)/user/selftest.elf
+CAT_ELF      = $(BUILD)/user/cat.elf
 RAMFS_IMG    = $(BUILD)/ramfs.img
 DISK_IMG     = $(BUILD)/disk.img
 GRUB_CFG_IN  = $(ROOT)/tools/grub.cfg.in
@@ -115,9 +117,9 @@ $(KERNEL_ELF): $(ALL_OBJS)
 	@echo "  LD   $@"
 	$(LD) $(LDFLAGS) -o $@ $(ALL_OBJS)
 
-$(RAMFS_IMG): $(INIT_ELF) $(SPINTEST_ELF) $(SHELL_ELF) $(EDIT_ELF) $(FORKTEST_ELF) $(SELFTEST_ELF)
+$(RAMFS_IMG): $(INIT_ELF) $(SPINTEST_ELF) $(SHELL_ELF) $(EDIT_ELF) $(FORKTEST_ELF) $(SELFTEST_ELF) $(CAT_ELF)
 	@echo "  RAMFS $@"
-	python3 $(ROOT)/tools/make_ramfs.py $@ init=$(INIT_ELF) spintest=$(SPINTEST_ELF) shell=$(SHELL_ELF) edit=$(EDIT_ELF) forktest=$(FORKTEST_ELF) selftest=$(SELFTEST_ELF)
+	python3 $(ROOT)/tools/make_ramfs.py $@ init=$(INIT_ELF) spintest=$(SPINTEST_ELF) shell=$(SHELL_ELF) edit=$(EDIT_ELF) forktest=$(FORKTEST_ELF) selftest=$(SELFTEST_ELF) cat=$(CAT_ELF)
 
 # Generates the GRUB menu config from the template, substituting the
 # version straight out of kernel/version.h — the single source of

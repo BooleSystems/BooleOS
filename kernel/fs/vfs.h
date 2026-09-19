@@ -4,9 +4,11 @@
 #include <stdint.h>
 
 typedef enum {
-    VFS_NONE   = 0,
-    VFS_RAMFS  = 1,
-    VFS_FAT16  = 2,
+    VFS_NONE       = 0,
+    VFS_RAMFS      = 1,
+    VFS_FAT16      = 2,
+    VFS_PIPE_READ  = 3,   /* Phase 16: kernel/pipe.h. `first` is the pipe_table index. */
+    VFS_PIPE_WRITE = 4,
 } vfs_backend_t;
 
 typedef struct {
@@ -49,11 +51,26 @@ int  vfs_read (vfs_fd_t *fd, char *buf, uint32_t len);
 /* Closes the fd (marks it as unused). */
 void vfs_close(vfs_fd_t *fd);
 
-/* Writes len bytes from buf into the file referenced by fd (FAT16 only).
-   Uses fd->parent_cluster/fd->name (captured at open/create time), NOT
-   the caller's current cwd — so this is independent of any cd() the
-   process may have done between opening the file and writing to it.
-   Returns 0 on success, -1 if the backend doesn't support writes or on error. */
+/* Writes len bytes from buf into the file referenced by fd (FAT16 or a
+   pipe's write end). For FAT16 this uses fd->parent_cluster/fd->name
+   (captured at open/create time), NOT the caller's current cwd — so
+   this is independent of any cd() the process may have done between
+   opening the file and writing to it. Returns 0 on success, -1 if the
+   backend doesn't support writes or on error (including a pipe whose
+   read end has been fully closed — see kernel/pipe.h). */
 int  vfs_write(vfs_fd_t *fd, const char *buf, uint32_t len);
+
+/* Adds one reference to fd's underlying resource, if that resource is
+   refcounted (currently: pipe ends only — ramfs/FAT16 have no
+   refcounting, so this is a no-op for them). MUST be called whenever
+   a vfs_fd_t is copied into a SECOND fd_table slot by anything other
+   than vfs_open()/vfs_create() themselves — fork()'s fd_table row
+   duplication (sys_fork()), or SYS_EXEC_PIPE seeding the new
+   process's fd_table with the caller's pipe end. Skipping this for a
+   pipe means a later vfs_close() on just one of the copies could drop
+   the pipe's refcount to 0 while another copy is still genuinely
+   open, making the pipe look fully closed (EOF/broken-pipe fires) to
+   the other end while a real holder is still using it. */
+void vfs_dup(vfs_fd_t *fd);
 
 #endif

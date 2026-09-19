@@ -9,14 +9,14 @@
  | |\  | |_| | | | |_| |___) |
  |_| \_|\__,_|_|_|\___/|____/ 
 
- NullOS v0.15.1 - Phase 15: FAT16 subdirectories
+ NullOS v0.16.0 - Phase 16: Pipes and real waitpid
 ```
 
 ## Overview
 
 NullOS is an experimental x86 OS written from scratch in C99 and NASM assembly. It boots via GRUB (Multiboot2), runs kernel and user processes with memory isolation, handles syscalls from ring 3 via `int 0x80`, and loads user programs from a flat ramfs image passed as a GRUB module.
 
-See CHANGELOG.md for version history and ROADMAP.md for planned future phases.
+See [CHANGELOG.md](CHANGELOG.md) for version history and [ROADMAP.md](ROADMAP.md) for planned future phases.
 
 ## Completed phases
 
@@ -40,8 +40,9 @@ See CHANGELOG.md for version history and ROADMAP.md for planned future phases.
 | **13** | `fork()`: full address-space duplication, fabricated child kernel stack (resumes via `isr128_resume`), fd table duplication, `SYS_FORK` | ✅ Done |
 | **14** | Kernel memory-safety hardening: userland pointer validation closing 4 confirmed ring 3 → ring 0 arbitrary memory read/write bugs, a `kmalloc()` integer-overflow bug, and the same gap in `sys_open`/`sys_create`/`sys_exec`/`sys_getarg`; version string centralized in `kernel/version.h` | ✅ Done |
 | **15** | FAT16 subdirectories: `mkdir`/`cd`, path-aware `touch`/`edit`/`ls`; shared `dir_lookup()`/`dir_insert()`/`resolve_path()` core (resolves the Phase 10 duplicated-lookup tech debt); `SYS_CHDIR`/`SYS_MKDIR`; `exec()` (`run`/`edit`) now inherits the caller's `cwd_cluster` instead of always starting at the root | ✅ Done |
+| **16** | Inter-process pipes (`kernel/pipe.c`, fixed pool, `SYS_PIPE`/`SYS_EXEC_PIPE`) and a real blocking `waitpid()` (`process_t.waiting_for_pid`, woken by `process_exit()`); shell gains `cmd1 \| cmd2` (`user/cat.c` as a minimal pipe sink) | ✅ Done |
 
-For planned Phases 16–22, see **[ROADMAP.md](ROADMAP.md)**.
+For planned Phases 17–22, see **[ROADMAP.md](ROADMAP.md)**.
 
 ## Documentation
 
@@ -49,16 +50,17 @@ Detailed, per-system documentation lives under `docs/`:
 
 - [docs/kernel.md](docs/kernel.md) — kernel base (boot, GDT/IDT/PIC/PIT, keyboard) and program loading (Multiboot2, ramfs, ELF loader, `exec()`)
 - [docs/memory.md](docs/memory.md) — PMM, VMM, kernel heap
-- [docs/scheduler.md](docs/scheduler.md) — process table, scheduler, `fork()`
+- [docs/scheduler.md](docs/scheduler.md) — process table, scheduler, `fork()`, real `waitpid`
 - [docs/syscalls.md](docs/syscalls.md) — full syscall table (number, signature, description)
 - [docs/filesystem.md](docs/filesystem.md) — ATA PIO driver, FAT16, VFS
+- [docs/pipes.md](docs/pipes.md) — in-kernel pipes, `SYS_EXEC_PIPE`, the shell's `cmd1 | cmd2`
 - [docs/security.md](docs/security.md) — userland pointer validation, Phase 14 bug history
 - [docs/pci.md](docs/pci.md) — PCI bus enumeration
 - [docs/shell.md](docs/shell.md) — interactive shell and commands
 - [docs/testing.md](docs/testing.md) — `run selftest`, the automated regression suite
 - [docs/setup.md](docs/setup.md) — toolchain/dependency setup
 
-`PROGRESS.md` (not end-user documentation) carries cross-session working
+[PROGRESS.md](PROGRESS.md) (not end-user documentation) carries cross-session working
 memory: non-obvious architecture decisions and known technical debt.
 
 ## Structure

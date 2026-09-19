@@ -53,9 +53,10 @@ static void user_task_bootstrap(void) {
 }
 
 process_t *scheduler_spawn_user(const char *name, uint32_t user_entry,
-                                uint32_t user_esp, uint32_t cr3, uint32_t cwd_cluster) {
+                                uint32_t user_esp, uint32_t cr3, uint32_t cwd_cluster,
+                                int start_blocked) {
     if (!scheduler_ready) return 0;
-    return process_spawn_user(name, user_entry, user_esp, cr3, cwd_cluster, user_task_bootstrap);
+    return process_spawn_user(name, user_entry, user_esp, cr3, cwd_cluster, start_blocked, user_task_bootstrap);
 }
 
 void scheduler_tick(uint32_t tick) {

@@ -7,7 +7,7 @@
 - IDT with handlers for CPU exceptions (0–31), IRQs (32–33 timer/keyboard, 46–47 ATA primary/secondary), and the syscall gate (`int 0x80`, DPL=3)
 - Remapped 8259 PIC (IRQs 0–15 → vectors 32–47)
 - PIT configured at 100 Hz
-- PS/2 keyboard driver
+- PS/2 keyboard driver — tracks Ctrl and Shift press/release (scancodes `0x1D`/`0x9D` and `0x2A`/`0x36`/`0xAA`/`0xB6`) and picks between two US-QWERTY scancode→ASCII tables (`scancode_map`/`scancode_map_shift`) accordingly; before this fix there was no Shift table or tracking at all, so e.g. `Shift+5` never produced `%` and `Shift+\` never produced `|` — every character always came from the single unshifted table regardless of Shift. The raw-scancode path (`SYS_READ_RAW`, used by `user/edit.c`'s own separate `sc_map`) still has the same gap and wasn't touched by this fix — see `PROGRESS.md`.
 - Serial driver (`kernel/serial.c/h`): `serial_init()` runs first in `kmain`, before VGA; `vga_putchar()` mirrors every character to serial automatically (see CLAUDE.md's debug-instrumentation rules — never write to serial manually after a call that already goes through `vga_puts()`/`vga_putchar()`, or output gets duplicated)
 - Version string centralized in `kernel/version.h` (`NULLOS_VERSION`/`NULLOS_PHASE`/`NULLOS_PHASE_DESC`, plus the composed `NULLOS_BANNER`/`NULLOS_SHORT_BANNER`) — the boot banner (`kernel/main.c`), the userland shell's `fetch`/`uname` (`user/shell.c`, which includes this header directly since it's plain text macros with no kernel types), and the GRUB menu label (`tools/grub.cfg`, generated at build time from `tools/grub.cfg.in`) all read from this one place
 

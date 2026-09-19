@@ -20,41 +20,117 @@ file and link it from `README.md` — don't put system detail back into
 
 ## Current status
 
-Last completed phase: **Phase 15** — FAT16 subdirectories: `mkdir`/`cd`,
-path-aware `touch`/`edit`/`ls`; a shared `dir_lookup()`/`dir_insert()`/
-`resolve_path()` core (resolves the Phase 10 duplicated-lookup tech
-debt, previously tracked below); `SYS_CHDIR`/`SYS_MKDIR`; and a fix,
-found during this phase's own manual QEMU testing, for `exec()`
-(`run`/`edit`) not inheriting the caller's `cwd_cluster` (it always
-started fresh processes at the root, unlike `fork()`, which already
-had cwd inheritance). Current version: **0.15.0** (MINOR bump — Phase
-15 completed). See `README.md` → "Completed phases" table +
-`docs/filesystem.md` → "Subdirectories" + `docs/scheduler.md` +
-`docs/syscalls.md` + CHANGELOG.md `[0.15.0]` for full detail.
+Last completed phase: **Phase 16** — inter-process pipes (`kernel/
+pipe.c/h`, fixed pool, `SYS_PIPE`/`SYS_EXEC_PIPE`) and a real blocking
+`waitpid()` (`process_t.waiting_for_pid`, woken by `process_exit()`);
+the shell gains `cmd1 | cmd2` (`user/cat.c` as a minimal pipe sink).
+Confirmed via manual QEMU testing (`forktest | cat`) including
+temporary serial-only instrumentation in `sys_wait()`/`pipe_read()`/
+`pipe_write()`/`sys_exec_pipe()` (removed once confirmed, see git
+history) that verified: the redirect fds were genuinely set on both
+spawned processes, real bytes moved through `pipe_write()`/
+`pipe_read()` rather than bypassing to VGA, and `sys_wait()` blocked on
+each pid until it actually exited. See `README.md` → "Completed
+phases" table + `docs/pipes.md` + `docs/scheduler.md` +
+`docs/syscalls.md` + CHANGELOG.md `[0.16.0]` for full detail.
 
-Note: FAT16 subdirectories was originally planned and numbered "Phase
-17" in `ROADMAP.md`, but was implemented ahead of the two
-process-related phases (pipes, copy-on-write fork) that preceded it in
-that list — it took the next real completed-phase slot, 15, and the
-roadmap was renumbered accordingly (pipes/COW-fork are now Phases
-16/17; everything from the networking phase onward kept its number).
-See ROADMAP.md's own note on this and CHANGELOG.md `[0.15.0]`.
+A keyboard bug (`kernel/keyboard.c` had no Shift handling at all) was
+found and fixed mid-phase because it blocked typing `cmd1 | cmd2` in
+the shell — see "Architecture decisions" below and CHANGELOG.md
+`[0.16.0]`.
 
-Prior to this, Phases 14.1/14.2 were PATCH-only intermediate work
+Note: FAT16 subdirectories (Phase 15) was originally planned and
+numbered "Phase 17" in `ROADMAP.md`, but was implemented ahead of the
+two process-related phases (pipes, copy-on-write fork) that preceded
+it in that list — it took the next real completed-phase slot, 15, and
+the roadmap was renumbered accordingly. Phase 16 (pipes) above was
+already the correct next number after that renumbering, so no further
+ROADMAP renumbering was needed when it completed. See ROADMAP.md's own
+note on this and CHANGELOG.md `[0.15.0]`/`[0.16.0]`.
+
+Current version: **0.16.0**. Prior to this, `0.15.1` (PATCH, not a new
+phase) added `user/lib/nullos.c/h`, a shared syscall wrapper library
+("libnos") replacing six independent hand-written `int $0x80` wrapper
+copies across every user program — see CHANGELOG.md `[0.15.1]` and
+`docs/kernel.md` → "User-space syscall library (libnos)".
+
+Prior to Phase 15, Phases 14.1/14.2 were PATCH-only intermediate work
 (documentation reorganization, `user/selftest.c` + `pci_device_count()`,
 a `make debug` target) — see CHANGELOG.md `[0.14.1]`/`[0.14.2]` and
 `docs/testing.md`.
 
 Future roadmap: see `ROADMAP.md` for the full per-phase breakdown and
-priority order (Phases 16–22).
+priority order (Phases 17–22).
 
 ## Architecture decisions (non-obvious from reading the code alone)
 
+- **`kernel/keyboard.c` had NO Shift handling at all until it blocked
+  Phase 16's own manual testing** (`cmd1 | cmd2` couldn't be typed —
+  Shift+`\` never produced `|`, discovered together with Shift+5 never
+  producing `%`). Not a wrong entry in an existing shifted table —
+  there was no shifted table and no Shift press/release tracking
+  (only `ctrl_pressed` existed), so every character always came from
+  the single unshifted `scancode_map`. Fixed by tracking Shift
+  (`0x2A`/`0x36` press, `0xAA`/`0xB6` release) and adding a second,
+  index-matched `scancode_map_shift` table (standard US QWERTY). See
+  `docs/kernel.md`.
+  **Left deliberately unfixed, found during the same investigation:**
+  the RAW-scancode path (`SYS_READ_RAW`/`keyboard_raw_nowait()`, used
+  only by `user/edit.c`'s own separate `sc_map` table) has the exact
+  same gap — the raw value packs only `ctrl_pressed` into bit 8, never
+  a Shift bit, and `edit.c`'s `sc_map` is itself a single unshifted
+  table. Typing an uppercase letter or a shifted symbol (`%`, `|`,
+  etc.) inside the editor is still broken. Out of scope for this fix
+  (which was about unblocking the shell's pipe-typing specifically),
+  tracked below.
+
+- **Launching a pipeline stage (`SYS_EXEC_PIPE`, Phase 16) threads the
+  redirect through `exec()`'s own parameter chain — it does NOT
+  `fork()` the shell first.** The POSIX idiom (fork, `dup2()` in the
+  child, `exec()`) doesn't work here: NullOS's `exec()` spawns a
+  brand-new process rather than replacing the calling process's image,
+  so forking the shell just to `exec()` in the child would leave the
+  forked child running as a stray extra process per pipeline stage —
+  the same wrong "exec() behaves like POSIX" assumption that caused
+  the Phase 15 `cwd_cluster` bug. `SYS_EXEC_PIPE(name, stdin_fd,
+  stdout_fd)` passes the redirect down through `exec()` →
+  `scheduler_spawn_user()` → `process_spawn_user()`, the exact shape
+  `cwd_cluster` was threaded through — see `docs/pipes.md`.
+  `process_spawn_user()`'s new `start_blocked` parameter (also
+  threaded the same way) is required alongside this: the new process
+  must NOT be schedulable until `sys_exec_pipe()` (in `syscall.c`, the
+  only place that can — `fd_table` lives there, not in `process.c`)
+  has seeded its `fd_table` row, or a preemptive tick landing in that
+  gap could run it with a redirect index pointing at nothing.
+  `process_make_ready()` is the explicit "now it's safe" signal,
+  mirroring `process_fork()`'s existing PROCESS_BLOCKED-until-fully-
+  formed discipline.
+- **Pipes are a fixed static pool (`kernel/pipe.c`, `PIPE_MAX=8`,
+  512 bytes each), never `kmalloc()`'d** — `process_exit()` still
+  doesn't free a process's memory (see the known leak below), so a
+  heap-allocated pipe buffer would just be a second version of the
+  same unsolved leak. A pipe slot is "freed" by flipping `used=0` once
+  both `read_refs`/`write_refs` hit zero — nothing to reclaim from the
+  heap. Single waiter per read/write direction is a deliberate scope
+  limit mirroring `kernel/drivers/ata.c`'s `g_irq_waiter` precedent —
+  `cmd1 | cmd2` never needs more than one reader/one writer per pipe.
+  `vfs_fd_t` gained two backend tags (`VFS_PIPE_READ`/`VFS_PIPE_WRITE`)
+  and a new `vfs_dup()` (bumps a pipe's refcount on `fork()`/
+  `SYS_EXEC_PIPE` duplication — skipping this would let one holder's
+  `close()` drop the pipe's refcount below the number of copies still
+  genuinely open). See `docs/pipes.md` for the full EOF/broken-pipe
+  wakeup protocol.
+- **`SYS_WAIT`'s interface never changed for real blocking (Phase
+  16)** — it already took a specific pid, not "any child"; only the
+  implementation was polling (`scheduler_sleep_current(10)`, every
+  100ms) before. `process_t.waiting_for_pid` + `PROCESS_BLOCKED`,
+  woken by `process_exit()` matching the exact pid — see
+  `docs/scheduler.md` → "waitpid — real blocking".
 - **User programs go through a shared syscall wrapper library
   (`user/lib/nullos.c/h`, "libnos", `nos_*`) instead of each writing
-  its own `int $0x80` inline asm** — added post-Phase-15, not a
-  numbered phase itself (infrastructure/compatibility work, tracked in
-  CHANGELOG.md `[Unreleased]`). Motivation: before v1.0.0 the syscall
+  its own `int $0x80` inline asm** — added post-Phase-15 as PATCH
+  `[0.15.1]` (infrastructure/compatibility work, not a numbered
+  phase). Motivation: before v1.0.0 the syscall
   *interface* stays free to change, but until this library existed,
   changing what a syscall does *underneath* an unchanged interface
   still meant touching every one of the six user programs that called
@@ -237,6 +313,17 @@ priority order (Phases 16–22).
   no existing caller's behavior changed.
 
 ## Known technical debt
+
+- **`user/edit.c`'s raw-scancode input has no Shift support** — typing
+  an uppercase letter or a shifted symbol (`%`, `|`, `!`, etc.) while
+  inside the editor produces the unshifted character instead (or
+  nothing sensible). Found alongside the shell's Shift bug (see
+  "Architecture decisions" above) but deliberately not fixed at the
+  same time — it needs its own fix in two places: `keyboard.c` would
+  need to pack a Shift bit into the raw scancode value returned by
+  `SYS_READ_RAW`/`keyboard_raw_nowait()` (today only `ctrl_pressed` is
+  packed, in bit 8), and `edit.c`'s own `sc_map` table would need the
+  same shifted-table treatment `scancode_map_shift` just got.
 
 - **`process_exit()` never frees `process->cr3` or its mapped pages**
   (`kernel/process.c`, comment above `process_exit`). A process's entire

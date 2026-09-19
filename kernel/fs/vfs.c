@@ -2,6 +2,7 @@
 #include "vfs.h"
 #include "fat16.h"
 #include "../ramfs.h"
+#include "../pipe.h"
 #include <stdint.h>
 
 static void vfs_store_name(vfs_fd_t *fd, const char *name) {
@@ -100,15 +101,33 @@ int vfs_read(vfs_fd_t *fd, char *buf, uint32_t len) {
         return r;
     }
 
+    if (fd->backend == VFS_PIPE_READ)
+        return pipe_read(fd->first, buf, len);
+
     return -1;
 }
 
 int vfs_write(vfs_fd_t *fd, const char *buf, uint32_t len) {
     if (!fd || !fd->used) return -1;
+
+    if (fd->backend == VFS_PIPE_WRITE)
+        return pipe_write(fd->first, buf, len);
+
     if (fd->backend != VFS_FAT16) return -1;  /* ramfs is read-only */
     return fat16_write_file(fd->parent_cluster, fd->name, buf, len);
 }
 
 void vfs_close(vfs_fd_t *fd) {
-    if (fd) fd->used = 0;
+    if (!fd) return;
+    if (fd->used) {
+        if (fd->backend == VFS_PIPE_READ)  pipe_release_read(fd->first);
+        if (fd->backend == VFS_PIPE_WRITE) pipe_release_write(fd->first);
+    }
+    fd->used = 0;
+}
+
+void vfs_dup(vfs_fd_t *fd) {
+    if (!fd || !fd->used) return;
+    if (fd->backend == VFS_PIPE_READ)  pipe_add_read_ref(fd->first);
+    if (fd->backend == VFS_PIPE_WRITE) pipe_add_write_ref(fd->first);
 }

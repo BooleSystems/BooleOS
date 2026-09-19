@@ -18,7 +18,7 @@ before the kernel touches it, see [security.md](security.md).
 | 7 | `SYS_MEMINFO` | `meminfo(*pmm_pages, *heap_bytes, *nprocs) → 0` |
 | 8 | `SYS_PS` | `ps() → 0` (prints the process table via VGA) |
 | 9 | `SYS_KILL` | `kill(pid) → 0 or -1` |
-| 10 | `SYS_EXEC` | `exec(name) → pid or -1` |
+| 10 | `SYS_EXEC` | `exec(name, arg) → pid or -1` (`arg` is optional, retrieved by the new process via `SYS_GETARG`; `run <prog>` passes none, `edit <file>` passes the filename) |
 | 11 | `SYS_OPEN` | `open(name) → fd (≥3) or -1` |
 | 12 | `SYS_CLOSE` | `close(fd) → 0 or -1` |
 | 13 | `SYS_READ_RAW` | `read_raw() → scancode\|(ctrl<<8)` (blocking, no echo) |
@@ -36,10 +36,12 @@ before the kernel touches it, see [security.md](security.md).
 | 25 | `SYS_FORK` | `fork() → child's pid (parent) / 0 (child) / -1` (duplicates the caller: full address space, open fds; not copy-on-write) |
 | 26 | `SYS_CHDIR` | `chdir(path) → 0 or -1` (changes the caller's FAT16 cwd; only mutates it on confirmed success — a missing path, a path naming a file, or an I/O error all leave the cwd untouched) |
 | 27 | `SYS_MKDIR` | `mkdir(path) → 0 or -1` (creates a directory on FAT16; idempotent if a directory of that name already exists, fails if a file does) |
+| 28 | `SYS_PIPE` | `pipe(fds[2]) → 0 or -1` (creates a pipe; `fds[0]`=read end, `fds[1]`=write end — both plain fds, usable with `SYS_READ`/`SYS_WRITE` like any other. See `docs/pipes.md`.) |
+| 29 | `SYS_EXEC_PIPE` | `exec_pipe(name, stdin_fd, stdout_fd) → pid or -1` (like `SYS_EXEC`, but the new process's fd 0/1 are redirected to the caller's already-open `stdin_fd`/`stdout_fd`; either may be `(uint32_t)-1` for "don't redirect that one". Used only by the shell's `cmd1 \| cmd2` — see `docs/pipes.md`. No `arg` parameter: all 3 registers are spent on `name`+`stdin_fd`+`stdout_fd`, so a piped command can't also take a `SYS_EXEC`-style argument in this first cut.) |
 
-> `SYS_READ` is polymorphic: fd=0 reads from the keyboard (blocking, with echo and backspace); fd≥3 reads from a file opened via `SYS_OPEN`/`SYS_CREATE`, advances the position, and returns 0 on EOF.
+> `SYS_READ` is polymorphic: fd=0 reads from the keyboard (blocking, with echo and backspace) unless redirected (`stdin_redirect`, see `docs/pipes.md`); fd≥3 reads from a file or pipe opened via `SYS_OPEN`/`SYS_CREATE`/`SYS_PIPE`, advances the position (files only — a pipe has no seekable position), and returns 0 on EOF.
 
-> `SYS_WRITE` (fd=1/2) writes to VGA; files use the dedicated `SYS_WRITE_FILE`, which writes to FAT16 via `vfs_write`/`fat16_write_file` — ramfs remains read-only.
+> `SYS_WRITE` (fd=1/2) writes to VGA unless redirected (`stdout_redirect`, see `docs/pipes.md`); fd≥3 writes through the fd table (pipes only — FAT16 writes still go through the dedicated `SYS_WRITE_FILE`, which writes via `vfs_write`/`fat16_write_file`; ramfs remains read-only either way).
 
 > **Syscall return value:** `isr128` writes the `syscall_handler`'s return value into the EAX slot of the `pusha` frame before the `popa`, delivering the correct value in `eax` to userland after the `iret`. Userland inline asm must use the `"=a"`/`"0"` constraints so the compiler doesn't assume eax is unchanged after `int $0x80`.
 

@@ -13,6 +13,7 @@
 #include "fs/fat16.h"
 #include "ramfs.h"
 #include "drivers/pci.h"
+#include "pipe.h"
 #include <stdint.h>
 
 /* ── file descriptor table ─────────────────────────────────── */
@@ -153,24 +154,75 @@ static uint32_t sys_fork(void) {
     process_t *child = process_fork(parent, frame);
     if (!child) return (uint32_t)-1;
 
-    /* duplicate the parent's open files into the child's own slot */
+    /* duplicate the parent's open files into the child's own slot.
+       For a pipe-backed fd, this raw struct copy makes the child a
+       second real holder of that pipe end — vfs_dup() bumps its
+       refcount to match; without it, closing just ONE of the two
+       copies would decrement a refcount that was never incremented
+       for this duplication, letting the pipe appear fully closed on
+       that end while the other copy is still genuinely open (see
+       docs/pipes.md). ramfs/FAT16 entries aren't refcounted, so
+       vfs_dup() is a no-op for them, same as always. */
     int child_slot = slot_of(child);
     if (child_slot >= 0) {
-        for (uint32_t j = 0; j < FD_PER_PROC; j++)
+        for (uint32_t j = 0; j < FD_PER_PROC; j++) {
             fd_table[child_slot][j] = fd_table[parent_slot][j];
+            vfs_dup(&fd_table[child_slot][j]);
+        }
     }
 
     return child->pid;
 }
 
+/* Writes are staged through a small kernel buffer and copied in with
+   copy_from_user() in chunks, same discipline as SYS_READ_CHUNK below
+   and sys_write_file()'s kmalloc'd buffer — never hands vfs_write() a
+   raw userland pointer. Only used by the fd>=FD_BASE path (currently
+   pipes; FAT16 writes still go through the separate SYS_WRITE_FILE). */
+#define SYS_WRITE_CHUNK 128
+
 static uint32_t sys_write(uint32_t fd, const char *buf, uint32_t len) {
-    (void)fd;  // stdout only for now
     if (!buf) return (uint32_t)-1;
     if (len == 0) return 0;
 
     process_t *cur = process_current();
+    if (!cur) return (uint32_t)-1;
     if (!user_ptr_valid(cur, (uint32_t)buf, len)) return (uint32_t)-1;
 
+    /* fd 1/2 (stdout/stderr) redirected to an already-open fd (Phase
+       16: SYS_EXEC_PIPE) — resolve to the real target before anything
+       else, so the rest of this function never needs to know the
+       write was redirected. */
+    if ((fd == 1 || fd == 2) && cur->stdout_redirect >= 0)
+        fd = (uint32_t)cur->stdout_redirect;
+
+    if (fd >= FD_BASE) {
+        int slot = proc_slot();
+        if (slot < 0) return (uint32_t)-1;
+        uint32_t idx = fd - FD_BASE;
+        if (idx >= FD_PER_PROC) return (uint32_t)-1;
+        vfs_fd_t *f = &fd_table[slot][idx];
+        if (!f->used) return (uint32_t)-1;
+
+        uint32_t total = 0;
+        while (total < len) {
+            char     kchunk[SYS_WRITE_CHUNK];
+            uint32_t want = len - total;
+            if (want > SYS_WRITE_CHUNK) want = SYS_WRITE_CHUNK;
+
+            if (copy_from_user(cur, kchunk, (uint32_t)buf + total, want) < 0)
+                return (total > 0) ? total : (uint32_t)-1;
+
+            int r = vfs_write(f, kchunk, want);
+            if (r < 0) return (total > 0) ? total : (uint32_t)-1;
+
+            total += want;
+        }
+        return total;
+    }
+
+    /* fd 0/1/2 with no active redirect: stdout/stderr go to VGA,
+       exactly as before pipes existed. */
     for (uint32_t i = 0; i < len; i++) {
         char *kp = user_kptr(cur, (uint32_t)buf + i);
         vga_putchar(*kp);
@@ -183,7 +235,8 @@ static uint32_t sys_exit(uint32_t code) {
     int slot = proc_slot();
     if (slot >= 0) {
         for (uint32_t j = 0; j < FD_PER_PROC; j++)
-            fd_table[slot][j].used = 0;
+            if (fd_table[slot][j].used)
+                vfs_close(&fd_table[slot][j]);
     }
     process_t *p = process_current();
     if (p) process_exit(p);
@@ -215,7 +268,13 @@ static uint32_t sys_read(uint32_t fd, char *buf, uint32_t len) {
     if (!buf || len == 0) return (uint32_t)-1;
 
     process_t *cur = process_current();
+    if (!cur) return (uint32_t)-1;
     if (!user_ptr_valid(cur, (uint32_t)buf, len)) return (uint32_t)-1;
+
+    /* fd 0 (stdin) redirected to an already-open fd (Phase 16:
+       SYS_EXEC_PIPE) — resolve before anything else. */
+    if (fd == 0 && cur->stdin_redirect >= 0)
+        fd = (uint32_t)cur->stdin_redirect;
 
     /* fd >= FD_BASE: file read via VFS */
     if (fd >= FD_BASE) {
@@ -338,6 +397,59 @@ static int copy_user_str(process_t *cur, uint32_t uaddr, char *buf, uint32_t max
     return 0;
 }
 
+/* Creates a pipe and writes {read_fd, write_fd} into the caller's
+   user_fds[2] (both real fds, >= FD_BASE, usable with plain
+   nos_read()/nos_write() like any other fd — no pipe-specific
+   syscalls beyond this one and SYS_EXEC_PIPE). See docs/pipes.md for
+   the buffer/refcounting design pipe_create() implements. */
+static uint32_t sys_pipe(uint32_t user_fds) {
+    process_t *cur = process_current();
+    if (!cur) return (uint32_t)-1;
+    int slot = proc_slot();
+    if (slot < 0) return (uint32_t)-1;
+
+    uint32_t pipe_idx;
+    if (pipe_create(&pipe_idx) < 0) return (uint32_t)-1;
+
+    int read_j = -1;
+    for (uint32_t j = 0; j < FD_PER_PROC; j++) {
+        if (!fd_table[slot][j].used) { read_j = (int)j; break; }
+    }
+    if (read_j < 0) {
+        pipe_release_read(pipe_idx);
+        pipe_release_write(pipe_idx);
+        return (uint32_t)-1;
+    }
+    fd_table[slot][read_j].used    = 1;
+    fd_table[slot][read_j].backend = VFS_PIPE_READ;
+    fd_table[slot][read_j].first   = pipe_idx;
+    fd_table[slot][read_j].size    = 0;
+    fd_table[slot][read_j].pos     = 0;
+
+    int write_j = -1;
+    for (uint32_t j = 0; j < FD_PER_PROC; j++) {
+        if ((int)j != read_j && !fd_table[slot][j].used) { write_j = (int)j; break; }
+    }
+    if (write_j < 0) {
+        vfs_close(&fd_table[slot][read_j]);
+        pipe_release_write(pipe_idx);
+        return (uint32_t)-1;
+    }
+    fd_table[slot][write_j].used    = 1;
+    fd_table[slot][write_j].backend = VFS_PIPE_WRITE;
+    fd_table[slot][write_j].first   = pipe_idx;
+    fd_table[slot][write_j].size    = 0;
+    fd_table[slot][write_j].pos     = 0;
+
+    int32_t fds[2] = { (int32_t)(FD_BASE + (uint32_t)read_j), (int32_t)(FD_BASE + (uint32_t)write_j) };
+    if (copy_to_user(cur, user_fds, fds, sizeof(fds)) < 0) {
+        vfs_close(&fd_table[slot][read_j]);
+        vfs_close(&fd_table[slot][write_j]);
+        return (uint32_t)-1;
+    }
+    return 0;
+}
+
 static uint32_t sys_open(const char *user_name) {
     if (!user_name) return (uint32_t)-1;
     process_t *cur = process_current();
@@ -406,8 +518,91 @@ static uint32_t sys_exec(const char *user_name, uint32_t user_arg) {
     if (user_arg)
         copy_user_str(cur, user_arg, exec_arg, sizeof(exec_arg));
 
-    process_t *p = exec(kname, cur->cwd_cluster);
+    process_t *p = exec(kname, cur->cwd_cluster, 0);
     if (!p) return (uint32_t)-1;
+    return p->pid;
+}
+
+/* Launches a program exactly like sys_exec(), except the NEW process's
+   fd 0/1 are redirected to the caller's OWN already-open stdin_fd/
+   stdout_fd (each (uint32_t)-1 means "don't redirect that one" — the
+   new process keeps the default keyboard/VGA behavior for it). Used
+   only by the shell's "cmd1 | cmd2" pipeline launch (see
+   docs/pipes.md); plain "run"/"edit" keep using SYS_EXEC unchanged.
+
+   Spawns the new process PROCESS_BLOCKED (exec()'s start_blocked=1 —
+   see process_spawn_user()'s doc comment in process.h for exactly
+   why) and only flips it to PROCESS_READY via process_make_ready()
+   once its fd_table row has been fully seeded below — otherwise a
+   preemptive timer tick landing in between could let the scheduler
+   run it with a stdin/stdout redirect index that doesn't point at
+   anything yet. */
+static uint32_t sys_exec_pipe(const char *user_name, uint32_t stdin_fd, uint32_t stdout_fd) {
+    if (!user_name) return (uint32_t)-1;
+    process_t *cur = process_current();
+    if (!cur) return (uint32_t)-1;
+    int slot = proc_slot();
+    if (slot < 0) return (uint32_t)-1;
+
+    char kname[USER_STR_MAX];
+    if (copy_user_str(cur, (uint32_t)user_name, kname, USER_STR_MAX) < 0)
+        return (uint32_t)-1;
+
+    int want_stdin  = (stdin_fd  != (uint32_t)-1);
+    int want_stdout = (stdout_fd != (uint32_t)-1);
+
+    vfs_fd_t *stdin_src = 0, *stdout_src = 0;
+    if (want_stdin) {
+        if (stdin_fd < FD_BASE) return (uint32_t)-1;
+        uint32_t idx = stdin_fd - FD_BASE;
+        if (idx >= FD_PER_PROC || !fd_table[slot][idx].used) return (uint32_t)-1;
+        stdin_src = &fd_table[slot][idx];
+    }
+    if (want_stdout) {
+        if (stdout_fd < FD_BASE) return (uint32_t)-1;
+        uint32_t idx = stdout_fd - FD_BASE;
+        if (idx >= FD_PER_PROC || !fd_table[slot][idx].used) return (uint32_t)-1;
+        stdout_src = &fd_table[slot][idx];
+    }
+
+    process_t *p = exec(kname, cur->cwd_cluster, 1 /* start_blocked */);
+    if (!p) return (uint32_t)-1;
+
+    int new_slot = slot_of(p);
+    if (new_slot < 0) {
+        /* shouldn't happen — stay safe rather than leak a stuck slot */
+        process_exit(p);
+        return (uint32_t)-1;
+    }
+
+    if (want_stdin) {
+        int placed = 0;
+        for (uint32_t j = 0; j < FD_PER_PROC; j++) {
+            if (!fd_table[new_slot][j].used) {
+                fd_table[new_slot][j] = *stdin_src;
+                vfs_dup(&fd_table[new_slot][j]);
+                p->stdin_redirect = (int)(FD_BASE + j);
+                placed = 1;
+                break;
+            }
+        }
+        if (!placed) { process_exit(p); return (uint32_t)-1; }
+    }
+    if (want_stdout) {
+        int placed = 0;
+        for (uint32_t j = 0; j < FD_PER_PROC; j++) {
+            if (!fd_table[new_slot][j].used) {
+                fd_table[new_slot][j] = *stdout_src;
+                vfs_dup(&fd_table[new_slot][j]);
+                p->stdout_redirect = (int)(FD_BASE + j);
+                placed = 1;
+                break;
+            }
+        }
+        if (!placed) { process_exit(p); return (uint32_t)-1; }
+    }
+
+    process_make_ready(p);
     return p->pid;
 }
 
@@ -549,18 +744,42 @@ static uint32_t sys_set_raw_mode(uint32_t enable) {
     return 0;
 }
 
+/* Real blocking wait for one SPECIFIC pid (Phase 16) — replaces the
+   original polling implementation (scheduler_sleep_current(10),
+   rechecking every 100ms) with the same check-then-block-atomically
+   pattern ata_wait_irq() uses: the "is it still alive?" scan and the
+   transition to PROCESS_BLOCKED happen inside one cli/sti section, so
+   an exit that happens between the check and the block can never be
+   missed. process_exit() (process.c) is what actually wakes a
+   process out of this wait, matching waiting_for_pid to the exiting
+   pid specifically — not a generic "some child exited" signal, so a
+   process waiting on one specific child is never woken by a
+   different one. The syscall's own interface (a specific pid, not
+   "any child") never changed; only the implementation went from
+   polling to real blocking, so nos_wait()/every existing caller is
+   unaffected. */
 static uint32_t sys_wait(uint32_t pid) {
+    process_t *cur = process_current();
+    if (!cur) return (uint32_t)-1;
+
     for (;;) {
-        int found = 0;
+        __asm__ volatile ("cli");
+        int alive = 0;
         for (uint32_t i = 0; i < PROCESS_MAX; i++) {
             process_t *p = process_at(i);
             if (p && p->pid == pid && p->state != PROCESS_UNUSED) {
-                found = 1;
+                alive = 1;
                 break;
             }
         }
-        if (!found) return 0;
-        scheduler_sleep_current(10);
+        if (!alive) { __asm__ volatile ("sti"); return 0; }
+
+        cur->waiting_for_pid = pid;
+        cur->state = PROCESS_BLOCKED;
+        __asm__ volatile ("sti");
+
+        scheduler_block_current();   /* resumes once process_exit() wakes us for this pid */
+        cur->waiting_for_pid = 0;
     }
 }
 
@@ -647,6 +866,8 @@ uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t ar
         case SYS_FORK:         return sys_fork();
         case SYS_CHDIR:        return sys_chdir((const char *)arg1);
         case SYS_MKDIR:        return sys_mkdir((const char *)arg1);
+        case SYS_PIPE:         return sys_pipe(arg1);
+        case SYS_EXEC_PIPE:    return sys_exec_pipe((const char *)arg1, arg2, arg3);
         default:
             vga_set_color(VGA_YELLOW, VGA_BLACK);
             vga_puts("[SYSCALL] unknown number: ");

@@ -203,3 +203,17 @@ int nos_mkdir(const char *path) {
         : "=a"(ret) : "0"(SYS_MKDIR), "b"(path) : "memory");
     return ret;
 }
+
+int nos_pipe(int fds[2]) {
+    int ret;
+    __asm__ volatile ("int $0x80"
+        : "=a"(ret) : "0"(SYS_PIPE), "b"(fds) : "memory");
+    return ret;
+}
+
+int nos_exec_pipe(const char *name, int stdin_fd, int stdout_fd) {
+    int ret;
+    __asm__ volatile ("int $0x80"
+        : "=a"(ret) : "0"(SYS_EXEC_PIPE), "b"(name), "c"(stdin_fd), "d"(stdout_fd) : "memory");
+    return ret;
+}

@@ -20,6 +20,28 @@ static const char scancode_map[128] = {
     0,    0,
 };
 
+/* Same layout as scancode_map, index-for-index, but with Shift held —
+   US QWERTY. Added because there was previously NO Shift handling at
+   all here (not a wrong entry in an existing shifted table — there
+   was no shifted table, and no Shift press/release tracking either),
+   which is why Shift+5 never produced '%' and Shift+\ (scancode
+   0x2B) never produced '|': every character always came from the
+   single unshifted table above, regardless of Shift. Keys with no
+   shifted variant (Enter, Backspace, Tab, Esc, space, the keypad '*')
+   keep the same character as the unshifted table. */
+static const char scancode_map_shift[128] = {
+    0,    27,  '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_',  '+',
+    '\b', '\t','Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{',  '}',
+    '\n', 0,   'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"',  '~',
+    0,    '|', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '<', '>', '?', 0,    '*',
+    0,    ' ', 0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,    0,
+    0,    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,    0,
+    0,    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,    0,
+    0,    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,    0,
+    0,    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,    0,
+    0,    0,
+};
+
 static inline uint8_t inb(uint16_t port) {
     uint8_t ret;
     __asm__ volatile ("inb %1, %0" : "=a"(ret) : "Nd"(port));
@@ -41,7 +63,8 @@ void keyboard_flush(void) {
     kb_raw_head = kb_raw_tail = 0;
 }
 
-static int ctrl_pressed = 0;
+static int ctrl_pressed  = 0;
+static int shift_pressed = 0;
 
 static void keyboard_callback(uint32_t int_no) {
     (void)int_no;
@@ -51,13 +74,18 @@ static void keyboard_callback(uint32_t int_no) {
     if (scancode == 0x1D) { ctrl_pressed = 1; return; }
     if (scancode == 0x9D) { ctrl_pressed = 0; return; }
 
+    /* tracks left/right Shift (0x2A/0x36 press, 0xAA/0xB6 release) */
+    if (scancode == 0x2A || scancode == 0x36) { shift_pressed = 1; return; }
+    if (scancode == 0xAA || scancode == 0xB6) { shift_pressed = 0; return; }
+
     if (scancode & 0x80) return;  /* other key-releases */
 
     char c;
     if (ctrl_pressed && scancode == 0x2E) {
         c = 0x03;  /* Ctrl+C */
     } else {
-        c = scancode_map[scancode & 0x7F];
+        c = shift_pressed ? scancode_map_shift[scancode & 0x7F]
+                           : scancode_map[scancode & 0x7F];
         if (c == 0) c = 0;  /* unmapped key: only goes to raw */
     }
 

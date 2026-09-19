@@ -9,7 +9,7 @@
 #define USER_STACK_VIRT  0x02000000U   /* virtual base of user stack */
 #define USER_STACK_PAGES 2             /* 8 KB user stack */
 
-process_t *exec(const char *name, uint32_t cwd_cluster) {
+process_t *exec(const char *name, uint32_t cwd_cluster, int start_blocked) {
     uint32_t file_offset = 0, file_size = 0;
 
     if (!ramfs_find(name, &file_offset, &file_size)) {
@@ -59,7 +59,7 @@ process_t *exec(const char *name, uint32_t cwd_cluster) {
 
     uint32_t user_esp = USER_STACK_VIRT + USER_STACK_PAGES * PAGE_SIZE;
 
-    process_t *p = scheduler_spawn_user(name, entry, user_esp, cr3, cwd_cluster);
+    process_t *p = scheduler_spawn_user(name, entry, user_esp, cr3, cwd_cluster, start_blocked);
     if (!p) {
         vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
         vga_puts("[EXEC] scheduler_spawn_user failed\n");

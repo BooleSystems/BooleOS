@@ -17,9 +17,9 @@
 #ifndef NULLOS_VERSION_H
 #define NULLOS_VERSION_H
 
-#define NULLOS_VERSION      "0.15.1"
-#define NULLOS_PHASE        "15"
-#define NULLOS_PHASE_DESC   "FAT16 subdirectories"
+#define NULLOS_VERSION      "0.16.0"
+#define NULLOS_PHASE        "16"
+#define NULLOS_PHASE_DESC   "Pipes and real waitpid"
 
 // Composed strings so callers don't have to concatenate these by hand.
 #define NULLOS_BANNER       "NullOS v" NULLOS_VERSION " - Phase " NULLOS_PHASE ": " NULLOS_PHASE_DESC

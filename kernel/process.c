@@ -56,6 +56,9 @@ void process_init(void) {
         process_table[i].ticks_run = 0;
         process_table[i].runs = 0;
         process_table[i].cwd_cluster = 0;
+        process_table[i].stdin_redirect = -1;
+        process_table[i].stdout_redirect = -1;
+        process_table[i].waiting_for_pid = 0;
     }
 
     current_process = 0;
@@ -94,6 +97,9 @@ process_t *process_spawn(const char *name, process_entry_t entry, void *arg, voi
             process->ticks_run = 0;
             process->runs = 0;
             process->cwd_cluster = 0;   /* new processes start at the root */
+            process->stdin_redirect = -1;
+            process->stdout_redirect = -1;
+            process->waiting_for_pid = 0;
             process->cr3 = vmm_create_directory();
             if (!process->cr3)
                 process->cr3 = vmm_get_kernel_directory();
@@ -106,7 +112,7 @@ process_t *process_spawn(const char *name, process_entry_t entry, void *arg, voi
 
 process_t *process_spawn_user(const char *name, uint32_t user_entry,
                               uint32_t user_esp, uint32_t cr3,
-                              uint32_t cwd_cluster,
+                              uint32_t cwd_cluster, int start_blocked,
                               void (*bootstrap)(void)) {
     if (!bootstrap) return 0;
 
@@ -116,7 +122,9 @@ process_t *process_spawn_user(const char *name, uint32_t user_entry,
 
         p->pid        = next_pid++;
         copy_name(p->name, name);
-        p->state      = PROCESS_READY;
+        /* PROCESS_BLOCKED here means "reserved but not runnable yet" —
+           see the start_blocked parameter doc in process.h. */
+        p->state      = start_blocked ? PROCESS_BLOCKED : PROCESS_READY;
         p->entry      = 0;                   /* unused: entry is ring 3 */
         p->arg        = (void *)user_entry;  /* user process's EIP */
         p->stack      = process_stacks[i];
@@ -129,9 +137,17 @@ process_t *process_spawn_user(const char *name, uint32_t user_entry,
         p->ticks_run  = 0;
         p->runs       = 0;
         p->cwd_cluster = cwd_cluster;
+        p->stdin_redirect  = -1;
+        p->stdout_redirect = -1;
+        p->waiting_for_pid = 0;
         return p;
     }
     return 0;
+}
+
+void process_make_ready(process_t *p) {
+    if (p && p->state == PROCESS_BLOCKED)
+        p->state = PROCESS_READY;
 }
 
 /* Unwinds a fork() that ran out of memory partway through copying the
@@ -200,6 +216,14 @@ process_t *process_fork(process_t *parent, const uint32_t *saved_frame) {
     child->user_stack  = 0;
     child->user_esp    = parent->user_esp;
     child->cwd_cluster = parent->cwd_cluster;   /* "cd" survives fork() */
+    /* fd 0/1 redirects are part of the fd table fork() already
+       duplicates in full (sys_fork(), which copies fd_table row by
+       row) — a child must see the same fd 0/1 its parent did at
+       fork time. */
+    child->stdin_redirect  = parent->stdin_redirect;
+    child->stdout_redirect = parent->stdout_redirect;
+    /* per-syscall-in-progress state, not identity — never inherited */
+    child->waiting_for_pid = 0;
 
     /* ── 2. duplicate the address space: full copy, not COW ────────
        Walks every present PDE/PTE beyond the shared kernel mapping
@@ -303,8 +327,27 @@ void process_exit(process_t *process) {
        its independent copy of every page) is simply abandoned. Slots
        are still safely reusable since process_spawn()/process_fork()
        always allocate a fresh cr3 for whatever they build next. */
+    uint32_t exited_pid = process->pid;
+
     process->state = PROCESS_UNUSED;
     process->pid   = 0;
+
+    /* Wakes every process specifically waiting (via sys_wait(), Phase
+       16) for THIS pid — not a generic "some child exited" signal, so
+       a process with several children waiting on one specific pid is
+       never woken by an unrelated sibling's exit. No cli/sti guard
+       here, matching process_wake_sleepers() right below (also a full
+       table scan with no protection) — process_exit() only ever runs
+       synchronously inside sys_exit()/sys_kill(), never from IRQ
+       context, so there's no concurrent mutator to race against here,
+       unlike ata_wait_irq()'s real async-IRQ case. */
+    for (uint32_t i = 0; i < PROCESS_MAX; i++) {
+        process_t *p = &process_table[i];
+        if (p->state == PROCESS_BLOCKED && p->waiting_for_pid == exited_pid) {
+            p->waiting_for_pid = 0;
+            p->state = PROCESS_READY;
+        }
+    }
 }
 
 void process_sleep(process_t *process, uint32_t now, uint32_t ticks) {

@@ -335,7 +335,61 @@ void _start(void) {
         }
     }
 
-    /* 12. Cleanup — not counted as PASS/FAIL, just a note: there is no
+    /* 13-14. Pipes (Phase 16): nos_pipe() gives BOTH ends to this same
+       process, so the basic mechanics — write/read roundtrip and the
+       symmetric EOF-on-writer-close protocol — are fully testable
+       here without fork()/SYS_EXEC_PIPE. A real two-process pipeline
+       genuinely needs a second, independent process on the other end
+       (that's the whole point of SYS_EXEC_PIPE), so it isn't
+       something a single-process automated test can meaningfully
+       substitute for — see docs/pipes.md's "forktest | cat" manual
+       walkthrough for that coverage instead. */
+    {
+        int fds[2];
+        int pipe_ok = (nos_pipe(fds) == 0);
+        if (!pipe_ok) st_fail("pipe write/read roundtrip", "nos_pipe() failed");
+
+        /* 13. write known content, read it back from the other end */
+        if (pipe_ok) {
+            const char *msg = "hello through the pipe";
+            unsigned int mlen = st_strlen(msg);
+            if (nos_write(fds[1], msg, mlen) != (int)mlen) {
+                st_fail("pipe write/read roundtrip", "nos_write() to the write end failed");
+                pipe_ok = 0;
+            } else {
+                char rbuf[64];
+                for (unsigned int i = 0; i < sizeof(rbuf); i++) rbuf[i] = 0;
+                int n = nos_read(fds[0], rbuf, sizeof(rbuf) - 1);
+                if (n != (int)mlen || !st_bufeq(rbuf, msg, mlen))
+                    st_fail("pipe write/read roundtrip", "content read back does not match what was written");
+                else
+                    st_pass("pipe write/read roundtrip");
+            }
+        }
+
+        /* 14. EOF: once the write end is closed (the LAST write
+           reference — this process never forked or dup'd it), a read
+           on the now-permanently-empty read end must return 0
+           immediately instead of blocking forever. This is the same
+           symmetric-close protocol docs/pipes.md describes
+           (pipe_release_write() waking a blocked reader), just
+           observed here on an already-empty pipe rather than caught
+           mid-block. */
+        if (!pipe_ok) {
+            st_fail("pipe read returns EOF after writer closes", "skipped: pipe setup already failed");
+        } else {
+            nos_close(fds[1]);
+            char eofbuf[8];
+            int n = nos_read(fds[0], eofbuf, sizeof(eofbuf));
+            if (n != 0)
+                st_fail("pipe read returns EOF after writer closes", "read() did not return 0 after the write end closed");
+            else
+                st_pass("pipe read returns EOF after writer closes");
+            nos_close(fds[0]);
+        }
+    }
+
+    /* 15. Cleanup — not counted as PASS/FAIL, just a note: there is no
        delete/unlink/rmdir syscall yet, so st_root.txt, selftest_dir/
        (and the two files inside it) are left on disk. Harmless: the
        next run just re-creates/overwrites everything by the same names. */

@@ -38,6 +38,20 @@ typedef struct process {
                                see fat16_resolve_dir()/SYS_CHDIR. Copied into
                                the child by process_fork() so "cd" survives
                                across fork(), same as any other process state. */
+    int stdin_redirect;     /* -1 = no redirect (SYS_READ fd=0 uses the
+                               keyboard, as always); otherwise this process's
+                               own fd (>= FD_BASE, see syscall.c) that fd 0
+                               actually reads from — set at exec() time for
+                               a pipeline stage (SYS_EXEC_PIPE), never
+                               changed afterward. Copied parent->child by
+                               process_fork(), same as the rest of the fd
+                               table it duplicates. */
+    int stdout_redirect;    /* same as stdin_redirect, for fd 1 (and 2) —
+                               SYS_WRITE uses this instead of VGA when set. */
+    uint32_t waiting_for_pid;  /* 0 = not waiting; set by sys_wait() right
+                               before blocking, cleared by process_exit()
+                               (or by the waiter itself right after waking)
+                               — see docs/scheduler.md → "waitpid()". */
 } process_t;
 
 void process_init(void);
@@ -48,8 +62,34 @@ process_t *process_spawn(const char *name, process_entry_t entry, void *arg, voi
    so a program launched via "run"/"edit" starts in the same directory
    the caller was in — mirroring how process_fork() already copies
    cwd_cluster from parent to child. Callers with no such "launcher"
-   (the kernel spawning the very first process at boot) pass 0. */
-process_t *process_spawn_user(const char *name, uint32_t user_entry, uint32_t user_esp, uint32_t cr3, uint32_t cwd_cluster, void (*bootstrap)(void));
+   (the kernel spawning the very first process at boot) pass 0.
+
+   start_blocked: 0 leaves the new process PROCESS_READY immediately
+   (the plain exec() path, unchanged from before pipes existed). 1
+   leaves it PROCESS_BLOCKED instead — reserved but not schedulable —
+   for callers (SYS_EXEC_PIPE) that still need to seed one or two
+   fd_table entries in the NEW process's own (otherwise empty) fd
+   table before it's safe to run: fd_table lives in syscall.c, so
+   process.c can't populate it itself, but that means there's a real
+   window between this function returning and the caller finishing
+   that seeding — if the process were already READY in that window, a
+   preemptive timer tick could let the scheduler switch to it early,
+   running with a stdin/stdout redirect index that doesn't point at
+   anything yet. This is the exact same "reserved but not runnable
+   yet" discipline process_fork() already uses for the same reason;
+   see the comment on PROCESS_BLOCKED there. The caller MUST call
+   process_make_ready() once the process is fully formed — a process
+   left PROCESS_BLOCKED forever is a permanent leak of a process-table
+   slot. */
+process_t *process_spawn_user(const char *name, uint32_t user_entry, uint32_t user_esp, uint32_t cr3, uint32_t cwd_cluster, int start_blocked, void (*bootstrap)(void));
+
+/* Flips a process from PROCESS_BLOCKED to PROCESS_READY — the
+   counterpart to process_spawn_user()'s start_blocked=1. A no-op if
+   the process isn't currently PROCESS_BLOCKED (defensive: calling it
+   twice, or on a process that failed/exited in the meantime, must
+   never resurrect or corrupt an unrelated later occupant of the same
+   slot). */
+void process_make_ready(process_t *p);
 process_t *process_at(uint32_t index);
 process_t *process_current(void);
 void process_set_current(process_t *process);
