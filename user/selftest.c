@@ -55,6 +55,20 @@ static int sys_create(const char *name) {
     return ret;
 }
 
+static int sys_mkdir(const char *path) {
+    int ret;
+    __asm__ volatile ("int $0x80"
+        : "=a"(ret) : "0"(27), "b"(path) : "memory");
+    return ret;
+}
+
+static int sys_chdir(const char *path) {
+    int ret;
+    __asm__ volatile ("int $0x80"
+        : "=a"(ret) : "0"(26), "b"(path) : "memory");
+    return ret;
+}
+
 static int sys_close(int fd) {
     int ret;
     __asm__ volatile ("int $0x80"
@@ -171,7 +185,7 @@ void _start(void) {
        duplicate-create regression — all on one disposable test file,
        named so it can't collide with anything a real user created. */
     {
-        const char *fname   = "selftest_tmp.txt";
+        const char *fname   = "st_root.txt";
         const char *content = "NullOS selftest data 1234\n";
         unsigned int clen   = st_strlen(content);
         int file_ok = 1;
@@ -179,10 +193,10 @@ void _start(void) {
         /* 3. creation */
         int fd = sys_create(fname);
         if (fd < 0) {
-            st_fail("file create (selftest_tmp.txt)", "sys_create() returned -1 (no disk?)");
+            st_fail("file create (st_root.txt)", "sys_create() returned -1 (no disk?)");
             file_ok = 0;
         } else {
-            st_pass("file create (selftest_tmp.txt)");
+            st_pass("file create (st_root.txt)");
             sys_close(fd);
         }
 
@@ -277,11 +291,151 @@ void _start(void) {
             st_fail("PCI enumeration found at least 1 device", "device count == 0");
     }
 
-    /* 8. Cleanup — not counted as PASS/FAIL, just a note: there is no
-       delete/unlink syscall yet, so selftest_tmp.txt is left on disk.
-       Harmless: the next run just re-creates/overwrites it. */
-    st_puts("[INFO] cleanup: no delete/unlink syscall exists yet -"
-            " selftest_tmp.txt left on disk (harmless)\n");
+    /* 8-11. Phase 15: FAT16 subdirectories. Everything below runs on
+       one disposable test directory, named so it can't collide with
+       anything a real user created (same convention as st_root.txt
+       above). dir_ok gates the later steps the same way file_ok does
+       for the file tests: if mkdir/cd itself fails, there's no point
+       attempting anything that depends on it.
+
+       IMPORTANT — 8.3 collisions: FAT16 truncates a name to 8 base
+       characters + a 3-character extension, case-insensitively. Every
+       filename here (and st_root.txt above) MUST have a distinct 8.3
+       encoding from every other one used anywhere in this test suite
+       — "selftest_root.txt"/"selftest_sub.txt"/"selftest_mark.txt"
+       would all collide on the identical packed name "SELFTESTTXT"
+       (same first 8 chars "selftest", same "txt" extension), which
+       previously caused test 11 to see an unrelated ROOT-level file
+       as a false "leak" of a subdirectory file — not an actual
+       directory-scoping bug, dir_lookup() correctly scopes by
+       dir_cluster; the two files just happened to share one 8.3
+       identity. Kept short and distinct here specifically to avoid
+       repeating that mistake. */
+    {
+        const char *dname     = "selftest_dir";
+        const char *subfname  = "st_sub.txt";
+        const char *subcontent = "NullOS selftest subdir data 5678\n";
+        unsigned int subclen  = st_strlen(subcontent);
+        const char *markname  = "st_mark.txt";
+        int dir_ok = 1;
+
+        /* 8. mkdir */
+        if (sys_mkdir(dname) != 0) {
+            st_fail("mkdir (selftest_dir)", "sys_mkdir() returned nonzero (no disk?)");
+            dir_ok = 0;
+        } else {
+            st_pass("mkdir (selftest_dir)");
+        }
+
+        /* cd into it — gates every step below, same as dir_ok itself */
+        if (dir_ok && sys_chdir(dname) != 0) {
+            st_fail("cd into selftest_dir", "sys_chdir() returned nonzero right after a successful mkdir");
+            dir_ok = 0;
+        }
+
+        /* 9. create + write + read roundtrip INSIDE the subdirectory —
+           the exact scenario that exposed the exec()-doesn't-inherit-
+           cwd bug during this phase's own manual test (there it was
+           edit's process losing the cwd across exec(); here, this
+           process never execs, so this specifically checks the FAT16/
+           vfs side: that a relative create/write/read all land inside
+           selftest_dir, not silently at the root). */
+        if (!dir_ok) {
+            st_fail("file write/read roundtrip inside selftest_dir", "skipped: mkdir/cd already failed");
+        } else {
+            int ok = 1;
+            int fd = sys_create(subfname);
+            if (fd < 0) { st_fail("file write/read roundtrip inside selftest_dir", "sys_create() failed"); ok = 0; }
+            if (ok) sys_close(fd);
+
+            int wfd = ok ? sys_open(subfname) : -1;
+            if (ok && wfd < 0) { st_fail("file write/read roundtrip inside selftest_dir", "sys_open() for write failed"); ok = 0; }
+            if (ok && sys_write_file(wfd, subcontent, subclen) != 0) {
+                st_fail("file write/read roundtrip inside selftest_dir", "sys_write_file() failed");
+                ok = 0;
+            }
+            if (wfd >= 0) sys_close(wfd);
+
+            if (ok) {
+                int rfd = sys_open(subfname);
+                char rbuf[64];
+                for (unsigned int i = 0; i < sizeof(rbuf); i++) rbuf[i] = 0;
+                int n = (rfd >= 0) ? sys_read_fd(rfd, rbuf, sizeof(rbuf) - 1) : -1;
+                if (rfd >= 0) sys_close(rfd);
+
+                if (rfd < 0 || n != (int)subclen || !st_bufeq(rbuf, subcontent, subclen))
+                    st_fail("file write/read roundtrip inside selftest_dir",
+                             "content read back does not match what was written");
+                else
+                    st_pass("file write/read roundtrip inside selftest_dir");
+            }
+        }
+
+        /* 10. fork() while cwd == selftest_dir: the child creates a
+           marker file via a RELATIVE path with no cd of its own — it
+           only ends up inside selftest_dir if process_fork() actually
+           copied cwd_cluster from the parent. The parent (still in
+           selftest_dir) then opens that same relative name: finding it
+           proves the child wrote to the same directory, i.e. that the
+           inherited cwd matched. This is deliberately done in-process
+           here (a real fork(), not exec()) rather than duplicating
+           forktest.c's exec()-based marker-file approach — fork()'s
+           cwd inheritance was never the bug this phase found (only
+           exec()'s was; see docs/scheduler.md), but it's cheap to keep
+           covered by an actual regression test here rather than only
+           by forktest.c's separate, exec-launched check. */
+        if (!dir_ok) {
+            st_fail("fork() child inherits cwd_cluster", "skipped: mkdir/cd already failed");
+        } else {
+            int fret = sys_fork();
+            if (fret == 0) {
+                int mfd = sys_create(markname);
+                if (mfd >= 0) sys_close(mfd);
+                sys_exit(0);
+            } else if (fret > 0) {
+                sys_wait(fret);
+                int mfd2 = sys_open(markname);
+                if (mfd2 >= 0) {
+                    sys_close(mfd2);
+                    st_pass("fork() child inherits cwd_cluster (marker created by child found in selftest_dir)");
+                } else {
+                    st_fail("fork() child inherits cwd_cluster",
+                             "marker file not found in selftest_dir after the child exited");
+                }
+            } else {
+                st_fail("fork() child inherits cwd_cluster", "fork() returned a negative value");
+            }
+        }
+
+        /* 11. cd back to the root and confirm NEITHER file created
+           above leaked out of selftest_dir — this is the exact
+           observable symptom the manual test caught (a file written
+           inside a subdirectory showing up at the root instead). Both
+           sys_open() calls are expected to FAIL (-1) here: there's no
+           parsed-directory-listing syscall to check against (SYS_READDIR
+           only prints via VGA), so "can't be opened by this name at the
+           root" is the next best observable proof of isolation. */
+        if (!dir_ok) {
+            st_fail("subdirectory files do not leak into the root", "skipped: mkdir/cd already failed");
+        } else if (sys_chdir("..") != 0) {
+            st_fail("subdirectory files do not leak into the root", "sys_chdir(\"..\") back to the root failed");
+        } else {
+            int leaked_sub  = (sys_open(subfname) >= 0);
+            int leaked_mark = (sys_open(markname) >= 0);
+            if (leaked_sub || leaked_mark)
+                st_fail("subdirectory files do not leak into the root",
+                         "a file created inside selftest_dir was openable by name at the root");
+            else
+                st_pass("subdirectory files do not leak into the root");
+        }
+    }
+
+    /* 12. Cleanup — not counted as PASS/FAIL, just a note: there is no
+       delete/unlink/rmdir syscall yet, so st_root.txt, selftest_dir/
+       (and the two files inside it) are left on disk. Harmless: the
+       next run just re-creates/overwrites everything by the same names. */
+    st_puts("[INFO] cleanup: no delete/unlink/rmdir syscall exists yet -"
+            " st_root.txt and selftest_dir/ (with its files) left on disk (harmless)\n");
 
     st_puts("Selftest: ");
     char nbuf[16];

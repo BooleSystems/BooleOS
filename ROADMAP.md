@@ -1,49 +1,42 @@
 # NullOS — Future roadmap
 
-Completed phases (0–14) are documented in `README.md`. This file covers
+Completed phases (0–15) are documented in `README.md`. This file covers
 planned, not-yet-started phases only.
 
 | Phase | Description | Status |
 |------|-----------|--------|
-| **15** | Inter-process pipes + a real `waitpid()`; the shell gains `cmd1 \| cmd2` redirection built on top of the existing `fork()` | 🔜 Planned |
-| **16** | Copy-on-write `fork()`: defer the address-space copy until the first write instead of duplicating everything upfront (the classic optimization for the `fork()`+`exec()` pattern) | 🔜 Planned |
-| **17** | FAT16 subdirectories (today only the root directory exists) | 🔜 Planned |
+| **16** | Inter-process pipes + a real `waitpid()`; the shell gains `cmd1 \| cmd2` redirection built on top of the existing `fork()` | 🔜 Planned |
+| **17** | Copy-on-write `fork()`: defer the address-space copy until the first write instead of duplicating everything upfront (the classic optimization for the `fork()`+`exec()` pattern) | 🔜 Planned |
 | **18** | `e1000` network driver (already visible in Phase 11's PCI enumeration) + a minimal TCP/IP stack; initial goal is answering `ping` | 🔜 Planned |
 | **19** | AHCI (modern SATA) driver — requires switching the QEMU machine to `-machine q35` (ICH9), since the default i440FX chipset doesn't expose AHCI | 🔜 Planned |
 | **20** | USB HID via the xHCI controller, so keyboard/mouse work on modern hardware without a physical PS/2 port | 🔜 Planned |
 | **21** | Linear framebuffer (via the Multiboot2 framebuffer tag) + a simple GUI (rectangular windows, mouse), replacing VGA text mode | 🔜 Planned |
+| **22** | Formal syscall deprecation and compatibility strategy — evolve/fix existing syscalls without breaking already-compiled user programs, once the project reaches v1.0.0 | 🔜 Planned |
 
-## Detailed planning (Phases 15–21)
+## Detailed planning (Phases 16–22)
 
-The table above gives the one-line summary of each planned phase. This section expands each one with its goal, intended approach, main risk, and dependencies on other phases, as of the current planning pass. No code has changed as part of this — this is a documentation-only update. (Phases 15–21 here were Phases 14–20 before Phase 14 was taken by the security-hardening work — see CHANGELOG.md.)
+The table above gives the one-line summary of each planned phase. This section expands each one with its goal, intended approach, main risk, and dependencies on other phases, as of the current planning pass. No code has changed as part of this — this is a documentation-only update. (Phases 15–21 here were Phases 14–20 before Phase 14 was taken by the security-hardening work — see CHANGELOG.md. They were renumbered a second time when FAT16 subdirectories — originally planned and listed here as "Phase 17" — was actually implemented ahead of the two process-related phases that preceded it in this list, landing as Phase 15 instead; see CHANGELOG.md `[0.15.0]`. The phases below were 15, 16, 18, 19, 20, 21, 22 before that: only the first two shifted by one, everything from the former network phase onward kept its number.)
 
-### Phase 15 — Inter-process pipes + `waitpid()`
+### Phase 16 — Inter-process pipes + `waitpid()`
 
 - **Goal:** the shell supports `cmd1 | cmd2`; `waitpid(pid)` blocks until one *specific* process terminates (not just the generic `sys_wait`).
 - **Approach:** a pipe is a circular buffer allocated on the kernel heap, following the same pattern as the existing keyboard ringbuffer, with a read fd and a write fd. Built on top of `fork()` (Phase 13) plus fd redirection into the read/write ends of the pipe. `waitpid` reuses the `PROCESS_BLOCKED` state introduced in Phase 12.
 - **Main risk:** a writer blocking on a full pipe and a reader blocking on an empty pipe at the same time — the same class of deadlock hazard that Phase 12 (IRQ-driven ATA) already required care around.
 - **Depends on:** Phase 13 (`fork()`) — already done.
 
-### Phase 16 — Copy-on-write `fork()`
+### Phase 17 — Copy-on-write `fork()`
 
 - **Goal:** `fork()` no longer copies all physical memory up front; the parent's pages become read-only and shared until the first write.
 - **Approach:** requires a smart page-fault handler (exception 14) that distinguishes a COW fault from a real fault, allocates a new page on demand, copies the data, and remaps it read-write. Needs a per-physical-page refcount in the PMM (which likely doesn't exist yet) to know when it's safe to free a shared page.
 - **Main risk:** without a correct refcount, one process can free a page the other is still using.
-- **Depends on:** Phase 13 (`fork()`). Recommended after Phase 15 (pipes) is stable, to avoid debugging two new features at once.
-
-### Phase 17 — FAT16 subdirectories
-
-- **Goal:** `mkdir`, `cd`, and commands (`ls`/`edit`/`touch`) accept a path with a subfolder (e.g. `edit docs/notes.txt`), not just a flat name at the root.
-- **Approach:** FAT16 natively supports this (a dirent with the `ATTR_DIRECTORY` attribute points to a cluster holding another dirent table). Needs: a path parser (split on `/`), recursive navigation reusing the existing dirent lookup logic, and `fat16_mkdir` (creates a directory-attribute entry and allocates a cluster containing `.` and `..`).
-- **Main risk / opportunity:** a good moment to refactor the dirent lookup that's currently duplicated between `fat16_find` and `fat16_write_file` (known tech debt — an out-of-bounds bug was previously fixed in one copy but not the other, see `docs/filesystem.md` and `PROGRESS.md`). Unifying it into a single function before extending to subdirectories avoids repeating that bug a third time.
-- **Depends on:** nothing beyond Phase 10 (already done). Can be done at any time, independent of the process-related phases (15/16).
+- **Depends on:** Phase 13 (`fork()`). Recommended after Phase 16 (pipes) is stable, to avoid debugging two new features at once.
 
 ### Phase 18 — `e1000` network driver + minimal TCP/IP
 
 - **Goal:** a modest starting point — respond to `ping` (ICMP echo request).
 - **Approach:** the `e1000` device was already detected via PCI enumeration in Phase 11. Steps: (a) use `pci.c` to find the device's memory BAR and map it via the VMM (it's memory-mapped I/O, unlike port I/O as used by ATA); (b) initialize RX/TX descriptor rings (the Intel datasheet is well documented publicly); (c) parse Ethernet frames; (d) implement ARP; (e) implement enough of IP+ICMP to answer a ping.
 - **Main risk:** the largest scope in the roadmap — recommended to split into sub-phases (18a: raw driver sending/receiving a frame; 18b: ARP; 18c: IP+ICMP) rather than attempting it all at once.
-- **Depends on:** Phase 11 (PCI) — already done. Independent of Phases 15–17.
+- **Depends on:** Phase 11 (PCI) — already done. Independent of Phases 16–17.
 
 ### Phase 19 — AHCI driver (modern SATA)
 
@@ -57,7 +50,7 @@ The table above gives the one-line summary of each planned phase. This section e
 - **Goal:** keyboard/mouse working over USB — essential for running on modern hardware without a physical PS/2 port.
 - **Approach:** xHCI has its own descriptor structures and considerably more state than AHCI, with a full USB protocol stack on top (device enumeration, descriptors, endpoints, control and interrupt transfers).
 - **Main risk:** by far the largest scope/complexity phase in the entire roadmap — recommended to treat as its own sub-roadmap (20a: enumerate the xHCI controller; 20b: port reset; 20c: enumerate the connected device; 20d: parse HID reports; etc.) rather than one monolithic phase.
-- **Depends on:** Phase 11 (PCI). Technically independent of Phases 15–19, but recommended to come last among the driver phases since it's the largest complexity jump.
+- **Depends on:** Phase 11 (PCI). Technically independent of Phases 16–19, but recommended to come last among the driver phases since it's the largest complexity jump.
 
 ### Phase 21 — Linear framebuffer + simple GUI
 
@@ -66,8 +59,18 @@ The table above gives the one-line summary of each planned phase. This section e
 - **Main risk / note:** without a working mouse (Phase 20), a "GUI" with no decent input has limited value — recommended after Phase 20, even though the framebuffer itself has no technical dependency on USB.
 - **Depends on:** none technically, but gains much more value after Phase 20 (mouse).
 
+### Phase 22 — Syscall deprecation and compatibility strategy
+
+- **Goal:** allow evolving/fixing existing syscalls without breaking already-compiled user programs — important especially once the project adopts real semver (documented milestone: once the project reaches v1.0.0, the syscall interface becomes the reference "public API", per `CHANGELOG.md`).
+- **Approach (to be decided in detail when this phase is implemented, but the general direction is):**
+  - Never remove or rewrite the behavior of an existing syscall number once the project is past v1.0 — instead, add a NEW syscall number (e.g. `SYS_WRITE_FILE_V2`) for the new behavior, keeping the old one working as before, documented as deprecated in `kernel/syscall.h` with an explicit comment pointing to its replacement.
+  - Consider introducing a small shared library (a minimal libc-style layer) that user programs link against, instead of issuing `int 0x80` with a raw syscall number directly — this allows swapping the implementation underneath (including redirecting old calls to new syscalls internally) without recompiling existing user programs, similar to glibc's role on Linux.
+  - Before v1.0.0, syscall changes remain free (as already documented — major version 0 allows any change), so this phase's compatibility discipline only actually takes effect once the project reaches v1.0.0.
+- **Main risk / note:** this is more an architecture/process discipline decision than a single isolated code feature — it may not require one-off "implementation," but rather be applied gradually as each future syscall is added/changed after v1.0.0.
+- **Depends on:** none technically, but only makes sense to actively apply starting at the v1.0.0 milestone (real semver).
+
 ## Recommended priority order
 
-**Phase 17 → Phase 15 → Phase 18 → Phase 16 → Phase 19 → Phase 20 → Phase 21.**
+**Phase 16 → Phase 18 → Phase 17 → Phase 19 → Phase 20 → Phase 21.**
 
-Rationale: start with the lowest-risk work that doesn't require changing the test environment, and save the highest-complexity / environment-changing phases for last.
+Rationale: start with the lowest-risk work that doesn't require changing the test environment, and save the highest-complexity / environment-changing phases for last. (FAT16 subdirectories, formerly first in this list as "Phase 17", is now done — see Phase 15 in `README.md`.)

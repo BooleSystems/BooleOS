@@ -34,11 +34,22 @@ typedef struct process {
     uint32_t wake_tick;
     uint32_t ticks_run;
     uint32_t runs;
+    uint32_t cwd_cluster;   /* current working directory on FAT16 (0 = root);
+                               see fat16_resolve_dir()/SYS_CHDIR. Copied into
+                               the child by process_fork() so "cd" survives
+                               across fork(), same as any other process state. */
 } process_t;
 
 void process_init(void);
 process_t *process_spawn(const char *name, process_entry_t entry, void *arg, void (*bootstrap)(void));
-process_t *process_spawn_user(const char *name, uint32_t user_entry, uint32_t user_esp, uint32_t cr3, void (*bootstrap)(void));
+/* cwd_cluster is the new process's starting current directory (0 =
+   root). Callers that exec() on behalf of another process (see
+   exec()/SYS_EXEC in syscall.c) pass that process's own cwd_cluster,
+   so a program launched via "run"/"edit" starts in the same directory
+   the caller was in — mirroring how process_fork() already copies
+   cwd_cluster from parent to child. Callers with no such "launcher"
+   (the kernel spawning the very first process at boot) pass 0. */
+process_t *process_spawn_user(const char *name, uint32_t user_entry, uint32_t user_esp, uint32_t cr3, uint32_t cwd_cluster, void (*bootstrap)(void));
 process_t *process_at(uint32_t index);
 process_t *process_current(void);
 void process_set_current(process_t *process);

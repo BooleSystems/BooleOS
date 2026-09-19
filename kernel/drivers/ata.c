@@ -77,7 +77,24 @@ static uint8_t  g_lba_sel   = 0;    /* 0xE0=master LBA, 0xF0=slave LBA */
 /* ── IRQ-driven completion wait ──────────────────────────────
    Only one ATA command is ever in flight at a time (serialized by
    the exclusion gate below), so a single flag/waiter pair is enough
-   — there is never more than one process legitimately waiting here. */
+   — there is never more than one process legitimately waiting here.
+
+   IMPORTANT (found via instrumentation while debugging Phase 15):
+   g_irq_fired reflects "an IRQ arrived", not "the command *I* care
+   about completed" — the drive raises a real completion IRQ for
+   EVERY command, including ones serviced through the early-boot
+   polling path below (used while process_current() is still NULL,
+   e.g. fat16_init()'s ~65 BPB/FAT reads), which never calls
+   ata_wait_irq() and therefore never consumes this flag. Left dirty
+   like that, a later IRQ-driven wait can see a stale "already fired"
+   from a completely unrelated, already-serviced command and skip
+   waiting for its OWN command's real completion — intermittently,
+   depending on whether the drive happens to already be ready by the
+   time it checks DRQ. ata_read_sector()/ata_write_sector() close this
+   by resetting g_irq_fired to 0 right after issuing EACH new command
+   (not just when a wait finishes), so no leftover value from a prior
+   command — polled or IRQ-driven — can be mistaken for the one just
+   issued. */
 static volatile int  g_irq_fired  = 0;
 static process_t    *g_irq_waiter = 0;
 
@@ -320,6 +337,11 @@ int ata_read_sector(uint32_t lba, void *buf) {
     outb(g_base + REG_LBA_MID,    (uint8_t)(lba >> 8));
     outb(g_base + REG_LBA_HI,     (uint8_t)(lba >> 16));
     outb(g_base + REG_CMD,        CMD_READ);
+    /* Discard whatever g_irq_fired held from a PREVIOUS command before
+       waiting on THIS one's completion — see the comment on
+       g_irq_fired below for why this specific point, not just the end
+       of ata_wait_irq(), is what actually closes the race. */
+    g_irq_fired = 0;
 
     /* READ SECTORS asserts an IRQ once the sector is ready (BSY=0,
        DRQ=1 on success). If we're running inside a scheduled process,
@@ -355,6 +377,7 @@ int ata_write_sector(uint32_t lba, const void *buf) {
     outb(g_base + REG_LBA_MID,    (uint8_t)(lba >> 8));
     outb(g_base + REG_LBA_HI,     (uint8_t)(lba >> 16));
     outb(g_base + REG_CMD,        CMD_WRITE);
+    g_irq_fired = 0;   /* see the matching comment in ata_read_sector */
     ata_delay();
 
     /* WRITE SECTORS' initial "ready for data" transition (BSY->0,
@@ -385,6 +408,7 @@ int ata_write_sector(uint32_t lba, const void *buf) {
        mean the data is gone, so this is NOT propagated as a write
        failure. */
     outb(g_base + REG_CMD, CMD_FLUSH);
+    g_irq_fired = 0;   /* see the matching comment in ata_read_sector */
     if (process_current()) {
         ata_wait_irq();
     } else {

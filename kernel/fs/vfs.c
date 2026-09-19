@@ -10,10 +10,21 @@ static void vfs_store_name(vfs_fd_t *fd, const char *name) {
     fd->name[i] = '\0';
 }
 
-int vfs_open(const char *name, vfs_fd_t *fd) {
+/* Stores only the LAST "/"-separated component of path into fd->name —
+   see the vfs_fd_t.name comment in vfs.h for why (vfs_write must re-find
+   the entry without depending on the process's cwd at write time). */
+static void vfs_store_final_component(vfs_fd_t *fd, const char *path) {
+    const char *last = path;
+    for (const char *p = path; *p; p++) {
+        if (*p == '/') last = p + 1;
+    }
+    vfs_store_name(fd, last);
+}
+
+int vfs_open(uint32_t cwd_cluster, const char *name, vfs_fd_t *fd) {
     if (!name || !fd) return -1;
 
-    /* try ramfs first */
+    /* try ramfs first (flat namespace, no subdirectories) */
     uint32_t off, sz;
     if (ramfs_find(name, &off, &sz)) {
         fd->used    = 1;
@@ -21,21 +32,23 @@ int vfs_open(const char *name, vfs_fd_t *fd) {
         fd->first   = off;
         fd->size    = sz;
         fd->pos     = 0;
+        fd->parent_cluster = 0;   /* unused for ramfs */
         vfs_store_name(fd, name);
         return 0;
     }
 
     /* then try FAT16 */
     if (fat16_available()) {
-        uint32_t cluster = 0, size = 0;
-        int found = fat16_find(name, &cluster, &size);
+        uint32_t cluster = 0, size = 0, parent = 0;
+        int found = fat16_find(cwd_cluster, name, &cluster, &size, &parent);
         if (found == 1) {
             fd->used    = 1;
             fd->backend = VFS_FAT16;
             fd->first   = cluster;
             fd->size    = size;
             fd->pos     = 0;
-            vfs_store_name(fd, name);
+            fd->parent_cluster = parent;
+            vfs_store_final_component(fd, name);
             return 0;
         }
     }
@@ -43,24 +56,27 @@ int vfs_open(const char *name, vfs_fd_t *fd) {
     return -1;
 }
 
-int vfs_create(const char *name, vfs_fd_t *fd) {
+int vfs_create(uint32_t cwd_cluster, const char *name, vfs_fd_t *fd) {
     if (!name || !fd) return -1;
 
     /* already exists (ramfs or FAT16)? just open it */
-    if (vfs_open(name, fd) == 0) return 0;
+    if (vfs_open(cwd_cluster, name, fd) == 0) return 0;
 
     if (!fat16_available()) return -1;
-    if (fat16_create(name) < 0) return -1;
+
+    uint32_t parent = 0;
+    if (fat16_create(cwd_cluster, name, &parent) < 0) return -1;
 
     uint32_t cluster = 0, size = 0;
-    if (fat16_find(name, &cluster, &size) != 1) return -1;
+    if (fat16_find(cwd_cluster, name, &cluster, &size, 0) != 1) return -1;
 
     fd->used    = 1;
     fd->backend = VFS_FAT16;
     fd->first   = cluster;
     fd->size    = size;
     fd->pos     = 0;
-    vfs_store_name(fd, name);
+    fd->parent_cluster = parent;
+    vfs_store_final_component(fd, name);
     return 0;
 }
 
@@ -90,7 +106,7 @@ int vfs_read(vfs_fd_t *fd, char *buf, uint32_t len) {
 int vfs_write(vfs_fd_t *fd, const char *buf, uint32_t len) {
     if (!fd || !fd->used) return -1;
     if (fd->backend != VFS_FAT16) return -1;  /* ramfs is read-only */
-    return fat16_write_file(fd->name, buf, len);
+    return fat16_write_file(fd->parent_cluster, fd->name, buf, len);
 }
 
 void vfs_close(vfs_fd_t *fd) {

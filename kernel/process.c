@@ -55,6 +55,7 @@ void process_init(void) {
         process_table[i].wake_tick = 0;
         process_table[i].ticks_run = 0;
         process_table[i].runs = 0;
+        process_table[i].cwd_cluster = 0;
     }
 
     current_process = 0;
@@ -92,6 +93,7 @@ process_t *process_spawn(const char *name, process_entry_t entry, void *arg, voi
             process->wake_tick = 0;
             process->ticks_run = 0;
             process->runs = 0;
+            process->cwd_cluster = 0;   /* new processes start at the root */
             process->cr3 = vmm_create_directory();
             if (!process->cr3)
                 process->cr3 = vmm_get_kernel_directory();
@@ -104,6 +106,7 @@ process_t *process_spawn(const char *name, process_entry_t entry, void *arg, voi
 
 process_t *process_spawn_user(const char *name, uint32_t user_entry,
                               uint32_t user_esp, uint32_t cr3,
+                              uint32_t cwd_cluster,
                               void (*bootstrap)(void)) {
     if (!bootstrap) return 0;
 
@@ -125,6 +128,7 @@ process_t *process_spawn_user(const char *name, uint32_t user_entry,
         p->wake_tick  = 0;
         p->ticks_run  = 0;
         p->runs       = 0;
+        p->cwd_cluster = cwd_cluster;
         return p;
     }
     return 0;
@@ -195,6 +199,7 @@ process_t *process_fork(process_t *parent, const uint32_t *saved_frame) {
     child->runs        = 0;
     child->user_stack  = 0;
     child->user_esp    = parent->user_esp;
+    child->cwd_cluster = parent->cwd_cluster;   /* "cd" survives fork() */
 
     /* ── 2. duplicate the address space: full copy, not COW ────────
        Walks every present PDE/PTE beyond the shared kernel mapping

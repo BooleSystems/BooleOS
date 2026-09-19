@@ -9,7 +9,7 @@
  | |\  | |_| | | | |_| |___) |
  |_| \_|\__,_|_|_|\___/|____/ 
 
- NullOS v0.14.2 - Phase 14: user pointer validation
+ NullOS v0.15.0 - Phase 15: FAT16 subdirectories
 ```
 
 ## Overview
@@ -39,8 +39,9 @@ See CHANGELOG.md for version history and ROADMAP.md for planned future phases.
 | **12** | ATA IRQ-driven I/O: IRQ14/15 handlers, process blocking instead of busy-wait, exclusion gate, `PROCESS_BLOCKED` | ✅ Done |
 | **13** | `fork()`: full address-space duplication, fabricated child kernel stack (resumes via `isr128_resume`), fd table duplication, `SYS_FORK` | ✅ Done |
 | **14** | Kernel memory-safety hardening: userland pointer validation closing 4 confirmed ring 3 → ring 0 arbitrary memory read/write bugs, a `kmalloc()` integer-overflow bug, and the same gap in `sys_open`/`sys_create`/`sys_exec`/`sys_getarg`; version string centralized in `kernel/version.h` | ✅ Done |
+| **15** | FAT16 subdirectories: `mkdir`/`cd`, path-aware `touch`/`edit`/`ls`; shared `dir_lookup()`/`dir_insert()`/`resolve_path()` core (resolves the Phase 10 duplicated-lookup tech debt); `SYS_CHDIR`/`SYS_MKDIR`; `exec()` (`run`/`edit`) now inherits the caller's `cwd_cluster` instead of always starting at the root | ✅ Done |
 
-For planned Phases 15–21, see **[ROADMAP.md](ROADMAP.md)**.
+For planned Phases 16–22, see **[ROADMAP.md](ROADMAP.md)**.
 
 ## Documentation
 
@@ -55,7 +56,7 @@ Detailed, per-system documentation lives under `docs/`:
 - [docs/pci.md](docs/pci.md) — PCI bus enumeration
 - [docs/shell.md](docs/shell.md) — interactive shell and commands
 - [docs/testing.md](docs/testing.md) — `run selftest`, the automated regression suite
-- [docs/setup.md](docs/setup.md) — toolchain/dependency setup (Phase 0)
+- [docs/setup.md](docs/setup.md) — toolchain/dependency setup
 
 `PROGRESS.md` (not end-user documentation) carries cross-session working
 memory: non-obvious architecture decisions and known technical debt.
@@ -99,7 +100,7 @@ kernel/
 user/
   init.c              simple user process: SYS_WRITE + SYS_EXIT
   spintest.c          process without yield: validates IRQ0 preemption
-  shell.c             interactive shell: help/uname/fetch/ps/mem/ls/touch/echo/kill/run/edit/clear/exit
+  shell.c             interactive shell: help/uname/fetch/ps/mem/ls/touch/mkdir/cd/echo/kill/run/edit/clear/exit
   edit.c              text editor: opens/creates/saves files on FAT16
   forktest.c          calls fork(), prints the parent/child paths and PIDs
   selftest.c          automated regression suite ("run selftest") — see docs/testing.md

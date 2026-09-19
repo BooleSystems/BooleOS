@@ -29,11 +29,13 @@ before the kernel touches it, see [security.md](security.md).
 | 18 | `SYS_SETCOLOR` | `set_color(fg, bg) → 0` |
 | 19 | `SYS_SET_RAW_MODE` | `set_raw_mode(1/0) → 0` (turns off `SYS_READ` echo) |
 | 20 | `SYS_WAIT` | `wait(pid) → 0` (blocks until the process terminates) |
-| 21 | `SYS_READDIR` | `readdir() → 0` (lists ramfs + FAT16 via VGA) |
+| 21 | `SYS_READDIR` | `readdir(path) → 0 or -1` (lists ramfs + FAT16 via VGA; `path` may be NULL/empty for the caller's cwd — see `SYS_CHDIR`) |
 | 22 | `SYS_WRITE_FILE` | `write_file(fd, buf, len) → 0 or -1` (writes to FAT16) |
 | 23 | `SYS_CREATE` | `create(name) → fd (≥3) or -1` (opens if it exists, otherwise creates it empty on FAT16) |
 | 24 | `SYS_PCI_LIST` | `pci_list() → device count` (reprints the PCI device table found at boot via VGA, without rescanning; also returns `pci_device_count()` so a caller can check "found anything?" without parsing VGA text — added for `user/selftest.c`) |
 | 25 | `SYS_FORK` | `fork() → child's pid (parent) / 0 (child) / -1` (duplicates the caller: full address space, open fds; not copy-on-write) |
+| 26 | `SYS_CHDIR` | `chdir(path) → 0 or -1` (changes the caller's FAT16 cwd; only mutates it on confirmed success — a missing path, a path naming a file, or an I/O error all leave the cwd untouched) |
+| 27 | `SYS_MKDIR` | `mkdir(path) → 0 or -1` (creates a directory on FAT16; idempotent if a directory of that name already exists, fails if a file does) |
 
 > `SYS_READ` is polymorphic: fd=0 reads from the keyboard (blocking, with echo and backspace); fd≥3 reads from a file opened via `SYS_OPEN`/`SYS_CREATE`, advances the position, and returns 0 on EOF.
 

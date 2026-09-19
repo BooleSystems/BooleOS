@@ -20,28 +20,104 @@ file and link it from `README.md` — don't put system detail back into
 
 ## Current status
 
-Last completed phase: **Phase 14** — kernel memory-safety hardening:
-`user_ptr_valid()`/`copy_from_user()`/`copy_to_user()` at the syscall
-boundary, fixing 4 confirmed ring 3 → ring 0 memory read/write bugs
-(`sys_write`, `sys_read`, `sys_write_file`, `sys_meminfo`) plus a
-`kmalloc()` integer-overflow bug; extended to close the same gap in
-`sys_open`/`sys_create`/`sys_exec`/`sys_getarg` via `user_kptr()`; also
-removed leftover debug output in `sys_open` and centralized the
-version string in `kernel/version.h`.
-See `README.md` → "Completed phases" table + `docs/security.md` +
-`docs/syscalls.md` + CHANGELOG.md `[0.14.0]` for full detail.
+Last completed phase: **Phase 15** — FAT16 subdirectories: `mkdir`/`cd`,
+path-aware `touch`/`edit`/`ls`; a shared `dir_lookup()`/`dir_insert()`/
+`resolve_path()` core (resolves the Phase 10 duplicated-lookup tech
+debt, previously tracked below); `SYS_CHDIR`/`SYS_MKDIR`; and a fix,
+found during this phase's own manual QEMU testing, for `exec()`
+(`run`/`edit`) not inheriting the caller's `cwd_cluster` (it always
+started fresh processes at the root, unlike `fork()`, which already
+had cwd inheritance). Current version: **0.15.0** (MINOR bump — Phase
+15 completed). See `README.md` → "Completed phases" table +
+`docs/filesystem.md` → "Subdirectories" + `docs/scheduler.md` +
+`docs/syscalls.md` + CHANGELOG.md `[0.15.0]` for full detail.
 
-Current version: **0.14.1** (PATCH bump, not a new phase) — intermediate
-work done after Phase 14 without completing Phase 15: documentation
-reorganization (README/ROADMAP.md/docs/*.md) and `user/selftest.c` +
-`pci_device_count()`. See CHANGELOG.md `[0.14.1]` and `docs/testing.md`.
-Per the versioning convention in CLAUDE.md, MINOR only ever equals a
-completed phase number — still 14 until Phase 15 actually lands.
+Note: FAT16 subdirectories was originally planned and numbered "Phase
+17" in `ROADMAP.md`, but was implemented ahead of the two
+process-related phases (pipes, copy-on-write fork) that preceded it in
+that list — it took the next real completed-phase slot, 15, and the
+roadmap was renumbered accordingly (pipes/COW-fork are now Phases
+16/17; everything from the networking phase onward kept its number).
+See ROADMAP.md's own note on this and CHANGELOG.md `[0.15.0]`.
+
+Prior to this, Phases 14.1/14.2 were PATCH-only intermediate work
+(documentation reorganization, `user/selftest.c` + `pci_device_count()`,
+a `make debug` target) — see CHANGELOG.md `[0.14.1]`/`[0.14.2]` and
+`docs/testing.md`.
 
 Future roadmap: see `ROADMAP.md` for the full per-phase breakdown and
-priority order (Phases 15–21).
+priority order (Phases 16–22).
 
 ## Architecture decisions (non-obvious from reading the code alone)
+
+- **FAT16 subdirectories (`kernel/fs/fat16.c`) go through one shared
+  lookup/insert/path-walk core, deliberately, because of the Phase 10
+  duplicated-lookup bug** (previously tracked in "Known technical debt"
+  below, now resolved): `dir_iter_t`/`dir_iter_next_sector()` is the one
+  place that steps through a directory's sectors (fixed root region or a
+  subdirectory's FAT chain), `dir_lookup()` the one place that builds the
+  combined 11-byte name and compares it, `dir_insert()` the one place
+  that writes a new dirent. `fat16_find`/`fat16_create`/`fat16_mkdir`/
+  `fat16_readdir`/`fat16_resolve_dir`/`fat16_write_file` are all thin
+  callers of these, plus `resolve_path()` for anything that takes a
+  `"/"`-separated path. See `docs/filesystem.md` → "Subdirectories" for
+  the full design (including why the root and a normal subdirectory are
+  structurally different, and how that difference is contained inside
+  `dir_iter_next_sector()` instead of leaking into every caller).
+  **Gotcha already fixed once during this phase, worth knowing if
+  `to_8_3()` is ever touched again:** `to_8_3(".")`/`to_8_3("..")` must
+  NOT go through the normal name/extension split (which treats the
+  first `.` as the extension separator and silently produces the wrong
+  bytes for both) — `to_8_3()` special-cases exactly `"."` and `".."`
+  up front for this reason. Without that special case, `resolve_path()`
+  can never match the `.`/`..` entries `fat16_mkdir` writes, silently
+  breaking `cd .` and `cd ..` everywhere, not just at the root.
+  **Second gotcha, also fixed during this phase:** the base/extension
+  split must locate the real `.` in the ORIGINAL string before
+  deciding there isn't one — stopping the base-name scan at the 8-char
+  cap and checking `*name == '.'` right there (the original,
+  Phase-10-era logic) means any base longer than 8 chars whose `.`
+  comes later (e.g. `"selftest_tmp.txt"`) never finds its extension at
+  all. Two names that only differ after the 8th character then
+  silently collide on the same on-disk 8.3 entry. This isn't just
+  theoretical — it's exactly what made `user/selftest.c`'s own test
+  filenames (`selftest_tmp.txt` / `selftest_sub.txt` /
+  `selftest_fork_marker.txt`, all sharing the `"selftest"` prefix and
+  `"txt"` extension) collide with each other; see `docs/testing.md`
+  and CHANGELOG.md `[0.15.0]`. Any new FAT16 test/tool filename must
+  have a distinct 8.3 encoding from every other one in use, not just a
+  visually distinct name — check with the actual truncation rule, not
+  by eye.
+- **ATA's `g_irq_fired` (`kernel/drivers/ata.c`, Phase 12) is reset
+  when a NEW command is issued, not just when a wait for one
+  finishes** — found via a real intermittent bug during this phase's
+  own testing (a second `ata_read_sector()`/`ata_write_sector()` call,
+  right after a successful first one, could skip its own IRQ wait and
+  fail). Root cause: `fat16_init()`'s ~65 boot-time reads run through
+  the polling fallback (`process_current()` is `NULL` that early), but
+  the drive still raises a real completion IRQ for every one of them
+  — since the polling path never calls `ata_wait_irq()`, that real IRQ
+  sets `g_irq_fired = 1` with nobody to consume it, and it can sit
+  there stale until a *later*, genuinely IRQ-driven wait mistakes it
+  for its own command's completion and returns without actually
+  waiting. If this file is ever refactored, the reset MUST stay at
+  "right after `outb(REG_CMD, ...)`" for every command (`CMD_READ`,
+  `CMD_WRITE`, `CMD_FLUSH`) — moving it back to only "after a
+  successful wait" reopens this exact race.
+- **`vfs_fd_t` caches `parent_cluster` + the file's final path component
+  at open/create time, not the full path** (`kernel/fs/vfs.h/.c`). A
+  later `vfs_write()` re-finds the entry directly from that cached
+  location instead of re-resolving the original path against the
+  process's *current* `cwd_cluster` — otherwise a `cd` between opening a
+  file and writing to it would silently target the wrong directory (or
+  fail) depending on timing. This was designed in deliberately, not
+  discovered as a bug — see the review discussion that approved Phase 15
+  before implementation.
+- **`process_t.cwd_cluster` is copied in `process_fork()`**
+  (`kernel/process.c`), same as every other scalar process field — a
+  `cd` a shell process did before forking is expected to still apply to
+  its child, exactly like an inherited environment variable would be in
+  a POSIX shell.
 
 - **`PROCESS_BLOCKED` is a separate state from `PROCESS_SLEEPING`**
   (`kernel/process.h`). `PROCESS_SLEEPING` is driven by `wake_tick` and
@@ -140,17 +216,6 @@ priority order (Phases 15–21).
 
 ## Known technical debt
 
-- **Duplicated dirent lookup: `fat16_find` vs. `fat16_write_file`**
-  (`kernel/fs/fat16.c`). `fat16_write_file` has its own inline copy of the
-  8.3 name-matching loop instead of calling `fat16_find`. This already bit
-  the project once: an out-of-bounds `name[8]`/`ext[3]` bug was fixed in
-  `fat16_find` but left in place in the `fat16_write_file` copy, since
-  they're separate code paths. Both currently build an explicit 11-byte
-  buffer correctly (see the comment at `fat16.c:319`), but the duplication
-  itself is still there — Phase 17 (FAT16 subdirectories) is flagged in
-  ROADMAP.md as a good point to unify this into one function before
-  extending it further.
-
 - **`process_exit()` never frees `process->cr3` or its mapped pages**
   (`kernel/process.c`, comment above `process_exit`). A process's entire
   address space (and, for a forked child, its independent copy of every
@@ -158,7 +223,7 @@ priority order (Phases 15–21).
   leak: slots stay safely reusable because `process_spawn()`/
   `process_fork()` always allocate a fresh `cr3` for whatever runs next in
   that slot, but physical memory is never returned to the PMM. Relevant
-  to Phase 16 (copy-on-write fork), which will need real refcounting
+  to Phase 17 (copy-on-write fork), which will need real refcounting
   before this can be fixed properly.
 
 - **`process_spawn()`/`process_spawn_user()` scan for a free slot without

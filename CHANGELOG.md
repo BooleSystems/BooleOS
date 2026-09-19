@@ -29,6 +29,139 @@ sections below, without a `kernel/version.h` bump — see CLAUDE.md's
 versioning convention ("Unreleased" section) for when/how this gets
 renamed to a real version number instead.
 
+## [0.15.0] - Phase 15: FAT16 subdirectories
+
+FAT16 subdirectories (`mkdir`/`cd`, path-aware `touch`/`edit`/`ls`),
+plus a real bug found and fixed during this phase's own manual QEMU
+testing (`exec()` not inheriting the caller's cwd). Originally planned
+and numbered "Phase 17" in `ROADMAP.md`, but implemented ahead of the
+two process-related phases that preceded it in that list (pipes,
+copy-on-write fork) — it took the next real completed-phase slot, 15,
+and the roadmap was renumbered accordingly: pipes/COW-fork are now
+Phases 16/17 (previously 15/16); every phase from the networking one
+onward kept its original number. See `ROADMAP.md`'s own note on this.
+
+### Fixed
+- **`exec()` (`run`/`edit` in the shell) now inherits the calling
+  process's `cwd_cluster` instead of always starting at the root**
+  (`kernel/exec.c/h`, `kernel/scheduler.c/h`, `kernel/process.c/h`,
+  `kernel/syscall.c`, `kernel/main.c`) — found during Phase 15's own
+  manual QEMU test: `mkdir doc; cd doc; touch notes.txt; edit
+  notes.txt` silently created and wrote a **second, independent**
+  `notes.txt` in the root instead of editing the one inside `doc`,
+  because `edit`'s process was spawned fresh via `process_spawn_user()`
+  (hardcoded to `cwd_cluster = 0`), not forked from the shell — only
+  `process_fork()` had cwd inheritance wired in. `exec()`/
+  `scheduler_spawn_user()`/`process_spawn_user()` all now take an
+  explicit `cwd_cluster` parameter; `SYS_EXEC` passes the caller's own
+  `cwd_cluster`, and the one call site with no calling process
+  (`kmain` spawning the initial shell at boot) passes `0` explicitly.
+  See `docs/scheduler.md` → "Current working directory" for the design
+  rationale (deliberately more `posix_spawn()`-like than POSIX `exec()`
+  here, matching the intuitive "run a program from where I am").
+  **Anyone who ran the pre-fix Phase 15 test script needs a clean disk**
+  (`rm -f build/disk.img && make disk`, or just `make clean && make`)
+  before retesting — the leftover `disk.img` has stray root-level files
+  from this bug (a duplicate `NOTES.TXT`, and `fk*.txt` markers from
+  `forktest` that landed in the root instead of the subdirectory it was
+  run from) that would otherwise be mistaken for new bugs.
+- **A stale `g_irq_fired` flag from ATA's IRQ-driven wait
+  (`kernel/drivers/ata.c`, Phase 12) could make a second
+  `ata_read_sector()`/`ata_write_sector()` call skip waiting for its
+  own command's real completion**, intermittently (timing-dependent —
+  found via 6 rounds of manual testing, some passing, some not). Root
+  cause: `ata_init()` unmasks IRQ14/15 before `fat16_init()`'s ~65
+  boot-time polling reads (BPB + FAT cache) run, while
+  `process_current()` is still `NULL` — every one of those still
+  raises a real completion IRQ from the drive, but the polling path
+  never calls `ata_wait_irq()` (the only place that used to reset
+  `g_irq_fired`), leaving the flag dirty. The first later IRQ-driven
+  wait could then see this leftover "already fired" and skip its own
+  wait, checking `DRQ` before the drive was actually ready — and could
+  cascade, since a skipped wait never registers a waiter for its own
+  real (later) completion IRQ either. Fixed by resetting `g_irq_fired`
+  right after issuing each new command, not just when a wait finishes,
+  so no leftover signal from any prior command (polled or IRQ-driven)
+  can be mistaken for the one just issued.
+- **`to_8_3()` (`kernel/fs/fat16.c`) silently dropped the extension for
+  any base name longer than 8 characters** instead of finding the real
+  `.` first — e.g. `to_8_3("selftest_tmp.txt")` produced `"SELFTEST"`
+  with no extension at all, not `"SELFTEST.TXT"`. This made unrelated
+  names that only differed after their 8th character collide on the
+  same on-disk 8.3 entry (`"selftest_dir"` and `"selftest_tmp.txt"`
+  both truncated to `"SELFTEST"`), causing spurious create/mkdir
+  conflicts. Fixed by locating the actual `.` before splitting into
+  base/extension, instead of stopping wherever the 8-char cap for the
+  base happened to land.
+- **`user/selftest.c`'s own test filenames were themselves 8.3-
+  colliding**, revealed (not caused) by the `to_8_3()` fix above:
+  `selftest_tmp.txt` (root), `selftest_sub.txt`, and
+  `selftest_fork_marker.txt` (both in `selftest_dir`) all share the
+  first-8-chars prefix `"selftest"` and the `"txt"` extension, so they
+  all pack to the identical `SELFTESTTXT` — making test 11
+  ("subdirectory files don't leak into the root") falsely fail against
+  test 3's unrelated root-level file, and making test 10 ("fork
+  inherits cwd") silently reuse test 9's own dirent instead of
+  creating a genuinely separate one. Renamed to `st_root.txt`/
+  `st_sub.txt`/`st_mark.txt` — verified pairwise-distinct 8.3
+  encodings, not just visually different names. See `docs/testing.md`.
+
+### Changed
+- `kernel/fs/fat16.c`: internally reorganized around one shared
+  directory-scan/lookup/insert core (`dir_iter_t`, `dir_lookup()`,
+  `dir_insert()`, `resolve_path()`) instead of each function walking a
+  directory's dirents independently — resolves the "duplicated dirent
+  lookup" tech debt between `fat16_find` and `fat16_write_file` tracked
+  in `PROGRESS.md` since Phase 10, ahead of extending both to
+  subdirectories. `fat16_find`/`fat16_create`/`fat16_write_file`/
+  `fat16_readdir` signatures changed accordingly (all now take a
+  directory cluster and/or a full path instead of assuming the root).
+- `kernel/fs/vfs.c`: `vfs_open`/`vfs_create` take a `cwd_cluster`
+  parameter; `vfs_fd_t` gained `parent_cluster`, captured at open/create
+  time so `vfs_write` doesn't depend on the caller's cwd at write time.
+- `docs/setup.md`: rewritten to drop Phase 0 framing (filename/section
+  history that mixed "how to set up today" with "how this file used to
+  document Phase 0 only") and reorganized into a direct dependencies →
+  cross-compiler → Windows/macOS → Arch → build/run → boot output →
+  serial-debug order. Made explicit that automatic dependency
+  installation (`tools/setup_env.sh`) only covers Fedora and Debian.
+
+### Added
+- **FAT16 subdirectories** (Phase 15): `mkdir`/`cd` in
+  the shell, and `touch`/`edit`/`ls` now accept a path with a subfolder
+  (e.g. `edit docs/notes.txt`). New syscalls `SYS_CHDIR (26)` and
+  `SYS_MKDIR (27)`; `SYS_READDIR (21)` gained an optional path argument.
+  New `process_t.cwd_cluster` field, copied across `fork()`. See
+  `docs/filesystem.md` → "Subdirectories" and `docs/scheduler.md` →
+  "Current working directory" for the full design, and `docs/syscalls.md`
+  for the syscall table.
+- `user/forktest.c`: parent and child now each create a relative-path
+  marker file (`fk<pid>.txt`) right after `fork()`, so `cwd_cluster`
+  inheritance can actually be observed from the shell (`ls` the
+  directory `forktest` was run from) — the pre-existing test only
+  checked the parent/child PID split, never touched the filesystem.
+- `user/selftest.c`: four new Phase 15 checks (`run selftest` now
+  reports 11/11 instead of 7/7) — `mkdir`, a file write/read roundtrip
+  done entirely inside the new subdirectory (the same scenario that
+  exposed the `exec()`-cwd bug above, checked here at the FAT16/VFS
+  level directly since `selftest` never `exec()`s), `fork()` correctly
+  inheriting `cwd_cluster` (child creates a marker via a relative path,
+  parent finds it in the same directory), and confirming neither file
+  created inside the subdirectory can be opened by name after `cd`ing
+  back to the root — the regression test for the exact leak the manual
+  test caught. See `docs/testing.md` for the full breakdown.
+- `docs/setup.md`: "Windows and macOS" section recommending
+  `tools/docker_build.sh` under Docker Desktop (WSL2 backend on
+  Windows, native Docker Desktop on macOS) as the only viable path,
+  since neither OS has a working native `grub-mkrescue`. Explicitly
+  flagged as untested by anyone on the project on either platform.
+- `docs/setup.md`: "Arch Linux" subsection under Dependencies with the
+  confirmed `pacman` package names for every dependency
+  `tools/setup_env.sh` installs on Fedora/Debian (notably
+  `libisoburn` for `xorriso` and `qemu-system-x86`), plus a note that
+  Arch isn't auto-detected by `tools/setup_env.sh` yet (manual install
+  only) and a pointer to that as a possible future improvement.
+
 ## [0.14.2] - Docs audit fixes, LICENSE, push-rule convention, `make debug`
 
 Not a new phase — same PATCH convention as 0.14.1 (see CLAUDE.md,

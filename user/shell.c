@@ -55,11 +55,25 @@ static int sys_exec_arg(const char *name, const char *arg) {
     return ret;
 }
 
-static void sys_readdir(void) {
+static void sys_readdir(const char *path) {
     int ret;
     __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(21) : "memory");
+        : "=a"(ret) : "0"(21), "b"(path) : "memory");
     (void)ret;
+}
+
+static int sys_mkdir(const char *path) {
+    int ret;
+    __asm__ volatile ("int $0x80"
+        : "=a"(ret) : "0"(27), "b"(path) : "memory");
+    return ret;
+}
+
+static int sys_chdir(const char *path) {
+    int ret;
+    __asm__ volatile ("int $0x80"
+        : "=a"(ret) : "0"(26), "b"(path) : "memory");
+    return ret;
 }
 
 static void sys_pci_list(void) {
@@ -264,6 +278,22 @@ static void cmd_touch(const char *arg) {
     sys_close(fd);
 }
 
+static void cmd_mkdir(const char *arg) {
+    if (!arg || !*arg) { sh_puts("usage: mkdir <dir>\n"); return; }
+    if (sys_mkdir(arg) < 0) {
+        sh_puts("error: could not create directory (no disk, path missing, or name taken by a file)\n");
+    }
+}
+
+static void cmd_cd(const char *arg) {
+    const char *path = (arg && *arg) ? arg : "/";
+    if (sys_chdir(path) != 0) {
+        sh_puts("cd: no such directory: ");
+        sh_puts(path);
+        sh_puts("\n");
+    }
+}
+
 static void cmd_run(const char *name) {
     if (!name || !*name) { sh_puts("usage: run <program>\n"); return; }
     int pid = sys_exec(name);
@@ -283,9 +313,11 @@ static const char *help_text =
     "  fetch          system info\n"
     "  ps             process table\n"
     "  mem            memory usage\n"
-    "  ls             list files\n"
+    "  ls [dir]       list files (cwd, or a given path)\n"
     "  lspci          list PCI devices\n"
-    "  touch <name>   create an empty file\n"
+    "  touch <name>   create an empty file (path allowed, e.g. docs/a.txt)\n"
+    "  mkdir <dir>    create a directory (path allowed)\n"
+    "  cd [dir]       change the current directory (no arg = root)\n"
     "  echo <text>    print text\n"
     "  kill <pid>     terminate a process\n"
     "  run <prog>     run a program in the background\n"
@@ -311,11 +343,17 @@ static void run_command(char *line, int len) {
     } else if (sh_strcmp(line, "mem") == 0) {
         cmd_mem();
     } else if (sh_strcmp(line, "ls") == 0) {
-        sys_readdir();
+        sys_readdir(0);
+    } else if (sh_strncmp(line, "ls", 2) == 0 && line[2] == ' ') {
+        sys_readdir(line + 3);
     } else if (sh_strcmp(line, "lspci") == 0) {
         sys_pci_list();
     } else if (sh_strncmp(line, "touch", 5) == 0 && (line[5] == ' ' || line[5] == '\0')) {
         cmd_touch(line[5] == ' ' ? line + 6 : "");
+    } else if (sh_strncmp(line, "mkdir", 5) == 0 && (line[5] == ' ' || line[5] == '\0')) {
+        cmd_mkdir(line[5] == ' ' ? line + 6 : "");
+    } else if (sh_strncmp(line, "cd", 2) == 0 && (line[2] == ' ' || line[2] == '\0')) {
+        cmd_cd(line[2] == ' ' ? line + 3 : "");
     } else if (sh_strncmp(line, "echo", 4) == 0 && (line[4] == ' ' || line[4] == '\0')) {
         cmd_echo(line);
     } else if (sh_strncmp(line, "kill", 4) == 0 && (line[4] == ' ' || line[4] == '\0')) {

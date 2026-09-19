@@ -287,3 +287,22 @@
   pedir a conferência. Uma sessão que confia cegamente no README/
   CHANGELOG sem checar contra PROGRESS.md pode repetir esse mesmo
   erro silenciosamente.
+  
+  ## Registro obrigatório no CHANGELOG
+
+- TODA tarefa concluída nesta sessão — mesmo que seja só documentação
+  pura, mesmo que não libere `git push` pela regra de push já
+  estabelecida — deve ganhar uma entrada em `CHANGELOG.md` sob
+  `[Unreleased]`, na subseção apropriada (Added/Changed/Fixed/etc).
+- Isso vale inclusive para tarefas pequenas de reorganização,
+  correção de texto, ou ajuste de arquivo `.md` que não mudam
+  comportamento nenhum do sistema — o objetivo não é rastrear
+  "mudança de comportamento", é rastrear "o que foi feito nesta
+  sessão", pra sessões futuras (e o próprio usuário) terem histórico
+  completo do que já foi tocado, sem precisar vasculhar o histórico
+  de conversa pra descobrir.
+- Só é aceitável pular a entrada de CHANGELOG quando a tarefa for
+  puramente exploratória/de leitura (ex: "leia esse arquivo e me diga
+  o que acha", sem nenhuma edição de arquivo real) — qualquer tarefa
+  que resulte em edição de algum arquivo do repositório precisa de
+  entrada correspondente no CHANGELOG.

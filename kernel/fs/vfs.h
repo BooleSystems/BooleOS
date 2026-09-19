@@ -15,17 +15,33 @@ typedef struct {
     uint32_t      first;      /* ramfs: byte offset; fat16: first cluster */
     uint32_t      size;
     uint32_t      pos;
-    char          name[32];   /* original name — needed for FAT16 writes */
+    uint32_t      parent_cluster; /* FAT16 only: cluster of the directory
+                                      containing this file's dirent (0 =
+                                      root), captured at open/create time
+                                      so a later write re-finds the exact
+                                      same entry regardless of whatever
+                                      the process's cwd has changed to in
+                                      the meantime (see vfs_write). Unused
+                                      for ramfs. */
+    char          name[32];   /* FAT16: the file's own name (last path
+                                  component only, no "/") — needed for
+                                  FAT16 writes; ramfs: the full (flat)
+                                  name, ramfs has no subdirectories. */
 } vfs_fd_t;
 
-/* Opens a file by name. Tries ramfs first, then FAT16.
-   Fills *fd and returns 0 on success, -1 if not found.  */
-int  vfs_open (const char *name, vfs_fd_t *fd);
+/* Opens a file by path. Tries ramfs first (always a flat namespace — it
+   never gained subdirectories), then FAT16. cwd_cluster is the base a
+   relative FAT16 path resolves against (0 = root); an absolute path
+   (starting with "/") always resolves from the root regardless.
+   Fills *fd and returns 0 on success, -1 if not found in either backend. */
+int  vfs_open (uint32_t cwd_cluster, const char *name, vfs_fd_t *fd);
 
 /* Opens the file if it already exists (ramfs or FAT16); otherwise creates
-   an empty entry in FAT16 and opens it. Returns 0 on success, -1 if the
-   disk is unavailable or the root dir has no free space. */
-int  vfs_create(const char *name, vfs_fd_t *fd);
+   an empty entry in FAT16 (in the directory named by cwd_cluster/name,
+   same convention as vfs_open) and opens it. Returns 0 on success, -1 if
+   the disk is unavailable, an intermediate path component is missing, or
+   the containing directory has no free space. */
+int  vfs_create(uint32_t cwd_cluster, const char *name, vfs_fd_t *fd);
 
 /* Reads up to len bytes starting at fd->pos. Returns bytes read or -1. */
 int  vfs_read (vfs_fd_t *fd, char *buf, uint32_t len);
@@ -34,6 +50,9 @@ int  vfs_read (vfs_fd_t *fd, char *buf, uint32_t len);
 void vfs_close(vfs_fd_t *fd);
 
 /* Writes len bytes from buf into the file referenced by fd (FAT16 only).
+   Uses fd->parent_cluster/fd->name (captured at open/create time), NOT
+   the caller's current cwd — so this is independent of any cd() the
+   process may have done between opening the file and writing to it.
    Returns 0 on success, -1 if the backend doesn't support writes or on error. */
 int  vfs_write(vfs_fd_t *fd, const char *buf, uint32_t len);
 

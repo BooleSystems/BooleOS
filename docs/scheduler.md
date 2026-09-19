@@ -12,6 +12,14 @@
 - The shell stores the returned PID in `foreground_pid`; typing another command resets `foreground_pid`
 - **Ctrl+C**: IRQ1 detects scancode `0x1D` (Ctrl press/release) and `0x2E` (C); injects `0x03` into the ringbuffer; `SYS_READ` returns immediately with `buf[0]=0x03` and echoes `^C\n`; the shell calls `sys_kill(foreground_pid)` and resets the PID
 
+## Current working directory (`cwd_cluster`)
+
+- `process_t.cwd_cluster` (`process.h`): the FAT16 cluster of the process's current directory (0 = root). Every path-taking syscall (`SYS_OPEN`, `SYS_CREATE`, `SYS_READDIR`, `SYS_MKDIR`) resolves a relative path (one that doesn't start with `/`) against it — see `docs/filesystem.md` for the resolution itself.
+- `SYS_CHDIR (26)` is the only thing that changes it, and only ever on confirmed success (`fat16_resolve_dir()` returning 1 — path exists and is a directory) — every failure path (doesn't exist, names a file, I/O error) returns early without touching it, so a failed `cd` never leaves the process half-moved.
+- `process_fork()` copies `cwd_cluster` from parent to child alongside the other scalar fields (`user_esp`, etc.) — so `cd`'s effect on a process survives a subsequent `fork()`, the same as any other process state.
+- **`exec()`/`SYS_EXEC` (`run`/`edit` in the shell) also inherit `cwd_cluster` from the calling process** — not just `fork()`. This was a real gap found and fixed during Phase 15's own manual testing: `exec()` spawns a **brand-new** process (`process_spawn_user()`), not a fork of the caller, so cwd inheritance had to be wired in separately from `process_fork()`'s. `SYS_EXEC` (`sys_exec` in `syscall.c`) passes `process_current()->cwd_cluster` down through `exec()` → `scheduler_spawn_user()` → `process_spawn_user()`, which now takes `cwd_cluster` as an explicit parameter instead of hardcoding `0`. This matches the intuitive "run a program from where I am" expectation, even though it makes NullOS's `exec()` more `posix_spawn()`-like than POSIX `exec()` (which replaces the calling process's own image rather than spawning an unrelated one) — a deliberate design choice, not an oversight.
+- The only processes that still always start at the root (`cwd_cluster = 0`) are ones with **no calling process to inherit from**: the very first shell, spawned directly by `kmain` at boot (`exec("shell", 0)` in `kernel/main.c`), and anything spawned via the kernel-task path (`process_spawn()`, unrelated to user file paths).
+
 ## `fork()`
 
 - Full duplication (not copy-on-write): a fresh page directory, a fresh physical page for every page the parent has mapped (code, data, stack — whatever's actually present, not a fixed list of regions), and a duplicated fd table entry for every open file

@@ -352,7 +352,7 @@ static uint32_t sys_open(const char *user_name) {
     /* find a free slot */
     for (uint32_t j = 0; j < FD_PER_PROC; j++) {
         if (!fd_table[slot][j].used) {
-            if (vfs_open(kname, &fd_table[slot][j]) < 0)
+            if (vfs_open(cur->cwd_cluster, kname, &fd_table[slot][j]) < 0)
                 return (uint32_t)-1;
             return FD_BASE + j;
         }
@@ -373,7 +373,7 @@ static uint32_t sys_create(const char *user_name) {
 
     for (uint32_t j = 0; j < FD_PER_PROC; j++) {
         if (!fd_table[slot][j].used) {
-            if (vfs_create(kname, &fd_table[slot][j]) < 0)
+            if (vfs_create(cur->cwd_cluster, kname, &fd_table[slot][j]) < 0)
                 return (uint32_t)-1;
             return FD_BASE + j;
         }
@@ -406,7 +406,7 @@ static uint32_t sys_exec(const char *user_name, uint32_t user_arg) {
     if (user_arg)
         copy_user_str(cur, user_arg, exec_arg, sizeof(exec_arg));
 
-    process_t *p = exec(kname);
+    process_t *p = exec(kname, cur->cwd_cluster);
     if (!p) return (uint32_t)-1;
     return p->pid;
 }
@@ -433,11 +433,39 @@ static void puts_padded(const char *s, int width) {
     while (n++ < width) vga_putchar(' ');
 }
 
-static uint32_t sys_readdir(void) {
-    int any = 0;
+/* user_path may be NULL/empty, meaning "list the caller's cwd". When a
+   non-empty path is given, it's resolved via fat16_resolve_dir() (the
+   same function SYS_CHDIR uses) BEFORE anything is printed — an
+   unresolvable/non-directory path is reported and nothing is listed,
+   instead of silently falling back to the cwd. */
+static uint32_t sys_readdir(const char *user_path) {
+    process_t *cur = process_current();
+    if (!cur) return (uint32_t)-1;
 
-    /* ramfs */
-    if (ramfs_base) {
+    uint32_t list_cluster = cur->cwd_cluster;
+
+    if (user_path) {
+        char kpath[USER_STR_MAX];
+        if (copy_user_str(cur, (uint32_t)user_path, kpath, USER_STR_MAX) < 0)
+            return (uint32_t)-1;
+        if (kpath[0]) {
+            if (!fat16_available()) return (uint32_t)-1;
+            int r = fat16_resolve_dir(cur->cwd_cluster, kpath, &list_cluster);
+            if (r != 1) {
+                vga_puts("ls: no such directory: ");
+                vga_puts(kpath);
+                vga_puts("\n");
+                return (uint32_t)-1;
+            }
+        }
+    }
+
+    int any = 0;
+    int listing_root = (list_cluster == 0);
+
+    /* ramfs is always flat — only shown when listing the actual root,
+       since it never gained subdirectories in this phase */
+    if (listing_root && ramfs_base) {
         vga_puts("ramfs:\n");
         /* accesses n_entries and entries directly via ramfs_h */
         uint32_t n = *(uint32_t *)ramfs_base;
@@ -456,16 +484,58 @@ static uint32_t sys_readdir(void) {
         vga_puts("fat16:\n");
         char name[13];
         uint32_t size;
-        for (uint32_t idx = 0; fat16_readdir(idx, name, &size); idx++) {
+        uint8_t is_dir;
+        for (uint32_t idx = 0; fat16_readdir(list_cluster, idx, name, &size, &is_dir); idx++) {
             vga_puts("  ");
             puts_padded(name, 20);
-            vga_putdec(size);
-            vga_puts(" B\n");
+            if (is_dir) {
+                vga_puts("<DIR>\n");
+            } else {
+                vga_putdec(size);
+                vga_puts(" B\n");
+            }
             any = 1;
         }
     }
 
     if (!any) vga_puts("(no files)\n");
+    return 0;
+}
+
+static uint32_t sys_mkdir(const char *user_name) {
+    if (!user_name) return (uint32_t)-1;
+    process_t *cur = process_current();
+    if (!cur) return (uint32_t)-1;
+
+    char kname[USER_STR_MAX];
+    if (copy_user_str(cur, (uint32_t)user_name, kname, USER_STR_MAX) < 0)
+        return (uint32_t)-1;
+
+    if (!fat16_available()) return (uint32_t)-1;
+    return (fat16_mkdir(cur->cwd_cluster, kname) == 0) ? 0 : (uint32_t)-1;
+}
+
+/* Only ever mutates cur->cwd_cluster on confirmed success (fat16_resolve_dir
+   returning 1) — every failure path (path doesn't exist, names a file
+   instead of a directory, or an I/O error) returns early without
+   touching it, same discipline fat16_create already uses for I/O
+   errors: never guess, never leave the process in a half-changed state. */
+static uint32_t sys_chdir(const char *user_path) {
+    if (!user_path) return (uint32_t)-1;
+    process_t *cur = process_current();
+    if (!cur) return (uint32_t)-1;
+
+    char kpath[USER_STR_MAX];
+    if (copy_user_str(cur, (uint32_t)user_path, kpath, USER_STR_MAX) < 0)
+        return (uint32_t)-1;
+
+    if (!fat16_available()) return (uint32_t)-1;
+
+    uint32_t new_cluster;
+    int r = fat16_resolve_dir(cur->cwd_cluster, kpath, &new_cluster);
+    if (r != 1) return (uint32_t)-1;
+
+    cur->cwd_cluster = new_cluster;
     return 0;
 }
 
@@ -570,11 +640,13 @@ uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t ar
         case SYS_SETCOLOR:     vga_set_color((vga_color_t)arg1, (vga_color_t)arg2); return 0;
         case SYS_SET_RAW_MODE: return sys_set_raw_mode(arg1);
         case SYS_WAIT:         return sys_wait(arg1);
-        case SYS_READDIR:      return sys_readdir();
+        case SYS_READDIR:      return sys_readdir((const char *)arg1);
         case SYS_WRITE_FILE:   return sys_write_file(arg1, arg2, arg3);
         case SYS_CREATE:       return sys_create((const char *)arg1);
         case SYS_PCI_LIST:     pci_print_list(); return (uint32_t)pci_device_count();
         case SYS_FORK:         return sys_fork();
+        case SYS_CHDIR:        return sys_chdir((const char *)arg1);
+        case SYS_MKDIR:        return sys_mkdir((const char *)arg1);
         default:
             vga_set_color(VGA_YELLOW, VGA_BLACK);
             vga_puts("[SYSCALL] unknown number: ");

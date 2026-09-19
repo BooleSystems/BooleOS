@@ -17,9 +17,9 @@
 #ifndef NULLOS_VERSION_H
 #define NULLOS_VERSION_H
 
-#define NULLOS_VERSION      "0.14.2"
-#define NULLOS_PHASE        "14"
-#define NULLOS_PHASE_DESC   "user pointer validation"
+#define NULLOS_VERSION      "0.15.0"
+#define NULLOS_PHASE        "15"
+#define NULLOS_PHASE_DESC   "FAT16 subdirectories"
 
 // Composed strings so callers don't have to concatenate these by hand.
 #define NULLOS_BANNER       "NullOS v" NULLOS_VERSION " - Phase " NULLOS_PHASE ": " NULLOS_PHASE_DESC

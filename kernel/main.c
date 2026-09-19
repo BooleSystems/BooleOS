@@ -196,7 +196,7 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
 
         print_tag("[EXEC] ");
         vga_puts("Loading shell...\n");
-        if (!exec("shell")) {
+        if (!exec("shell", 0)) {   /* no launcher process at boot — starts at the root */
             vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
             vga_puts("ERROR loading shell\n");
             vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);

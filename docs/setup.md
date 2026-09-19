@@ -1,25 +1,61 @@
 # NullOS — Setup and Build
 
-## What you'll need
+This document describes how to set up the build environment and
+build/run NullOS today. (The project has grown a lot since its first
+boot — see the top-level `README.md` for the list of completed
+phases — but this file only covers the current setup, not history.)
 
-### Dependencies
+## Dependencies
 
-The project ships a detection script that installs these automatically
-on Fedora or Debian:
+Today, automatic installation only exists for **Fedora** and
+**Debian**, via:
 
 ```bash
 bash tools/setup_env.sh
 ```
 
-Which installs (Fedora package names shown; see the script for Debian
-equivalents): `nasm`, `grub2-tools` (provides `grub2-mkrescue`),
-`xorriso`, `qemu-system-x86` (provides the `qemu-system-x86_64`
-binary), `gdb`, `make`, `gcc`. Also needed, not currently installed by
-the script: `dosfstools`/`mtools` (`mkfs.vfat`/`mcopy`, used by
-`tools/make_disk.sh` to build the FAT16 test disk) and `python3` (used
-by `tools/make_ramfs.py`).
+On any other distro (Arch, openSUSE, etc.), install the equivalent
+packages manually. You need:
 
-### Cross-compiler: i686-elf-gcc (32-bit), not x86_64
+- `nasm` — assembler
+- `gcc`/`make` — host toolchain (used for host-side tooling; the
+  kernel itself is built with the `i686-elf-gcc` cross-compiler, see
+  below)
+- GRUB2 tools providing `grub-mkrescue`/`grub2-mkrescue` (Fedora:
+  `grub2-tools`; Debian: `grub-common` + `grub-pc-bin`)
+- `xorriso` — builds the bootable ISO
+- A QEMU x86 package providing `qemu-system-x86_64`/`qemu-system-i386`
+  (Fedora/Debian package name: `qemu-system-x86`)
+- `gdb` — for `make debug`
+- `dosfstools` + `mtools` (`mkfs.vfat`/`mcopy`) — used by
+  `tools/make_disk.sh` to build the FAT16 test disk. Not currently
+  installed by `setup_env.sh`.
+- `python3` — used by `tools/make_ramfs.py`. Not currently installed
+  by `setup_env.sh`.
+
+### Arch Linux
+
+`tools/setup_env.sh` does not cover Arch today — it only detects
+Fedora and Debian — so on Arch the dependencies above need to be
+installed manually via `pacman`:
+
+```bash
+sudo pacman -S --needed nasm grub libisoburn qemu-system-x86 gdb make gcc dosfstools mtools python
+```
+
+Notes on package names that differ from Fedora/Debian: `libisoburn`
+is the package that provides the `xorriso` binary (Arch has no
+separate `xorriso` package); `qemu-system-x86` provides both
+`qemu-system-x86_64` and `qemu-system-i386`; `python` is Python 3
+(Arch dropped Python 2 long ago, so there's no `python3`-suffixed
+package). Everything else matches the Fedora/Debian names 1:1.
+
+*(Possible future improvement, not implemented: `tools/setup_env.sh`
+could detect Arch via `/etc/arch-release` and add a `pacman` branch
+alongside the existing Fedora/Debian ones, instead of leaving Arch as
+manual-only.)*
+
+## Cross-compiler: i686-elf-gcc (32-bit, not x86_64)
 
 The kernel is 32-bit (i686): every C file is compiled with `-m32`
 (see `CFLAGS` in `tools/Makefile` and `user/Makefile`), and the linker
@@ -72,29 +108,53 @@ export PATH="$HOME/x-tools/i686-unknown-elf/bin:$PATH"
 [lordmilko/i686-elf-tools](https://github.com/lordmilko/i686-elf-tools)
 on GitHub) if you'd rather skip building the cross-compiler yourself.
 
----
+## Windows and macOS
 
-## Build structure
+There is no native build path for Windows or macOS today — GRUB2's
+`grub-mkrescue` has no functional native equivalent on Windows, and
+Homebrew's GRUB package on macOS historically ships without the boot
+files `grub-mkrescue` needs to produce a bootable ISO (a licensing
+restriction upstream, not a packaging bug). Docker is the recommended
+path on both platforms, since `tools/docker_build.sh` does all the
+ISO-building work inside a Linux container and only needs a working
+Docker daemon on the host — nothing in the script depends on anything
+Linux-native beyond that.
 
-This is what the tree looked like right after Phase 0 (this file's
-original scope); see the top-level `README.md` → "Structure" for the
-current full layout (kernel subsystems, `user/`, `docs/`, etc.):
+> **⚠ Not tested on Windows or macOS.** This Docker path has not been
+> tried by anyone on the project on either platform yet. It's the
+> most likely route to work without extra effort, given how the
+> script is built, but it is a prediction, not a verified path — if
+> you try it, you may hit undocumented problems. Please open an issue
+> on the repo reporting what worked and what didn't, so this section
+> can be corrected with real results.
 
-```
-nullos/
-├── boot/
-│   ├── boot.asm       <- Assembly entry point (Multiboot2)
-│   └── linker.ld      <- Linker script
-├── kernel/
-│   ├── main.c         <- kmain()
-│   └── drivers/
-│       ├── vga.h
-│       └── vga.c      <- VGA text 80x25 driver
-└── tools/
-    ├── Makefile        <- Build system
-    ├── grub.cfg.in     <- Bootloader config template
-    └── setup_env.sh    <- Setup script
-```
+**Windows:**
+
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+   with the WSL2 backend (the default recommended by both Microsoft
+   and Docker today).
+2. Open a WSL2 terminal (e.g. Ubuntu) and run the build from there,
+   not from PowerShell/cmd:
+
+   ```bash
+   bash tools/docker_build.sh clean
+   ```
+
+**macOS:**
+
+1. Install [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop/).
+2. Run the build from the native Terminal app (zsh or bash — macOS
+   already has a Unix-compatible shell, no WSL-equivalent needed):
+
+   ```bash
+   bash tools/docker_build.sh clean
+   ```
+
+In both cases, `build/nullos.iso` and `build/disk.img` end up on the
+host filesystem afterward, same as on Linux — see "Build and run"
+below for how to run them (note that QEMU itself still needs to be
+installed on the host to actually boot the resulting ISO; Docker only
+handles the cross-compiled build).
 
 ## Build and run
 
@@ -112,19 +172,26 @@ make run
 make clean
 ```
 
-To debug with GDB, use `make debug` (same flags as `make run`, but
-with `qemu-system-i386` instead of `qemu-system-x86_64`, plus
-`-cpu qemu32 -s -S`: QEMU starts paused, forces a plain 32-bit CPU,
-and opens a GDB stub on `localhost:1234`). The binary swap is the
-part that actually matters: `qemu-system-x86_64`'s gdbstub always
-reports the 64-bit register set over the wire regardless of `-cpu`,
-which GDB rejects with "g packet reply is too long" — that's a
-property of the binary itself, not the emulated CPU, so `-cpu` alone
-can't fix it. `qemu-system-i386` (same `qemu-system-x86` package on
-Fedora, no extra install) reports plain `i386` as expected, and GDB
-auto-detects it — no manual `set architecture i386` needed. `-cpu
-qemu32` is kept on top of that for a plain 32-bit CPU with no
-long-mode extensions. Two terminals:
+`tools/run_qemu.sh` is a separate, older standalone script that boots
+`build/nullos.iso` directly — it does **not** attach `disk.img`, so
+prefer `make run`/`make debug` unless you specifically want to boot
+without the disk.
+
+## Debugging with GDB
+
+`make debug` uses the same flags as `make run`, but with
+`qemu-system-i386` instead of `qemu-system-x86_64`, plus `-cpu qemu32
+-s -S`: QEMU starts paused, forces a plain 32-bit CPU, and opens a GDB
+stub on `localhost:1234`. The binary swap is the part that actually
+matters: `qemu-system-x86_64`'s gdbstub always reports the 64-bit
+register set over the wire regardless of `-cpu`, which GDB rejects
+with "g packet reply is too long" — that's a property of the binary
+itself, not the emulated CPU, so `-cpu` alone can't fix it.
+`qemu-system-i386` (same `qemu-system-x86` package on Fedora, no extra
+install) reports plain `i386` as expected, and GDB auto-detects it —
+no manual `set architecture i386` needed. `-cpu qemu32` is kept on top
+of that for a plain 32-bit CPU with no long-mode extensions. Two
+terminals:
 
 ```bash
 # Terminal 1 — from tools/
@@ -137,20 +204,14 @@ gdb ../build/nullos.elf
 (gdb) continue
 ```
 
-`tools/run_qemu.sh` is a separate, older standalone script that boots
-`build/nullos.iso` directly — it does **not** attach `disk.img`, so
-prefer `make run`/`make debug` unless you specifically want to boot
-without the disk.
-
 ## What you should see in QEMU
 
-The banner and detailed boot log have grown a lot since Phase 0 and
-now include GDT/IDT/PIC/timer/keyboard/memory/scheduler/ATA/FAT16/PCI
-initialization steps — see `docs/kernel.md` for what's actually
-printed today, and `kernel/version.h` for the current version/phase
-strings (`NULLOS_BANNER`), rather than a specific version number here
-that would just go stale again at the next phase. Generically, the
-banner looks like:
+The banner and boot log include GDT/IDT/PIC/timer/keyboard/memory/
+scheduler/ATA/FAT16/PCI initialization steps — see `docs/kernel.md`
+for what's actually printed today, and `kernel/version.h` for the
+current version/phase strings (`NULLOS_BANNER`), rather than a
+specific version number here that would just go stale at the next
+phase. Generically, the banner looks like:
 
 ```
   _   _       _ _  ___  ____
@@ -172,23 +233,11 @@ banner looks like:
  > _
 ```
 
-(Phase 0 itself only printed the banner, a Multiboot2/memory/VGA check,
-and a "Phase 0 complete" line — there was no shell, no ramfs, and no
-device drivers yet.)
-
 ## Debug via serial
 
 `serial_init()` runs at the very start of `kmain` (before VGA), and
 every `vga_putchar()` call already mirrors its character to serial
-automatically — this isn't a future phase, it's already wired in.
-`make run` passes `-serial stdio` to QEMU, so the same boot log VGA
-shows also appears in the terminal you ran `make run` from. The GRUB
-menu (`tools/grub.cfg.in`) also offers a second "NullOS (serial debug
-mode)" entry at the boot menu.
-
-## Where to go from here
-
-Phase 0 (bootloader + VGA) is long done — see the top-level
-`README.md` → "Completed phases" for what's actually implemented
-today (Phase 14 as of this writing), `ROADMAP.md` for what's planned
-next, and `docs/` for the per-system technical detail.
+automatically. `make run` passes `-serial stdio` to QEMU, so the same
+boot log VGA shows also appears in the terminal you ran `make run`
+from. The GRUB menu (`tools/grub.cfg.in`) also offers a second "NullOS
+(serial debug mode)" entry at the boot menu.
