@@ -1,109 +1,5 @@
 /* nullos/user/edit.c — minimal nano-style text editor */
-
-typedef unsigned int  uint32_t;
-typedef unsigned char uint8_t;
-
-/* ── syscall wrappers ───────────────────────────────────────────── */
-/* Every function that returns void uses "=a"(ret) to discard the
-   kernel's return value and keep the compiler from reusing eax as
-   an argument for the next int $0x80 instruction.                */
-
-static void sys_exit(int code) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(2), "b"(code) : "memory");
-    (void)ret; for (;;);
-}
-
-static int sys_open(const char *name) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(11), "b"(name) : "memory");
-    return ret;
-}
-
-static int sys_close(int fd) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(12), "b"(fd) : "memory");
-    return ret;
-}
-
-static int sys_read_fd(int fd, char *buf, unsigned len) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(5), "b"(fd), "c"(buf), "d"(len) : "memory");
-    return ret;
-}
-
-/* returns scancode|(ctrl?0x100:0), blocking */
-static unsigned sys_read_raw(void) {
-    unsigned ret;
-    __asm__ volatile ("int $0x80" : "=a"(ret) : "0"(13) : "memory");
-    return ret;
-}
-
-static void sys_gotoxy(unsigned col, unsigned row) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(14), "b"(col), "c"(row) : "memory");
-    (void)ret;
-}
-
-static void sys_clear(void) {
-    int ret;
-    __asm__ volatile ("int $0x80" : "=a"(ret) : "0"(15) : "memory");
-    (void)ret;
-}
-
-static int sys_getarg(char *buf, unsigned len) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(16), "b"(buf), "c"(len) : "memory");
-    return ret;
-}
-
-static void sys_kbd_flush(void) {
-    int ret;
-    __asm__ volatile ("int $0x80" : "=a"(ret) : "0"(17) : "memory");
-    (void)ret;
-}
-
-static int sys_create(const char *name) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(23), "b"(name) : "memory");
-    return ret;
-}
-
-static int sys_write_file(int fd, const char *buf, unsigned len) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(22), "b"(fd), "c"(buf), "d"(len) : "memory");
-    return ret;
-}
-
-static void sys_set_raw_mode(unsigned enable) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(19), "b"(enable) : "memory");
-    (void)ret;
-}
-
-/* fg/bg: values from the kernel's vga_color_t enum (0-15) */
-static void sys_set_color(unsigned fg, unsigned bg) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(18), "b"(fg), "c"(bg) : "memory");
-    (void)ret;
-}
-
-static void sys_write(const char *buf, unsigned len) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(1), "b"(1), "c"(buf), "d"(len) : "memory");
-    (void)ret;
-}
+#include "lib/nullos.h"
 
 /* ── VGA colors (subset) ──────────────────────────────────────────── */
 #define VGA_BLACK      0
@@ -186,8 +82,8 @@ static unsigned total_lines(void) {
 /* writes exactly 'n' blank spaces */
 static void write_spaces(unsigned n) {
     static const char sp32[32] = "                                ";
-    while (n >= 32) { sys_write(sp32, 32); n -= 32; }
-    if (n) sys_write(sp32, n);
+    while (n >= 32) { nos_write(1, sp32, 32); n -= 32; }
+    if (n) nos_write(1, sp32, n);
 }
 
 static void render(void) {
@@ -198,16 +94,16 @@ static void render(void) {
     if (cur_line < top_line) top_line = cur_line;
     if (cur_line >= top_line + TEXT_ROWS) top_line = cur_line - TEXT_ROWS + 1;
 
-    sys_clear();  /* clears the screen and resets the cursor to (0,0) */
+    nos_clear();  /* clears the screen and resets the cursor to (0,0) */
 
     /* ── content lines ── */
-    sys_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+    nos_setcolor(VGA_LIGHT_GREY, VGA_BLACK);
     unsigned pos = line_start(top_line);
     for (unsigned row = 0; row < TEXT_ROWS; row++) {
-        sys_gotoxy(0, row);
+        nos_gotoxy(0, row);
         unsigned col = 0;
         while (pos < buf_len && buf[pos] != '\n' && col < COLS - 1) {
-            sys_write(&buf[pos], 1);
+            nos_write(1, &buf[pos], 1);
             pos++; col++;
         }
         if (pos < buf_len && buf[pos] == '\n') pos++;
@@ -216,19 +112,19 @@ static void render(void) {
     }
 
     /* ── help bar (line 23) ── */
-    sys_gotoxy(0, HELP_ROW);
-    sys_set_color(VGA_BLACK, VGA_LIGHT_GREY);
+    nos_gotoxy(0, HELP_ROW);
+    nos_setcolor(VGA_BLACK, VGA_LIGHT_GREY);
     const char *help = "^S save  ^Q quit  Arrows: navigate";
     unsigned hlen = ed_strlen(help);
     if (hlen > COLS - 1) hlen = COLS - 1;
-    sys_write(help, hlen);
+    nos_write(1, help, hlen);
     write_spaces(COLS - 1 - hlen);
 
     /* ── status bar (line 24) ──────────────────────────────────
        We write at most COLS-1 chars: the last cell (col=79) is
        left untouched to keep vga_putchar from triggering vga_scroll(). */
-    sys_gotoxy(0, STAT_ROW);
-    sys_set_color(VGA_WHITE, VGA_BLUE);
+    nos_gotoxy(0, STAT_ROW);
+    nos_setcolor(VGA_WHITE, VGA_BLUE);
     char nbuf[12];
     /* builds the status string in a local buffer and writes it in one go */
     static char sbar[80];
@@ -249,12 +145,12 @@ static void render(void) {
     }
     /* pad with spaces up to COLS-1 (not COLS!) */
     while (si < COLS - 1) sbar[si++] = ' ';
-    sys_write(sbar, COLS - 1);  /* exactly 79 chars — no wrap, no scroll */
+    nos_write(1, sbar, COLS - 1);  /* exactly 79 chars — no wrap, no scroll */
 
     /* restores the color and positions the hardware cursor at the edit point */
-    sys_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+    nos_setcolor(VGA_LIGHT_GREY, VGA_BLACK);
     unsigned vcol = cur_col < (unsigned)(COLS - 1) ? cur_col : (unsigned)(COLS - 2);
-    sys_gotoxy(vcol, cur_line - top_line);
+    nos_gotoxy(vcol, cur_line - top_line);
 }
 
 /* ── editing ──────────────────────────────────────────────────────── */
@@ -287,16 +183,16 @@ static void move_right(void) { if (cur < buf_len) cur++; }
 
 /* ── loads the file ─────────────────────────────────────────────── */
 static void load_file(void) {
-    file_fd = sys_open(filename);
+    file_fd = nos_open(filename);
     if (file_fd < 0) {
         /* new file: create it already open so it can be saved later */
-        file_fd = sys_create(filename);
+        file_fd = nos_create(filename);
         buf[0] = '\0'; buf_len = 0;
         return;
     }
     char tmp;
     while (buf_len < BUF_SIZE - 1) {
-        int r = sys_read_fd(file_fd, &tmp, 1);
+        int r = nos_read(file_fd, &tmp, 1);
         if (r <= 0) break;
         buf[buf_len++] = tmp;
     }
@@ -306,19 +202,19 @@ static void load_file(void) {
 
 /* ── entry point ─────────────────────────────────────────────────── */
 void _start(void) {
-    int n = sys_getarg(filename, sizeof(filename));
+    int n = nos_getarg(filename, sizeof(filename));
     if (n <= 0) filename[0] = '\0';
 
     buf_len = 0; cur = 0; top_line = 0; status[0] = '\0';
     if (filename[0]) load_file();
 
-    sys_kbd_flush();
-    sys_set_raw_mode(1);
+    nos_kbd_flush();
+    nos_set_raw_mode(1);
 
     for (;;) {
         render();
 
-        unsigned raw  = sys_read_raw();
+        unsigned raw  = nos_read_raw();
         unsigned sc   = raw & 0xFF;
         int      ctrl = (raw & 0x100) != 0;
 
@@ -327,7 +223,7 @@ void _start(void) {
         if (ctrl) {
             if (sc == 0x1F) {      /* Ctrl+S: S = scancode 0x1F */
                 const char *m;
-                if (file_fd >= 0 && sys_write_file(file_fd, buf, buf_len) == 0)
+                if (file_fd >= 0 && nos_write_file(file_fd, buf, buf_len) == 0)
                     m = "saved";
                 else
                     m = "saved (no disk)";
@@ -335,12 +231,12 @@ void _start(void) {
                 while (m[i] && i < 63) { status[i] = m[i]; i++; }
                 status[i] = '\0';
             } else if (sc == 0x10) { /* Ctrl+Q: Q = scancode 0x10 */
-                sys_set_raw_mode(0);
-                if (file_fd >= 0) sys_close(file_fd);
-                sys_clear();
-                sys_gotoxy(0, 0);
-                sys_kbd_flush();
-                sys_exit(0);
+                nos_set_raw_mode(0);
+                if (file_fd >= 0) nos_close(file_fd);
+                nos_clear();
+                nos_gotoxy(0, 0);
+                nos_kbd_flush();
+                nos_exit(0);
             }
             continue;
         }

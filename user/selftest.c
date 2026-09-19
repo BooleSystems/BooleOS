@@ -4,102 +4,7 @@
    hand every time. Not a numbered phase — just a standalone diagnostic
    tool, and expected to grow as more subsystems get their own test. */
 
-typedef unsigned int uint32_t;
-
-/* ── syscall wrappers (see kernel/syscall.h for numbers/convention) ── */
-
-static int sys_write(const char *buf, unsigned int len) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(1), "b"(1), "c"(buf), "d"(len) : "memory");
-    return ret;
-}
-
-static void sys_exit(int code) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(2), "b"(code) : "memory");
-    (void)ret;
-    for (;;);
-}
-
-static void sys_meminfo(uint32_t *pmm_pages, uint32_t *heap_bytes, uint32_t *nprocs) {
-    __asm__ volatile ("int $0x80"
-        : : "a"(7), "b"(pmm_pages), "c"(heap_bytes), "d"(nprocs) : "memory");
-}
-
-static int sys_fork(void) {
-    int ret;
-    __asm__ volatile ("int $0x80" : "=a"(ret) : "0"(25) : "memory");
-    return ret;
-}
-
-static void sys_wait(int pid) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(20), "b"(pid) : "memory");
-    (void)ret;
-}
-
-static int sys_open(const char *name) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(11), "b"(name) : "memory");
-    return ret;
-}
-
-static int sys_create(const char *name) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(23), "b"(name) : "memory");
-    return ret;
-}
-
-static int sys_mkdir(const char *path) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(27), "b"(path) : "memory");
-    return ret;
-}
-
-static int sys_chdir(const char *path) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(26), "b"(path) : "memory");
-    return ret;
-}
-
-static int sys_close(int fd) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(12), "b"(fd) : "memory");
-    return ret;
-}
-
-static int sys_read_fd(int fd, char *buf, unsigned len) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(5), "b"(fd), "c"(buf), "d"(len) : "memory");
-    return ret;
-}
-
-static int sys_write_file(int fd, const char *buf, unsigned len) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(22), "b"(fd), "c"(buf), "d"(len) : "memory");
-    return ret;
-}
-
-/* Returns the PCI device count (see kernel/drivers/pci.c ->
-   pci_device_count(), plumbed through SYS_PCI_LIST for this test —
-   previously the syscall always returned 0). Also reprints the table
-   via VGA, same as the shell's "lspci". */
-static int sys_pci_list(void) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(24) : "memory");
-    return ret;
-}
+#include "lib/nullos.h"
 
 /* ── tiny helpers (no libc) ───────────────────────────────────────── */
 
@@ -110,7 +15,7 @@ static unsigned int st_strlen(const char *s) {
 }
 
 static void st_puts(const char *s) {
-    sys_write(s, st_strlen(s));
+    nos_write(1, s, st_strlen(s));
 }
 
 static int st_bufeq(const char *a, const char *b, unsigned int n) {
@@ -158,7 +63,7 @@ void _start(void) {
        error and reports at least this process in the table. */
     {
         uint32_t pmm = 0, heap = 0, nprocs = 0;
-        sys_meminfo(&pmm, &heap, &nprocs);
+        nos_meminfo(&pmm, &heap, &nprocs);
         if (nprocs == 0)
             st_fail("memory: SYS_MEMINFO reports pmm/heap/process stats",
                      "nprocs == 0 (expected >= 1 for this process)");
@@ -169,11 +74,11 @@ void _start(void) {
     /* 2. Process: fork(). The child exits immediately and silently so
        it doesn't re-run (and double-report) the rest of the suite. */
     {
-        int ret = sys_fork();
+        int ret = nos_fork();
         if (ret == 0) {
-            sys_exit(0);
+            nos_exit(0);
         } else if (ret > 0) {
-            sys_wait(ret);   /* reap the child's process-table slot before continuing */
+            nos_wait(ret);   /* reap the child's process-table slot before continuing */
             st_pass("fork() returns a valid child PID (> 0) to the parent");
         } else {
             st_fail("fork() returns a valid child PID (> 0) to the parent",
@@ -191,13 +96,13 @@ void _start(void) {
         int file_ok = 1;
 
         /* 3. creation */
-        int fd = sys_create(fname);
+        int fd = nos_create(fname);
         if (fd < 0) {
-            st_fail("file create (st_root.txt)", "sys_create() returned -1 (no disk?)");
+            st_fail("file create (st_root.txt)", "nos_create() returned -1 (no disk?)");
             file_ok = 0;
         } else {
             st_pass("file create (st_root.txt)");
-            sys_close(fd);
+            nos_close(fd);
         }
 
         /* 4. write known content, close, reopen, read back, compare */
@@ -205,20 +110,20 @@ void _start(void) {
             st_fail("file write/read roundtrip", "skipped: create already failed");
         } else {
             int ok = 1;
-            int wfd = sys_open(fname);
-            if (wfd < 0) { st_fail("file write/read roundtrip", "sys_open() for write failed"); ok = 0; }
-            if (ok && sys_write_file(wfd, content, clen) != 0) {
-                st_fail("file write/read roundtrip", "sys_write_file() failed");
+            int wfd = nos_open(fname);
+            if (wfd < 0) { st_fail("file write/read roundtrip", "nos_open() for write failed"); ok = 0; }
+            if (ok && nos_write_file(wfd, content, clen) != 0) {
+                st_fail("file write/read roundtrip", "nos_write_file() failed");
                 ok = 0;
             }
-            if (wfd >= 0) sys_close(wfd);
+            if (wfd >= 0) nos_close(wfd);
 
             if (ok) {
-                int rfd = sys_open(fname);
+                int rfd = nos_open(fname);
                 char rbuf[64];
                 for (unsigned int i = 0; i < sizeof(rbuf); i++) rbuf[i] = 0;
-                int n = (rfd >= 0) ? sys_read_fd(rfd, rbuf, sizeof(rbuf) - 1) : -1;
-                if (rfd >= 0) sys_close(rfd);
+                int n = (rfd >= 0) ? nos_read(rfd, rbuf, sizeof(rbuf) - 1) : -1;
+                if (rfd >= 0) nos_close(rfd);
 
                 if (rfd < 0 || n != (int)clen || !st_bufeq(rbuf, content, clen)) {
                     st_fail("file write/read roundtrip", "content read back does not match what was written");
@@ -242,16 +147,16 @@ void _start(void) {
         if (!file_ok) {
             st_fail("file duplicate-create regression (Phase 10)", "skipped: an earlier file test already failed");
         } else {
-            int fd2 = sys_create(fname);
+            int fd2 = nos_create(fname);
             if (fd2 < 0) {
-                st_fail("file duplicate-create regression (Phase 10)", "sys_create() on an existing file returned -1");
+                st_fail("file duplicate-create regression (Phase 10)", "nos_create() on an existing file returned -1");
             } else {
-                sys_close(fd2);
-                int rfd2 = sys_open(fname);
+                nos_close(fd2);
+                int rfd2 = nos_open(fname);
                 char rbuf2[64];
                 for (unsigned int i = 0; i < sizeof(rbuf2); i++) rbuf2[i] = 0;
-                int n2 = (rfd2 >= 0) ? sys_read_fd(rfd2, rbuf2, sizeof(rbuf2) - 1) : -1;
-                if (rfd2 >= 0) sys_close(rfd2);
+                int n2 = (rfd2 >= 0) ? nos_read(rfd2, rbuf2, sizeof(rbuf2) - 1) : -1;
+                if (rfd2 >= 0) nos_close(rfd2);
 
                 if (rfd2 < 0 || n2 != (int)clen || !st_bufeq(rbuf2, content, clen))
                     st_fail("file duplicate-create regression (Phase 10)",
@@ -272,7 +177,7 @@ void _start(void) {
        kernel/memory/vmm.h) must reject it. If this test doesn't even
        print its result, the kernel crashed instead of returning -1. */
     {
-        int ret = sys_write((const char *)0x1000, 4);
+        int ret = nos_write(1, (const char *)0x1000, 4);
         if (ret == -1)
             st_pass("invalid pointer into kernel-only region (0x1000) rejected by syscall");
         else
@@ -284,7 +189,7 @@ void _start(void) {
        real or emulated x86 machine has at least a host bridge on
        bus 0). */
     {
-        int count = sys_pci_list();
+        int count = nos_pci_list();
         if (count >= 1)
             st_pass("PCI enumeration found at least 1 device");
         else
@@ -320,16 +225,16 @@ void _start(void) {
         int dir_ok = 1;
 
         /* 8. mkdir */
-        if (sys_mkdir(dname) != 0) {
-            st_fail("mkdir (selftest_dir)", "sys_mkdir() returned nonzero (no disk?)");
+        if (nos_mkdir(dname) != 0) {
+            st_fail("mkdir (selftest_dir)", "nos_mkdir() returned nonzero (no disk?)");
             dir_ok = 0;
         } else {
             st_pass("mkdir (selftest_dir)");
         }
 
         /* cd into it — gates every step below, same as dir_ok itself */
-        if (dir_ok && sys_chdir(dname) != 0) {
-            st_fail("cd into selftest_dir", "sys_chdir() returned nonzero right after a successful mkdir");
+        if (dir_ok && nos_chdir(dname) != 0) {
+            st_fail("cd into selftest_dir", "nos_chdir() returned nonzero right after a successful mkdir");
             dir_ok = 0;
         }
 
@@ -344,24 +249,24 @@ void _start(void) {
             st_fail("file write/read roundtrip inside selftest_dir", "skipped: mkdir/cd already failed");
         } else {
             int ok = 1;
-            int fd = sys_create(subfname);
-            if (fd < 0) { st_fail("file write/read roundtrip inside selftest_dir", "sys_create() failed"); ok = 0; }
-            if (ok) sys_close(fd);
+            int fd = nos_create(subfname);
+            if (fd < 0) { st_fail("file write/read roundtrip inside selftest_dir", "nos_create() failed"); ok = 0; }
+            if (ok) nos_close(fd);
 
-            int wfd = ok ? sys_open(subfname) : -1;
-            if (ok && wfd < 0) { st_fail("file write/read roundtrip inside selftest_dir", "sys_open() for write failed"); ok = 0; }
-            if (ok && sys_write_file(wfd, subcontent, subclen) != 0) {
-                st_fail("file write/read roundtrip inside selftest_dir", "sys_write_file() failed");
+            int wfd = ok ? nos_open(subfname) : -1;
+            if (ok && wfd < 0) { st_fail("file write/read roundtrip inside selftest_dir", "nos_open() for write failed"); ok = 0; }
+            if (ok && nos_write_file(wfd, subcontent, subclen) != 0) {
+                st_fail("file write/read roundtrip inside selftest_dir", "nos_write_file() failed");
                 ok = 0;
             }
-            if (wfd >= 0) sys_close(wfd);
+            if (wfd >= 0) nos_close(wfd);
 
             if (ok) {
-                int rfd = sys_open(subfname);
+                int rfd = nos_open(subfname);
                 char rbuf[64];
                 for (unsigned int i = 0; i < sizeof(rbuf); i++) rbuf[i] = 0;
-                int n = (rfd >= 0) ? sys_read_fd(rfd, rbuf, sizeof(rbuf) - 1) : -1;
-                if (rfd >= 0) sys_close(rfd);
+                int n = (rfd >= 0) ? nos_read(rfd, rbuf, sizeof(rbuf) - 1) : -1;
+                if (rfd >= 0) nos_close(rfd);
 
                 if (rfd < 0 || n != (int)subclen || !st_bufeq(rbuf, subcontent, subclen))
                     st_fail("file write/read roundtrip inside selftest_dir",
@@ -387,16 +292,16 @@ void _start(void) {
         if (!dir_ok) {
             st_fail("fork() child inherits cwd_cluster", "skipped: mkdir/cd already failed");
         } else {
-            int fret = sys_fork();
+            int fret = nos_fork();
             if (fret == 0) {
-                int mfd = sys_create(markname);
-                if (mfd >= 0) sys_close(mfd);
-                sys_exit(0);
+                int mfd = nos_create(markname);
+                if (mfd >= 0) nos_close(mfd);
+                nos_exit(0);
             } else if (fret > 0) {
-                sys_wait(fret);
-                int mfd2 = sys_open(markname);
+                nos_wait(fret);
+                int mfd2 = nos_open(markname);
                 if (mfd2 >= 0) {
-                    sys_close(mfd2);
+                    nos_close(mfd2);
                     st_pass("fork() child inherits cwd_cluster (marker created by child found in selftest_dir)");
                 } else {
                     st_fail("fork() child inherits cwd_cluster",
@@ -411,17 +316,17 @@ void _start(void) {
            above leaked out of selftest_dir — this is the exact
            observable symptom the manual test caught (a file written
            inside a subdirectory showing up at the root instead). Both
-           sys_open() calls are expected to FAIL (-1) here: there's no
+           nos_open() calls are expected to FAIL (-1) here: there's no
            parsed-directory-listing syscall to check against (SYS_READDIR
            only prints via VGA), so "can't be opened by this name at the
            root" is the next best observable proof of isolation. */
         if (!dir_ok) {
             st_fail("subdirectory files do not leak into the root", "skipped: mkdir/cd already failed");
-        } else if (sys_chdir("..") != 0) {
-            st_fail("subdirectory files do not leak into the root", "sys_chdir(\"..\") back to the root failed");
+        } else if (nos_chdir("..") != 0) {
+            st_fail("subdirectory files do not leak into the root", "nos_chdir(\"..\") back to the root failed");
         } else {
-            int leaked_sub  = (sys_open(subfname) >= 0);
-            int leaked_mark = (sys_open(markname) >= 0);
+            int leaked_sub  = (nos_open(subfname) >= 0);
+            int leaked_mark = (nos_open(markname) >= 0);
             if (leaked_sub || leaked_mark)
                 st_fail("subdirectory files do not leak into the root",
                          "a file created inside selftest_dir was openable by name at the root");
@@ -444,5 +349,5 @@ void _start(void) {
     st_puts(st_uitoa((unsigned int)g_tests_run, nbuf, sizeof(nbuf)));
     st_puts(" passed\n");
 
-    sys_exit(0);
+    nos_exit(0);
 }

@@ -29,6 +29,40 @@ sections below, without a `kernel/version.h` bump — see CLAUDE.md's
 versioning convention ("Unreleased" section) for when/how this gets
 renamed to a real version number instead.
 
+## [0.15.1] - libnos: shared user-space syscall wrapper library
+
+Not a new phase — same PATCH convention as 0.14.1/0.14.2 (see
+CLAUDE.md, "Convenções de fim de fase (versionamento)"): infrastructure
+work done after Phase 15 without starting Phase 16, and doesn't change
+the completed-phases count (still 15) or any user-visible kernel
+behavior — `run selftest` (11/11), `run forktest`, and the manual
+`touch`/`edit`/`mkdir`/`cd` flow all behave identically to before.
+
+### Added
+- **`user/lib/nullos.c/h`: a shared syscall wrapper library ("libnos",
+  `nos_*`)** — one thin `int $0x80` wrapper per syscall in
+  `kernel/syscall.h`, replacing six independent, hand-written copies
+  of the same wrappers previously duplicated across `shell.c`,
+  `edit.c`, `forktest.c`, `selftest.c`, `init.c`, and `spintest.c`.
+  Motivation: before v1.0.0 the syscall interface can still change
+  freely, but changing how a syscall behaves *underneath* an
+  unchanged interface used to mean editing every program that called
+  it; now it means recompiling this one file. `user/Makefile` builds
+  `lib/nullos.c` once to `$(BUILD)/lib/nullos.o` and links every
+  program against it. Migration was a mechanical 1:1 rename for most
+  syscalls, with two deliberate exceptions: `nos_write`/`nos_read`
+  gained an explicit `fd` argument (matching the syscalls' real
+  signatures — two of the six programs already used this fuller form)
+  instead of each program hardcoding `fd=1`/`fd=0` inside its own
+  wrapper, and `nos_exec(name, arg)` replaces `shell.c`'s old
+  `sys_exec(name)`/`sys_exec_arg(name, arg)` split with the syscall's
+  real 2-argument signature — incidentally fixing a latent bug where
+  the single-argument form never constrained `ecx`, leaving the
+  kernel's `sys_exec` to read register garbage as the argument pointer
+  (harmless in practice, but not intentional). See `docs/kernel.md` →
+  "User-space syscall library (libnos)" and `PROGRESS.md` for the full
+  design rationale.
+
 ## [0.15.0] - Phase 15: FAT16 subdirectories
 
 FAT16 subdirectories (`mkdir`/`cd`, path-aware `touch`/`edit`/`ls`),

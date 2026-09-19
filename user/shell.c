@@ -1,122 +1,7 @@
 /* nullos/user/shell.c — interactive shell */
 
 #include "version.h"
-
-typedef unsigned int uint32_t;
-
-/* ── syscall wrappers ───────────────────────────────────────────── */
-
-static int sys_write(const char *buf, unsigned int len) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(1), "b"(1), "c"(buf), "d"(len) : "memory");
-    return ret;
-}
-
-static int sys_read(char *buf, unsigned int len) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(5), "b"(0), "c"(buf), "d"(len) : "memory");
-    return ret;
-}
-
-static void sys_exit(int code) {
-    __asm__ volatile ("int $0x80" : : "a"(2), "b"(code) : "memory");
-    for (;;);
-}
-
-static uint32_t sys_uptime(void) {
-    uint32_t ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(6) : "memory");
-    return ret;
-}
-
-static void sys_meminfo(uint32_t *pmm_pages, uint32_t *heap_bytes, uint32_t *nprocs) {
-    __asm__ volatile ("int $0x80"
-        : : "a"(7), "b"(pmm_pages), "c"(heap_bytes), "d"(nprocs) : "memory");
-}
-
-static void sys_ps(void) {
-    __asm__ volatile ("int $0x80" : : "a"(8) : "memory");
-}
-
-static int sys_exec(const char *name) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(10), "b"(name) : "memory");
-    return ret;
-}
-
-static int sys_exec_arg(const char *name, const char *arg) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(10), "b"(name), "c"(arg) : "memory");
-    return ret;
-}
-
-static void sys_readdir(const char *path) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(21), "b"(path) : "memory");
-    (void)ret;
-}
-
-static int sys_mkdir(const char *path) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(27), "b"(path) : "memory");
-    return ret;
-}
-
-static int sys_chdir(const char *path) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(26), "b"(path) : "memory");
-    return ret;
-}
-
-static void sys_pci_list(void) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(24) : "memory");
-    (void)ret;
-}
-
-static int sys_create(const char *name) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(23), "b"(name) : "memory");
-    return ret;
-}
-
-static int sys_close(int fd) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(12), "b"(fd) : "memory");
-    return ret;
-}
-
-static void sys_wait(int pid) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(20), "b"(pid) : "memory");
-    (void)ret;
-}
-
-static int sys_kill(uint32_t pid) {
-    int ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(9), "b"(pid) : "memory");
-    return ret;
-}
-
-static uint32_t sys_getpid(void) {
-    uint32_t ret;
-    __asm__ volatile ("int $0x80"
-        : "=a"(ret) : "0"(4) : "memory");
-    return ret;
-}
+#include "lib/nullos.h"
 
 /* ── string helpers ─────────────────────────────────────────────── */
 
@@ -138,7 +23,7 @@ static int sh_strncmp(const char *a, const char *b, unsigned int n) {
 }
 
 static void sh_puts(const char *s) {
-    sys_write(s, sh_strlen(s));
+    nos_write(1, s, sh_strlen(s));
 }
 
 /* converts uint32 to decimal string; returns pointer into buf (not start) */
@@ -168,9 +53,9 @@ static void cmd_fetch(void) {
     };
 
     uint32_t pmm_pages = 0, heap_bytes = 0, nprocs = 0;
-    sys_meminfo(&pmm_pages, &heap_bytes, &nprocs);
+    nos_meminfo(&pmm_pages, &heap_bytes, &nprocs);
 
-    uint32_t ticks  = sys_uptime();
+    uint32_t ticks  = nos_uptime();
     uint32_t uptime = ticks / 100;   /* 100 Hz */
 
     char nbuf[16];
@@ -207,12 +92,12 @@ static void cmd_fetch(void) {
 }
 
 static void cmd_ps(void) {
-    sys_ps();
+    nos_ps();
 }
 
 static void cmd_mem(void) {
     uint32_t pmm_pages = 0, heap_bytes = 0, nprocs = 0;
-    sys_meminfo(&pmm_pages, &heap_bytes, &nprocs);
+    nos_meminfo(&pmm_pages, &heap_bytes, &nprocs);
 
     char nbuf[16];
     char *n;
@@ -252,12 +137,12 @@ static void cmd_kill(const char *arg) {
     if (pid == 0) { sh_puts("invalid pid\n"); return; }
 
     /* warn if it's the shell itself */
-    if (pid == sys_getpid()) {
+    if (pid == nos_getpid()) {
         sh_puts("shutting down shell...\n");
-        sys_exit(0);
+        nos_exit(0);
     }
 
-    int r = sys_kill(pid);
+    int r = nos_kill(pid);
     if (r == 0) {
         sh_puts("process ");
         char nbuf[16];
@@ -270,24 +155,24 @@ static void cmd_kill(const char *arg) {
 
 static void cmd_touch(const char *arg) {
     if (!arg || !*arg) { sh_puts("usage: touch <file>\n"); return; }
-    int fd = sys_create(arg);
+    int fd = nos_create(arg);
     if (fd < 0) {
         sh_puts("error: could not create (no disk?)\n");
         return;
     }
-    sys_close(fd);
+    nos_close(fd);
 }
 
 static void cmd_mkdir(const char *arg) {
     if (!arg || !*arg) { sh_puts("usage: mkdir <dir>\n"); return; }
-    if (sys_mkdir(arg) < 0) {
+    if (nos_mkdir(arg) < 0) {
         sh_puts("error: could not create directory (no disk, path missing, or name taken by a file)\n");
     }
 }
 
 static void cmd_cd(const char *arg) {
     const char *path = (arg && *arg) ? arg : "/";
-    if (sys_chdir(path) != 0) {
+    if (nos_chdir(path) != 0) {
         sh_puts("cd: no such directory: ");
         sh_puts(path);
         sh_puts("\n");
@@ -296,7 +181,7 @@ static void cmd_cd(const char *arg) {
 
 static void cmd_run(const char *name) {
     if (!name || !*name) { sh_puts("usage: run <program>\n"); return; }
-    int pid = sys_exec(name);
+    int pid = nos_exec(name, 0);
     if (pid < 0) {
         sh_puts("error: program not found\n");
     } else {
@@ -343,11 +228,11 @@ static void run_command(char *line, int len) {
     } else if (sh_strcmp(line, "mem") == 0) {
         cmd_mem();
     } else if (sh_strcmp(line, "ls") == 0) {
-        sys_readdir(0);
+        nos_readdir(0);
     } else if (sh_strncmp(line, "ls", 2) == 0 && line[2] == ' ') {
-        sys_readdir(line + 3);
+        nos_readdir(line + 3);
     } else if (sh_strcmp(line, "lspci") == 0) {
-        sys_pci_list();
+        nos_pci_list();
     } else if (sh_strncmp(line, "touch", 5) == 0 && (line[5] == ' ' || line[5] == '\0')) {
         cmd_touch(line[5] == ' ' ? line + 6 : "");
     } else if (sh_strncmp(line, "mkdir", 5) == 0 && (line[5] == ' ' || line[5] == '\0')) {
@@ -364,7 +249,7 @@ static void run_command(char *line, int len) {
         sh_puts(clear_text);
     } else if (sh_strcmp(line, "exit") == 0) {
         sh_puts("bye!\n");
-        sys_exit(0);
+        nos_exit(0);
     } else {
         sh_puts("command not found: ");
         sh_puts(line);
@@ -382,11 +267,11 @@ void _start(void) {
 
     for (;;) {
         sh_puts("> ");
-        int n = sys_read(line, 127);
+        int n = nos_read(0, line, 127);
         if (n <= 0) continue;
         if (n == 1 && line[0] == 0x03) {
             if (foreground_pid > 0) {
-                sys_kill((uint32_t)foreground_pid);
+                nos_kill((uint32_t)foreground_pid);
                 foreground_pid = 0;
             }
             continue;
@@ -398,19 +283,19 @@ void _start(void) {
             char *arg = line[4] == ' ' ? line + 5 : "";
             unsigned int alen = sh_strlen(arg);
             if (alen > 0 && arg[alen - 1] == '\n') arg[alen - 1] = '\0';
-            int pid = sys_exec_arg("edit", arg);
+            int pid = nos_exec("edit", arg);
             if (pid < 0) {
                 sh_puts("error: edit not found\n");
             } else {
                 foreground_pid = pid;
-                sys_wait(pid);   /* blocks until the editor exits */
+                nos_wait(pid);   /* blocks until the editor exits */
                 foreground_pid = 0;
             }
         } else if (sh_strncmp(line, "run", 3) == 0 && (line[3] == ' ' || line[3] == '\0')) {
             char *name = line[3] == ' ' ? line + 4 : "";
             unsigned int nlen = sh_strlen(name);
             if (nlen > 0 && name[nlen - 1] == '\n') name[nlen - 1] = '\0';
-            int pid = sys_exec(name);
+            int pid = nos_exec(name, 0);
             if (pid < 0) {
                 sh_puts("error: program not found\n");
             } else {

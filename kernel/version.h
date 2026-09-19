@@ -17,7 +17,7 @@
 #ifndef NULLOS_VERSION_H
 #define NULLOS_VERSION_H
 
-#define NULLOS_VERSION      "0.15.0"
+#define NULLOS_VERSION      "0.15.1"
 #define NULLOS_PHASE        "15"
 #define NULLOS_PHASE_DESC   "FAT16 subdirectories"
 

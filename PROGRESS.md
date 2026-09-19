@@ -50,6 +50,28 @@ priority order (Phases 16–22).
 
 ## Architecture decisions (non-obvious from reading the code alone)
 
+- **User programs go through a shared syscall wrapper library
+  (`user/lib/nullos.c/h`, "libnos", `nos_*`) instead of each writing
+  its own `int $0x80` inline asm** — added post-Phase-15, not a
+  numbered phase itself (infrastructure/compatibility work, tracked in
+  CHANGELOG.md `[Unreleased]`). Motivation: before v1.0.0 the syscall
+  *interface* stays free to change, but until this library existed,
+  changing what a syscall does *underneath* an unchanged interface
+  still meant touching every one of the six user programs that called
+  it by hand. Now it means recompiling `lib/nullos.c` once (`user/
+  Makefile` links every program against the same `lib/nullos.o`). See
+  `docs/kernel.md` → "User-space syscall library (libnos)" for the
+  full design, including two real (not purely renamed) differences
+  found while unifying six independent copies of these wrappers:
+  `nos_write`/`nos_read` gained an explicit `fd` argument (two of the
+  four affected programs already used that fuller form; the others
+  hardcoded `fd=1`/`fd=0` inline), and `nos_exec(name, arg)` replaced
+  `shell.c`'s `sys_exec`/`sys_exec_arg` split — the latter's single-arg
+  form never constrained `ecx` in its inline asm, so the kernel's
+  `sys_exec` read whatever garbage was in `ecx` as the argument
+  pointer (harmless in practice, since an invalid address just makes
+  `copy_user_str` fail silently, but not a wrapper bug worth
+  preserving).
 - **FAT16 subdirectories (`kernel/fs/fat16.c`) go through one shared
   lookup/insert/path-walk core, deliberately, because of the Phase 10
   duplicated-lookup bug** (previously tracked in "Known technical debt"

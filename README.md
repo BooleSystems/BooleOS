@@ -9,7 +9,7 @@
  | |\  | |_| | | | |_| |___) |
  |_| \_|\__,_|_|_|\___/|____/ 
 
- NullOS v0.15.0 - Phase 15: FAT16 subdirectories
+ NullOS v0.15.1 - Phase 15: FAT16 subdirectories
 ```
 
 ## Overview
@@ -98,14 +98,15 @@ kernel/
     vmm.c             Virtual Memory Manager
     heap.c            kmalloc/kfree
 user/
-  init.c              simple user process: SYS_WRITE + SYS_EXIT
+  lib/nullos.c/h      Syscall wrapper library (libnos, "nos_*") — one thin wrapper per syscall, see docs/kernel.md
+  init.c              simple user process: nos_write + nos_exit
   spintest.c          process without yield: validates IRQ0 preemption
   shell.c             interactive shell: help/uname/fetch/ps/mem/ls/touch/mkdir/cd/echo/kill/run/edit/clear/exit
   edit.c              text editor: opens/creates/saves files on FAT16
   forktest.c          calls fork(), prints the parent/child paths and PIDs
   selftest.c          automated regression suite ("run selftest") — see docs/testing.md
   link.ld             user linker script (entry @ 0x01000000)
-  Makefile            builds init.elf, spintest.elf, shell.elf, edit.elf, forktest.elf, and selftest.elf
+  Makefile            builds lib/nullos.o and links init.elf, spintest.elf, shell.elf, edit.elf, forktest.elf, and selftest.elf against it
 tools/
   Makefile            Build system (i686-elf-gcc + NASM + grub2-mkrescue), `disk` target
   grub.cfg.in         GRUB configuration template (version substituted at build time from kernel/version.h → build/grub.cfg)

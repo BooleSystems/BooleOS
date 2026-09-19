@@ -46,17 +46,17 @@ needing to reproduce the bug by hand first.
    (the child exits immediately and silently so it doesn't re-run the
    rest of the suite); the parent then `wait()`s on the child to reap
    its process-table slot before continuing.
-3. **File create** — `sys_create("st_root.txt")` succeeds.
+3. **File create** — `nos_create("st_root.txt")` (`SYS_CREATE`) succeeds.
 4. **File write/read roundtrip** — writes known content, closes,
    reopens, reads it back, and compares byte-for-byte.
-5. **File duplicate-create regression** — calls `sys_create()` again on
+5. **File duplicate-create regression** — calls `nos_create()` again on
    the *same* existing filename (the Phase 10 bug: a second create used
    to add a duplicate directory entry instead of reusing it) and checks
    the original content still reads back unchanged. There's no
    directory-listing syscall that returns parsed entries (`SYS_READDIR`
    only prints via VGA), so this is the best observable symptom
    available rather than a literal duplicate-entry count.
-6. **Security — invalid pointer** — calls `sys_write()` with a pointer
+6. **Security — invalid pointer** — calls `nos_write()` with a pointer
    into the kernel's shared 0–8MB identity map (`0x1000`, present in
    every process's page directory per `vmm_init()` but never
    `VMM_USER`) and checks the syscall returns `-1` instead of crashing.
@@ -65,7 +65,7 @@ needing to reproduce the bug by hand first.
    syscall previously always returned `0`; it was changed (see
    [pci.md](pci.md) → `pci_device_count()`) specifically so this test
    could check the count without parsing VGA text output.
-8. **`mkdir`** — `sys_mkdir("selftest_dir")` (Phase 15) succeeds.
+8. **`mkdir`** — `nos_mkdir("selftest_dir")` (`SYS_MKDIR`, Phase 15) succeeds.
 9. **File write/read roundtrip inside a subdirectory** — same as test 4,
    but `cd`'d into `selftest_dir` first. This is the exact scenario
    that exposed the `exec()`-doesn't-inherit-cwd bug found during Phase
