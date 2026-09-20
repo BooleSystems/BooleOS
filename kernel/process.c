@@ -1,6 +1,7 @@
 // nullos/kernel/process.c
 #include "process.h"
 #include "hal.h"
+#include "messages.h"
 #include "memory/vmm.h"
 #include "memory/pmm.h"
 #include "tss.h"
@@ -375,21 +376,21 @@ void process_wake_sleepers(uint32_t now) {
 
 const char *process_state_name(process_state_t state) {
     switch (state) {
-        case PROCESS_UNUSED:   return "unused";
-        case PROCESS_READY:    return "ready";
-        case PROCESS_RUNNING:  return "running";
-        case PROCESS_SLEEPING: return "sleep";
-        case PROCESS_BLOCKED:  return "blocked";
-        case PROCESS_ZOMBIE:   return "zombie";
-        default:               return "?";
+        case PROCESS_UNUSED:   return msg(MSG_PROC_STATE_UNUSED);
+        case PROCESS_READY:    return msg(MSG_PROC_STATE_READY);
+        case PROCESS_RUNNING:  return msg(MSG_PROC_STATE_RUNNING);
+        case PROCESS_SLEEPING: return msg(MSG_PROC_STATE_SLEEP);
+        case PROCESS_BLOCKED:  return msg(MSG_PROC_STATE_BLOCKED);
+        case PROCESS_ZOMBIE:   return msg(MSG_PROC_STATE_ZOMBIE);
+        default:               return msg(MSG_PROC_STATE_UNKNOWN);
     }
 }
 
 void process_dump(void) {
     console_set_color(CONSOLE_CYAN, CONSOLE_BLACK);
-    console_puts("[PROC] ");
+    console_puts(msg(MSG_PROC_TAG));
     console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
-    console_puts("PID  STATE     RUNS  ESP       NAME\n");
+    console_puts(msg(MSG_PROC_TABLE_HEADER));
 
     for (uint32_t i = 0; i < PROCESS_MAX; i++) {
         process_t *process = &process_table[i];

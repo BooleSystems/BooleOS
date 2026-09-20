@@ -4,6 +4,7 @@
 #include "scheduler.h"
 #include "timer.h"
 #include "hal.h"
+#include "messages.h"
 #include "memory/pmm.h"
 #include "memory/heap.h"
 #include "exec.h"
@@ -314,7 +315,7 @@ static uint32_t sys_read(uint32_t fd, char *buf, uint32_t len) {
             scheduler_sleep_current(1);
 
         if (c == 0x03) {
-            console_puts("^C\n");
+            console_puts(msg(MSG_SYS_CTRL_C));
             char ctrlc = 0x03;
             if (copy_to_user(cur, (uint32_t)buf, &ctrlc, 1) < 0) return (uint32_t)-1;
             return 1;
@@ -657,7 +658,7 @@ static uint32_t sys_readdir(const char *user_path) {
             if (!fat16_available()) return (uint32_t)-1;
             int r = fat16_resolve_dir(cur->cwd_cluster, kpath, &list_cluster);
             if (r != 1) {
-                console_puts("ls: no such directory: ");
+                console_puts(msg(MSG_SYS_LS_NO_SUCH_DIRECTORY));
                 console_puts(kpath);
                 console_puts("\n");
                 return (uint32_t)-1;
@@ -671,7 +672,7 @@ static uint32_t sys_readdir(const char *user_path) {
     /* ramfs is always flat — only shown when listing the actual root,
        since it never gained subdirectories in this phase */
     if (listing_root && ramfs_base) {
-        console_puts("ramfs:\n");
+        console_puts(msg(MSG_SYS_RAMFS));
         /* accesses n_entries and entries directly via ramfs_h */
         uint32_t n = *(uint32_t *)ramfs_base;
         ramfs_entry_t *entries = (ramfs_entry_t *)(ramfs_base + sizeof(uint32_t));
@@ -679,14 +680,14 @@ static uint32_t sys_readdir(const char *user_path) {
             console_puts("  ");
             puts_padded(entries[i].name, 20);
             console_put_dec(entries[i].size);
-            console_puts(" B\n");
+            console_puts(msg(MSG_SYS_BYTES_NL));
         }
         any = 1;
     }
 
     /* FAT16 */
     if (fat16_available()) {
-        console_puts("fat16:\n");
+        console_puts(msg(MSG_SYS_FAT16));
         char name[13];
         uint32_t size;
         uint8_t is_dir;
@@ -694,16 +695,16 @@ static uint32_t sys_readdir(const char *user_path) {
             console_puts("  ");
             puts_padded(name, 20);
             if (is_dir) {
-                console_puts("<DIR>\n");
+                console_puts(msg(MSG_SYS_DIR_ENTRY));
             } else {
                 console_put_dec(size);
-                console_puts(" B\n");
+                console_puts(msg(MSG_SYS_BYTES_NL));
             }
             any = 1;
         }
     }
 
-    if (!any) console_puts("(no files)\n");
+    if (!any) console_puts(msg(MSG_SYS_NO_FILES));
     return 0;
 }
 
@@ -909,7 +910,7 @@ uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t ar
         case SYS_PCI_FIND:     return (uint32_t)pci_find_device((uint16_t)arg1, (uint16_t)arg2, 0, 0, 0);
         default:
             console_set_color(CONSOLE_YELLOW, CONSOLE_BLACK);
-            console_puts("[SYSCALL] unknown number: ");
+            console_puts(msg(MSG_SYS_UNKNOWN_SYSCALL));
             console_put_dec(num);
             console_puts("\n");
             console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);

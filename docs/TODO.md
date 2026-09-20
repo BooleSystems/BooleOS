@@ -41,3 +41,7 @@ Pre-existing bug (found while testing the HAL first pass, NOT caused by it):
   name ("save as"), create the file, and only report "no disk" when the write
   really failed. Never caught because every earlier test used `edit <file>`.
   Files: `user/edit.c`.
+- WIP: `msg(ID)` pass 2 — userland table (`user/lib/messages.*`) for
+  `shell.c` (help/`fetch` logo blocks need column care), `edit.c` (status bar
+  `sbar[80]` is column-sensitive) and `cat.c`. `selftest.c`/`forktest.c` stay
+  out on purpose. Files: `user/`.

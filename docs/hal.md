@@ -36,7 +36,20 @@ Deliberately not migrated:
 - **The drivers' internals** — `vga.c`, `keyboard.c`, `ata.c` call their own helpers as before.
 - **Serial debug prints** (`serial_putchar` etc.) — one implementation, no second one planned (see CLAUDE.md's rule against abstracting "in the dark").
 
-Also not done yet: `boot_get_memory_map()` has no caller — `pmm_init()` still receives a hardcoded `64 * 1024` KB from `kmain`. Wiring the real map into the PMM would change behavior, so it is a separate step (`docs/TODO.md`). The centralized text table `msg(ID)` is a separate later commit of 18-A.
+Also not done yet: `boot_get_memory_map()` has no caller — `pmm_init()` still receives a hardcoded `64 * 1024` KB from `kmain`. Wiring the real map into the PMM would change behavior, so it is a separate step (`docs/TODO.md`). The centralized text table `msg(ID)` is described below.
+
+## Centralized text: `msg(ID)` (kernel, pass 1)
+
+`kernel/messages.h` declares `typedef enum { MSG_..., MSG_COUNT } msg_id_t` and `const char *msg(msg_id_t id)`; `kernel/messages.c` holds `static const char *const g_msgs[]`, one text per ID (C99 designated initializers, so table order can't drift from the enum). Kernel code prints with `console_puts(msg(MSG_PMM_TOTAL))`.
+
+This is **not a translation system**: one column, English, no language selector. It only moves text that already existed into one place, so a new string can't be scattered through the code again.
+
+- **Fragments, not format strings.** There is no printf in the kernel; numbers are still printed with `console_put_dec()`/`console_put_hex()` between pieces of text. A sentence with a number in the middle is therefore two or three IDs (`MSG_PMM_TOTAL` = `"Total: "`, `MSG_PMM_KB_FREE` = `"KB Free: "`).
+- **Only output text.** A string that is compared with `strcmp`, passed to `exec()`, or used as a file/process name stays a literal at its use. Also left as literals: whitespace-only strings (`"\n"`, indentation and column padding — layout, not text), the version banner line (built from `NULLOS_BANNER` at compile time), the default process name `"kernel-task"` (an identifier stored in the process table), and the `"0x"` prefix inside `vga_puthex()` (driver internals).
+- **Naming and stability.** `MSG_<SUBSYSTEM>_<DESCRIPTION>` (`MSG_TAG_*` for the `[BOOT] `-style prefixes, `MSG_EXC_*` for the CPU exception names, `MSG_PROC_STATE_*` for `ps` states), grouped by subsystem in the enum. Identical strings share one ID. An ID is never reused for a different string; add new IDs before `MSG_COUNT`.
+- **Safe everywhere.** `msg()` is a bounds-checked lookup in a static const table: no init, no heap, no hardware. An out-of-range ID (or an entry left empty) returns `"(?)"`, never `NULL`. That is why `idt.c`'s exception handler may use it even though it bypasses the HAL for output: `exception_msgs[32]` holds IDs instead of pointers.
+- **Compile-time check.** `g_msgs[]` has no explicit size, so its size is set by the highest designated initializer; a `typedef char ...[(sizeof(g_msgs)/sizeof(g_msgs[0]) == MSG_COUNT) ? 1 : -1]` fails the build if an ID was added at the end of the enum without a text (C99 has no `_Static_assert`). A missing entry in the middle is caught at run time by the `"(?)"` fallback.
+- **Scope so far:** the whole `kernel/` (~130 call sites, 12 files). The userland (`shell.c`, `edit.c`, `cat.c`) is pass 2 — it needs its own table, because user programs cannot call the kernel's `msg()`. `selftest.c` and `forktest.c` are diagnostic output and are deliberately excluded.
 
 ## Relevant files
 
@@ -44,4 +57,6 @@ Also not done yet: `boot_get_memory_map()` has no caller — `pmm_init()` still 
 kernel/hal.h          interface (arch-neutral)
 kernel/hal.c          x86 implementation (forwards to the drivers)
 kernel/multiboot2.h   Multiboot2 tag parser (module + memory map)
+kernel/messages.h     msg_id_t enum + msg()
+kernel/messages.c     the message table
 ```

@@ -2,6 +2,7 @@
 #include "scheduler.h"
 #include "timer.h"
 #include "hal.h"
+#include "messages.h"
 #include "memory/vmm.h"
 #include "tss.h"
 #include "usermode.h"
@@ -108,8 +109,8 @@ void scheduler_block_current(void) {
 
 void scheduler_dump(void) {
     console_set_color(CONSOLE_CYAN, CONSOLE_BLACK);
-    console_puts("[SCHED] ");
+    console_puts(msg(MSG_SCHED_TAG));
     console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
-    console_puts("round-robin cooperative context switching\n");
+    console_puts(msg(MSG_SCHED_ROUND_ROBIN));
     process_dump();
 }

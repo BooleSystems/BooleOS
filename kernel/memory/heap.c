@@ -7,6 +7,7 @@
 #include "pmm.h"
 #include "vmm.h"
 #include "../hal.h"
+#include "../messages.h"
 #include <stdint.h>
 #include <stddef.h>
 
@@ -39,17 +40,17 @@ static int heap_expand(uint32_t size) {
 
     for (i = 0; i < pages_needed; i++) {
         if (heap_end + PAGE_SIZE > HEAP_MAX) {
-            console_puts("heap: ERROR no room to expand!\n");
+            console_puts(msg(MSG_HEAP_ERROR_NO_ROOM_TO));
             return 0;
         }
         uint32_t phys = pmm_alloc_page();
         if (!phys) {
-            console_puts("heap: ERROR out of physical pages!\n");
+            console_puts(msg(MSG_HEAP_ERROR_OUT_OF_PHYSICAL));
             return 0;
         }
         if (vmm_map_page(heap_end, phys, VMM_KERNEL) != 0) {
             pmm_free_page(phys);
-            console_puts("heap: ERROR out of page tables!\n");
+            console_puts(msg(MSG_HEAP_ERROR_OUT_OF_PAGE));
             return 0;
         }
         heap_end += PAGE_SIZE;
@@ -62,13 +63,13 @@ static int heap_expand(uint32_t size) {
 // ============================================================
 
 void heap_init(void) {
-    console_puts("   heap: initializing at ");
+    console_puts(msg(MSG_HEAP_INITIALIZING_AT));
     console_put_hex(HEAP_START);
     console_puts("\n");
 
     // Allocate the first page
     if (!heap_expand(PAGE_SIZE)) {
-        console_puts("   heap: ERROR initializing!\n");
+        console_puts(msg(MSG_HEAP_ERROR_INITIALIZING));
         return;
     }
 
@@ -79,9 +80,9 @@ void heap_init(void) {
     heap_start_ptr->next  = 0;
     heap_start_ptr->prev  = 0;
 
-    console_puts("   heap: initial block size=");
+    console_puts(msg(MSG_HEAP_INITIAL_BLOCK_SIZE));
     console_put_dec(heap_start_ptr->size);
-    console_puts(" bytes\n");
+    console_puts(msg(MSG_HEAP_BYTES_NL));
 }
 
 void *kmalloc(size_t size) {
@@ -102,7 +103,7 @@ void *kmalloc(size_t size) {
 
     while (cur) {
         if (cur->magic != MAGIC_FREE && cur->magic != MAGIC_USED) {
-            console_puts("heap: CORRUPTION DETECTED!\n");
+            console_puts(msg(MSG_HEAP_CORRUPTION_DETECTED));
             return 0;
         }
 
@@ -166,7 +167,7 @@ void kfree(void *ptr) {
     block_header_t *hdr = (block_header_t *)((uint8_t *)ptr - HEADER_SIZE);
 
     if (hdr->magic != MAGIC_USED) {
-        console_puts("kfree: ERROR invalid pointer or double free!\n");
+        console_puts(msg(MSG_HEAP_KFREE_INVALID_POINTER));
         return;
     }
 
@@ -215,13 +216,13 @@ void heap_dump(void) {
     }
 
     console_set_color(CONSOLE_CYAN, CONSOLE_BLACK);
-    console_puts("[HEAP] ");
+    console_puts(msg(MSG_TAG_HEAP));
     console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
-    console_puts("Blocks: ");
+    console_puts(msg(MSG_HEAP_BLOCKS));
     console_put_dec(n_blocks);
-    console_puts(" | Free: ");
+    console_puts(msg(MSG_HEAP_FREE_SEP));
     console_put_dec(free_bytes);
-    console_puts("B | Used: ");
+    console_puts(msg(MSG_HEAP_B_USED_SEP));
     console_put_dec(used_bytes);
-    console_puts("B\n");
+    console_puts(msg(MSG_HEAP_B_NL));
 }

@@ -1,6 +1,7 @@
 /* nullos/kernel/fs/fat16.c — FAT16 read/write, subdirectories, over ATA PIO */
 #include "fat16.h"
 #include "../hal.h"
+#include "../messages.h"
 #include "../memory/heap.h"
 #include <stdint.h>
 
@@ -141,7 +142,7 @@ int fat16_init(void) {
         /* would divide by zero in the cluster count below and break every
            cluster -> LBA computation afterward; fail before any state is
            set. The caller prints "no FAT16 disk" right after this. */
-        console_puts("invalid BPB (sectors_per_cluster=0), ");
+        console_puts(msg(MSG_FAT16_INVALID_BPB));
         return 0;
     }
 

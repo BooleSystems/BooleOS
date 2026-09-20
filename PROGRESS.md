@@ -30,8 +30,10 @@ Last closed phase: **Phase 17** (Cleanup A).
 
 `kernel/hal.h/.c` + `docs/hal.md`: thin wrappers over vga/keyboard/ata/
 power/Multiboot2, call sites outside the drivers migrated (build clean,
-no runtime test yet). Still owed in 18-A: `msg(ID)` centralized text output
-(separate commit); loose ends in `docs/TODO.md` (idt.c exception handler,
+no runtime test yet). `msg(ID)` pass 1 (kernel/) done (uncommitted):
+`kernel/messages.h/.c`, text verified identical via .rodata string-set diff.
+Still owed in 18-A: `msg(ID)` pass 2 (userland: own table, shell/edit/cat;
+selftest/forktest deliberately excluded); loose ends in `docs/TODO.md` (idt.c exception handler,
 wiring `boot_get_memory_map()` into `pmm_init`). Then 18-B (Safe Mode; must
 not rely on `process_spawn_user`/fork/exec/scheduler — see CLAUDE.md).
 Also owed to 18-B: the permanent "NullOS vX.Y.Z (anterior)" GRUB entry
@@ -108,6 +110,9 @@ package manager phase was deliberately decided against — don't add one.
 - **libnos (`user/lib/nullos.c/h`, `nos_*`)** is the single syscall wrapper
   layer for all user programs (`0.15.1`), so changing a syscall's internals
   means recompiling one file. See `docs/kernel.md`.
+- **`msg(ID)`: fragments, not format strings; only OUTPUT text** (never
+  strcmp keys / exec names / file names); kernel and userland get separate
+  tables (user programs can't call the kernel). See `docs/hal.md`.
 - **HAL (`kernel/hal.h`) is a forwarding layer, not a rewrite**: the
   interface is arch-neutral, `hal.c` just calls the existing drivers; the
   exception handler (`idt.c`) and driver bring-up deliberately bypass it.

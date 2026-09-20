@@ -5,6 +5,7 @@
 
 #include "pci.h"
 #include "../hal.h"
+#include "../messages.h"
 #include <stdint.h>
 
 #define PCI_CONFIG_ADDRESS 0xCF8
@@ -152,7 +153,7 @@ static void print_hex_padded(uint32_t value, int digits) {
 
 void pci_print_list(void) {
     if (g_device_count == 0) {
-        console_puts("  (no PCI devices found)\n");
+        console_puts(msg(MSG_PCI_NO_PCI_DEVICES_FOUND));
         return;
     }
 
@@ -165,17 +166,17 @@ void pci_print_list(void) {
         print_hex_padded(d->device, 2);
         console_putc('.');
         print_hex_padded(d->function, 1);
-        console_puts("  vendor=");
+        console_puts(msg(MSG_PCI_VENDOR));
         print_hex_padded(d->vendor_id, 4);
-        console_puts(" device=");
+        console_puts(msg(MSG_PCI_DEVICE));
         print_hex_padded(d->device_id, 4);
-        console_puts(" class=");
+        console_puts(msg(MSG_PCI_CLASS));
         print_hex_padded(d->class_code, 2);
         console_putc('/');
         print_hex_padded(d->subclass, 2);
-        console_puts(" progif=");
+        console_puts(msg(MSG_PCI_PROGIF));
         print_hex_padded(d->prog_if, 2);
-        console_puts(" htype=");
+        console_puts(msg(MSG_PCI_HTYPE));
         print_hex_padded(d->header_type, 2);
         console_puts("\n");
 
@@ -185,10 +186,10 @@ void pci_print_list(void) {
             if (d->bar[b] != 0) { any_bar = 1; break; }
 
         if (any_bar) {
-            console_puts("        bars:");
+            console_puts(msg(MSG_PCI_BARS));
             for (int b = 0; b < nbars; b++) {
                 if (d->bar[b] == 0) continue;
-                console_puts(" bar");
+                console_puts(msg(MSG_PCI_BAR));
                 console_putc((char)('0' + b));
                 console_putc('=');
                 print_hex_padded(d->bar[b], 8);

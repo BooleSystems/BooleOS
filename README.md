@@ -81,6 +81,7 @@ kernel/
   serial.c/h          Serial driver (mirrors VGA output)
   power.c/h           power_reboot() / power_shutdown()
   hal.c/h             Hardware abstraction layer (console/input/block/boot info) — see docs/hal.md
+  messages.c/h        msg(ID): central table of kernel output text — see docs/hal.md
   pipe.c/h            Inter-process pipes (fixed pool)
   tss.c               Task State Segment
   process.c/h         Process table + process_fork()

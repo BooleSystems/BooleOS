@@ -1,0 +1,213 @@
+// nullos/kernel/messages.h — central table of user-visible kernel text.
+//
+// Every string the kernel prints for a human to read (boot log, errors,
+// dumps) lives in messages.c and is fetched by ID: console_puts(msg(MSG_X)).
+// This is NOT a translation system: there is exactly one column, English.
+// The point is a single place for the text; see docs/hal.md ("msg(ID)").
+//
+// Rules:
+//  * Only OUTPUT text goes here. Anything compared with strcmp, passed to
+//    exec(), or used as a file/process name stays a literal at its use.
+//  * Strings are FRAGMENTS: numbers are still printed with
+//    console_put_dec()/console_put_hex() between them.
+//  * IDs are named MSG_<SUBSYSTEM>_<DESCRIPTION>, grouped by subsystem, and
+//    never reused for a different string. Append new IDs before MSG_COUNT.
+//  * msg() is a plain lookup in a static const table: no init, no heap, no
+//    hardware — safe from the first line of kmain and from the exception
+//    handler.
+
+#ifndef MESSAGES_H
+#define MESSAGES_H
+
+typedef enum {
+    // kmain boot log
+    MSG_BOOT_OK,
+    MSG_BOOT_LOGO_1,
+    MSG_BOOT_LOGO_2,
+    MSG_BOOT_LOGO_3,
+    MSG_BOOT_LOGO_4,
+    MSG_BOOT_LOGO_5,
+    MSG_BOOT_INVALID_MULTIBOOT2_MAGIC,
+    MSG_BOOT_MULTIBOOT2_OK_PREFIX,
+    MSG_TAG_BOOT,
+    MSG_BOOT_RAMFS_MODULE_0X,
+    MSG_BOOT_RAMFS_RANGE_SEP,
+    MSG_BOOT_RAMFS_SIZE_OPEN,
+    MSG_BOOT_RAMFS_SIZE_CLOSE,
+    MSG_BOOT_NO_RAMFS_MODULE,
+    MSG_TAG_GDT,
+    MSG_BOOT_GDT_INITIALIZING,
+    MSG_TAG_PIC,
+    MSG_BOOT_REMAPPING_IRQS,
+    MSG_TAG_IDT,
+    MSG_BOOT_INSTALLING_VECTORS,
+    MSG_TAG_TIMER,
+    MSG_BOOT_TIMER_INIT,
+    MSG_TAG_KB,
+    MSG_BOOT_KEYBOARD_INIT,
+    MSG_TAG_PMM,
+    MSG_BOOT_PMM_INITIALIZING,
+    MSG_TAG_VMM,
+    MSG_BOOT_ENABLING_PAGING,
+    MSG_TAG_HEAP,
+    MSG_BOOT_INITIALIZING_KMALLOC,
+    MSG_TAG_SCHED,
+    MSG_BOOT_SCHED_INITIALIZING,
+    MSG_TAG_ATA,
+    MSG_BOOT_DETECTING_DISK,
+    MSG_BOOT_NO_DISK,
+    MSG_TAG_FAT16,
+    MSG_BOOT_FAT16_INITIALIZING,
+    MSG_BOOT_NO_FAT16_DISK,
+    MSG_TAG_PCI,
+    MSG_BOOT_SCANNING_BUS,
+    MSG_TAG_RAMFS,
+    MSG_BOOT_MOUNTING_IMAGE,
+    MSG_TAG_EXEC,
+    MSG_BOOT_LOADING_SHELL,
+    MSG_BOOT_ERROR_LOADING_SHELL,
+    MSG_BOOT_SHELL_STARTED,
+
+    // IDT setup and exception handler
+    MSG_IDT_KERNEL_EXCEPTION,
+    MSG_IDT_EXCEPTION,
+    MSG_IDT_UNKNOWN,
+    MSG_IDT_EIP,
+    MSG_IDT_ERR_CODE,
+    MSG_IDT_CR2_ADDR,
+    MSG_IDT_PF_FLAGS,
+    MSG_IDT_NOT_PRESENT,
+    MSG_IDT_PROTECTION,
+    MSG_IDT_READ,
+    MSG_IDT_WRITE,
+    MSG_IDT_KERNEL,
+    MSG_IDT_USER,
+    MSG_IDT_1_ZEROING_IDT_AT_0X200000,
+    MSG_IDT_2_EXCEPTION_GATES_0_31,
+    MSG_IDT_3_IRQ_GATES_32_33,
+    MSG_IDT_4_SYSCALL_GATE_0X80_DPL,
+    MSG_IDT_5_FLUSH,
+    MSG_IDT_6_OK,
+
+    // CPU exception names (idt.c)
+    MSG_EXC_DE,
+    MSG_EXC_DB,
+    MSG_EXC_NMI,
+    MSG_EXC_BP,
+    MSG_EXC_OF,
+    MSG_EXC_BR,
+    MSG_EXC_UD,
+    MSG_EXC_NM,
+    MSG_EXC_DF,
+    MSG_EXC_COPROC_OVERRUN,
+    MSG_EXC_TS,
+    MSG_EXC_NP,
+    MSG_EXC_SS,
+    MSG_EXC_GP,
+    MSG_EXC_PF,
+    MSG_EXC_RESERVED,
+    MSG_EXC_MF,
+    MSG_EXC_AC,
+    MSG_EXC_MC,
+    MSG_EXC_XM,
+    MSG_EXC_VE,
+
+    // kernel heap
+    MSG_HEAP_ERROR_NO_ROOM_TO,
+    MSG_HEAP_ERROR_OUT_OF_PHYSICAL,
+    MSG_HEAP_ERROR_OUT_OF_PAGE,
+    MSG_HEAP_INITIALIZING_AT,
+    MSG_HEAP_ERROR_INITIALIZING,
+    MSG_HEAP_INITIAL_BLOCK_SIZE,
+    MSG_HEAP_BYTES_NL,
+    MSG_HEAP_CORRUPTION_DETECTED,
+    MSG_HEAP_KFREE_INVALID_POINTER,
+    MSG_HEAP_BLOCKS,
+    MSG_HEAP_FREE_SEP,
+    MSG_HEAP_B_USED_SEP,
+    MSG_HEAP_B_NL,
+
+    // physical memory manager
+    MSG_PMM_1_BITMAP_AT,
+    MSG_PMM_2_FREEING_HIGH_MEM,
+    MSG_PMM_WARNING_NO_MEMORY_ABOVE,
+    MSG_PMM_3_MARKING_USED_REGIONS,
+    MSG_PMM_4_FREE,
+    MSG_PMM_PAGES_NL,
+    MSG_PMM_DUMP_TAG,
+    MSG_PMM_TOTAL,
+    MSG_PMM_KB_FREE,
+    MSG_PMM_KB_NL,
+
+    // virtual memory manager
+    MSG_VMM_1_ZEROING_PD_AND,
+    MSG_VMM_2_MAPPING_0_4MB,
+    MSG_VMM_3_MAPPING_4MB_8MB,
+    MSG_VMM_4_CR3_CR0_PG,
+    MSG_VMM_5_OK,
+    MSG_VMM_DUMP_TAG,
+    MSG_VMM_PTS_USED,
+
+    // exec()
+    MSG_EXEC_NOT_FOUND,
+    MSG_EXEC_FAILED_TO_CREATE_PAGE,
+    MSG_EXEC_ELF_LOAD_FAILED,
+    MSG_EXEC_OUT_OF_MEMORY_FOR,
+    MSG_EXEC_FAILED_TO_MAP_USER,
+    MSG_EXEC_SCHEDULER_SPAWN_USER_FAILED,
+    MSG_EXEC_SPAWNED,
+    MSG_EXEC_ENTRY_0X,
+    MSG_EXEC_ESP_0X,
+
+    // scheduler
+    MSG_SCHED_TAG,
+    MSG_SCHED_ROUND_ROBIN,
+
+    // process table
+    MSG_PROC_TAG,
+    MSG_PROC_TABLE_HEADER,
+    MSG_PROC_STATE_UNUSED,
+    MSG_PROC_STATE_READY,
+    MSG_PROC_STATE_RUNNING,
+    MSG_PROC_STATE_SLEEP,
+    MSG_PROC_STATE_BLOCKED,
+    MSG_PROC_STATE_ZOMBIE,
+    MSG_PROC_STATE_UNKNOWN,
+
+    // syscalls
+    MSG_SYS_CTRL_C,
+    MSG_SYS_LS_NO_SUCH_DIRECTORY,
+    MSG_SYS_RAMFS,
+    MSG_SYS_FAT16,
+    MSG_SYS_DIR_ENTRY,
+    MSG_SYS_BYTES_NL,
+    MSG_SYS_NO_FILES,
+    MSG_SYS_UNKNOWN_SYSCALL,
+
+    // PCI
+    MSG_PCI_NO_PCI_DEVICES_FOUND,
+    MSG_PCI_VENDOR,
+    MSG_PCI_DEVICE,
+    MSG_PCI_CLASS,
+    MSG_PCI_PROGIF,
+    MSG_PCI_HTYPE,
+    MSG_PCI_BARS,
+    MSG_PCI_BAR,
+
+    // FAT16
+    MSG_FAT16_INVALID_BPB,
+
+    // power
+    MSG_POWER_REBOOT_FAILED,
+    MSG_POWER_SHUTDOWN_UNSUPPORTED,
+    MSG_POWER_SHUTDOWN_NO_PM_BASE,
+    MSG_POWER_SHUTDOWN_FAILED_ACPI,
+
+    MSG_COUNT
+} msg_id_t;
+
+// Returns the text for id, or "(?)" for an id that is out of range or has no
+// text. Never returns NULL.
+const char *msg(msg_id_t id);
+
+#endif // MESSAGES_H

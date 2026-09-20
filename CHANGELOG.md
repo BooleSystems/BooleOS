@@ -38,6 +38,13 @@ at the time.
   - Boot info: `hal_boot_init`, `boot_get_memory_map` (new Multiboot2
     memory-map tag parser in `kernel/multiboot2.h`), `boot_mem_region_t`.
 
+- `msg(ID)`, pass 1 (kernel): `kernel/messages.h` (`msg_id_t`, `msg()`) and
+  `kernel/messages.c` (the table, ~157 fragments). All user-visible kernel
+  text — boot log, errors, dumps, exception names, `ps` states — is fetched
+  by ID; text and output are unchanged. Not a translation system: one
+  English column. `msg()` never returns NULL (`"(?)"` for a bad ID) and
+  works from the exception handler. See `docs/hal.md`.
+
 ### Changed
 
 - Everything outside the drivers now goes through the HAL: `kmain`,

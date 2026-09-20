@@ -1,6 +1,7 @@
 // nullos/kernel/memory/pmm.c
 #include "pmm.h"
 #include "../hal.h"
+#include "../messages.h"
 #include <stdint.h>
 
 // Bitmap at a fixed safe address: 0x202000 (right after the IDT at 0x200000)
@@ -80,27 +81,27 @@ void pmm_init(uint32_t mem_upper) {
     pmm_total = total_pages;
     pmm_used  = 0;
 
-    console_puts("   pmm: [1] bitmap at "); console_put_hex(PMM_BITMAP_ADDR); console_puts("\n");
+    console_puts(msg(MSG_PMM_1_BITMAP_AT)); console_put_hex(PMM_BITMAP_ADDR); console_puts("\n");
     for (i = 0; i < PMM_BITMAP_SIZE; i++) get_bitmap()[i] = 0xFFFFFFFF;
 
-    console_puts("   pmm: [2] freeing high mem\n");
+    console_puts(msg(MSG_PMM_2_FREEING_HIGH_MEM));
     if (total_pages > 256)
         pmm_mark_free(0x100000, (total_pages - 256) * PAGE_SIZE);
     else
-        console_puts("   pmm: WARNING no memory above 1MB to free\n");
+        console_puts(msg(MSG_PMM_WARNING_NO_MEMORY_ABOVE));
 
-    console_puts("   pmm: [3] marking used regions\n");
+    console_puts(msg(MSG_PMM_3_MARKING_USED_REGIONS));
     pmm_mark_used(0x100000, 0x300000);
     pmm_mark_used(0x200000, 0x3000);
     pmm_mark_used(0x0F0000, 0x10000);
 
-    console_puts("   pmm: [4] free="); console_put_dec(pmm_free_pages()); console_puts(" pages\n");
+    console_puts(msg(MSG_PMM_4_FREE)); console_put_dec(pmm_free_pages()); console_puts(msg(MSG_PMM_PAGES_NL));
 }
 
 void pmm_dump(void) {
     console_set_color(CONSOLE_CYAN, CONSOLE_BLACK);
-    console_puts("[PMM] ");
+    console_puts(msg(MSG_PMM_DUMP_TAG));
     console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
-    console_puts("Total: "); console_put_dec(pmm_total_pages() * 4);
-    console_puts("KB Free: "); console_put_dec(pmm_free_pages() * 4); console_puts("KB\n");
+    console_puts(msg(MSG_PMM_TOTAL)); console_put_dec(pmm_total_pages() * 4);
+    console_puts(msg(MSG_PMM_KB_FREE)); console_put_dec(pmm_free_pages() * 4); console_puts(msg(MSG_PMM_KB_NL));
 }
