@@ -127,6 +127,14 @@ package manager phase was deliberately decided against — don't add one.
 
 ## Known technical debt
 
+- **The heap is virt == phys inside the process page pool (Phase 22).** The
+  kernel heap (4–8 MB virtual) is the identity-mapped range that the PMM also
+  hands to processes; `heap_expand()` takes the exact physical page at
+  `heap_end` and `heap_init()` pre-grows to 256 KB, but the heap cannot grow
+  after processes exist. An `exec()` of a program bigger than what is free in
+  the heap fails ("out of memory to load the program file"). Found when the
+  first `exec()` from FAT16 grew the heap with the lowest free page and
+  repointed the identity view of a process's page directory.
 - **The kernel writes to physical pages through the 0–8 MB identity map
   without checking (pre-existing, real; Phase 22).** The PMM can hand out
   frames above 8 MB while only 0–8 MB is identity-mapped, yet `elf.c:54`

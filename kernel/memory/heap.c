@@ -33,7 +33,19 @@ static uint32_t        heap_end       = HEAP_START;
 // Internal functions
 // ============================================================
 
-// Expands the heap by allocating new physical pages
+// Expands the heap by allocating new physical pages.
+//
+// The heap's virtual range (4-8MB) is the SAME memory as the identity-mapped
+// physical range 4-8MB: the kernel reaches page tables, page directories and
+// user pages there by their physical address. So a heap page must be mapped
+// to the physical page with the SAME address (virt == phys), which keeps that
+// identity mapping intact. Mapping heap_end to whatever page the PMM returns
+// instead (the lowest free one) silently REPOINTS the identity view of the
+// physical page at heap_end: if a process's page directory or page table lives
+// there, the kernel then reads another page's contents through it and faults
+// (this is what broke `run hello.elf` when exec() grew the heap after a
+// process had already been given the pages right after it). If the physical
+// page at heap_end is no longer free, the heap simply cannot grow.
 static int heap_expand(uint32_t size) {
     uint32_t pages_needed = (size + PAGE_SIZE - 1) / PAGE_SIZE;
     uint32_t i;
@@ -43,7 +55,7 @@ static int heap_expand(uint32_t size) {
             console_puts(msg(MSG_HEAP_ERROR_NO_ROOM_TO));
             return 0;
         }
-        uint32_t phys = pmm_alloc_page();
+        uint32_t phys = pmm_alloc_page_at(heap_end);
         if (!phys) {
             console_puts(msg(MSG_HEAP_ERROR_OUT_OF_PHYSICAL));
             return 0;
@@ -62,13 +74,19 @@ static int heap_expand(uint32_t size) {
 // Public API
 // ============================================================
 
+// The heap is grown to this size up front, while the physical pages right
+// after it are still free (see heap_expand()); once processes exist they take
+// those pages and the heap can no longer grow. 256 KB covers the FAT cache and
+// the temporary buffer exec() reads a program file into.
+#define HEAP_INITIAL_SIZE (256 * 1024)
+
 void heap_init(void) {
     console_puts(msg(MSG_HEAP_INITIALIZING_AT));
     console_put_hex(HEAP_START);
     console_puts("\n");
 
     // Allocate the first page
-    if (!heap_expand(PAGE_SIZE)) {
+    if (!heap_expand(HEAP_INITIAL_SIZE)) {
         console_puts(msg(MSG_HEAP_ERROR_INITIALIZING));
         return;
     }

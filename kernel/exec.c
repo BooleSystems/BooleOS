@@ -13,8 +13,10 @@
 #define USER_STACK_PAGES 2             /* 8 KB user stack */
 
 /* A program file bigger than this is refused (it is read whole into a kernel
-   heap buffer before loading). Generous for today's programs (~10-20 KB). */
-#define EXEC_MAX_FILE_SIZE 0x100000u
+   heap buffer before loading). The heap is a fixed 256 KB that cannot grow once
+   processes exist (see heap_expand()), so the limit stays well inside it;
+   today's programs are 10-30 KB. */
+#define EXEC_MAX_FILE_SIZE 0x30000u
 
 static void exec_fail(msg_id_t id, const char *name) {
     console_set_color(CONSOLE_LIGHT_RED, CONSOLE_BLACK);

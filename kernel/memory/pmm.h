@@ -22,6 +22,11 @@ void pmm_init(const boot_mem_region_t *map, int nregions);
 // Allocates a physical page (returns physical address or 0 if out of memory)
 uint32_t pmm_alloc_page(void);
 
+// Allocates the physical page at exactly `addr` (page aligned), if it is free.
+// Returns addr, or 0 if it is out of range or already in use. The heap needs
+// this: its virtual addresses ARE the physical ones (see heap.c).
+uint32_t pmm_alloc_page_at(uint32_t addr);
+
 // Frees a physical page
 void pmm_free_page(uint32_t addr);
 

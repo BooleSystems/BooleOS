@@ -72,6 +72,14 @@ uint32_t pmm_alloc_page(void) {
     return 0;
 }
 
+uint32_t pmm_alloc_page_at(uint32_t addr) {
+    if (addr & (PAGE_SIZE - 1)) return 0;
+    uint32_t page = addr / PAGE_SIZE;
+    if (page >= pmm_total || bitmap_test(page)) return 0;
+    bitmap_set(page); pmm_used++;
+    return addr;
+}
+
 void pmm_free_page(uint32_t addr) {
     uint32_t page = addr / PAGE_SIZE;
     if (page >= pmm_total || !bitmap_test(page)) return;

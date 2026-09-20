@@ -64,7 +64,7 @@ The edit-run loop is: change the `.c` file, `make inject PROG=...`, start QEMU, 
 - A program on the disk can be run from any directory with a path (`run docs/hello.elf`), relative to your current directory, like any file. Programs that ship inside the ISO (`shell`, `cat`, `edit`, ...) are looked up first and cannot be replaced by a file with the same name on the disk.
 - `run` starts the program and returns to the prompt immediately; the program's output appears on the same screen.
 - Programs launched with `run` get no arguments. (A program can start another one with an argument using `nos_exec(name, arg)` and read it with `nos_getarg()`.)
-- A program file can be at most 1 MB.
+- A program file can be at most 192 KB (the kernel reads it into a fixed-size buffer before loading it).
 
 If the shell says `[EXEC] not found: name`, the file is not on the disk (or the name is wrong). `[EXEC] elf_load failed: name` means the file is not a valid NullOS program (for example it was built with the wrong compiler or flags, or it is cut short).
 
