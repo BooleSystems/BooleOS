@@ -22,6 +22,39 @@ called out inline rather than silently "corrected", and `[0.11.0]`–
 Phase 10), not a version string that ever actually appeared in the repo
 at the time.
 
+## [Unreleased]
+
+### Added
+
+- `ROADMAP.md`: granular phase table — one row per phase and
+  sub-phase for completed Phases 0–16 (names taken from the README's
+  completed-phases table, links to CHANGELOG versions and `docs/`
+  files) and for planned Phases 17–31 including their sub-phases.
+- `docs/TODO.md`: header-only file for minimal "WIP: document X"
+  stubs left during `nightly` development, resolved at each version's
+  final polish (per the new CLAUDE.md documentation rule).
+
+### Changed
+
+- `CLAUDE.md`: new sections/rules for the `nightly`/`main` branch
+  strategy, `-nightly` version suffix, sub-phases, HAL, centralized
+  `msg()` text output, key=value system config file, and Safe Mode;
+  serial-mirroring, exec()/fork() threading and docs-verification rules
+  extended.
+- `kernel/version.h`: `NULLOS_VERSION` `"0.16.0"` -> `"0.17.0-nightly"`
+  (work toward 0.17.0; `NULLOS_PHASE`/`NULLOS_PHASE_DESC` intentionally
+  still point at Phase 16 until Phase 17 actually lands).
+- `ROADMAP.md`: replaced the Phases 17–22 plan with the restructured
+  Phases 17–31 sequence (Cleanup A, HAL + Safe Mode, SDK, COW fork,
+  `unlink`/`rmdir`, `process_exit()` memory release, `e1000`, AHCI,
+  xHCI, framebuffer/GUI, syscall deprecation, audit pass 2, polish,
+  DOOM prerequisites, DOOM port / v1.0.0). Old Phases 17–22 renumbered
+  to 20, 23, 24, 25, 26, 27. Priority order rewritten with dependency
+  notes. No package-manager phase, by decision.
+- `PROGRESS.md`: "Current status" now points at Phase 17 (Cleanup A),
+  sub-phase 17-A, as the next planned work; roadmap range updated to
+  17–31; the `process_exit()` leak note now references Phases 20/22.
+
 ## [0.16.0] - Phase 16: pipes and real waitpid
 
 Confirmed via manual QEMU testing (`forktest | cat`), including

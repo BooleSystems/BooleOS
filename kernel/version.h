@@ -17,7 +17,7 @@
 #ifndef NULLOS_VERSION_H
 #define NULLOS_VERSION_H
 
-#define NULLOS_VERSION      "0.16.0"
+#define NULLOS_VERSION      "0.17.0-nightly"
 #define NULLOS_PHASE        "16"
 #define NULLOS_PHASE_DESC   "Pipes and real waitpid"
 

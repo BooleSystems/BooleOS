@@ -1,68 +1,264 @@
 # NullOS — Future roadmap
 
-Completed phases (0–16) are documented in `README.md`. This file covers
-planned, not-yet-started phases only.
+The table below is the granular phase table: one row per phase AND per
+sub-phase, for both completed work (Phases 0–16, detailed in `README.md`,
+`CHANGELOG.md` and `docs/`) and planned work (Phases 17–31, ending at the
+v1.0.0 milestone, detailed in the section further down). Planned
+sub-phases become completed rows as they land.
 
-| Phase | Description | Status |
-|------|-----------|--------|
-| **17** | Copy-on-write `fork()`: defer the address-space copy until the first write instead of duplicating everything upfront (the classic optimization for the `fork()`+`exec()` pattern) | 🔜 Planned |
-| **18** | `e1000` network driver (already visible in Phase 11's PCI enumeration) + a minimal TCP/IP stack; initial goal is answering `ping` | 🔜 Planned |
-| **19** | AHCI (modern SATA) driver — requires switching the QEMU machine to `-machine q35` (ICH9), since the default i440FX chipset doesn't expose AHCI | 🔜 Planned |
-| **20** | USB HID via the xHCI controller, so keyboard/mouse work on modern hardware without a physical PS/2 port | 🔜 Planned |
-| **21** | Linear framebuffer (via the Multiboot2 framebuffer tag) + a simple GUI (rectangular windows, mouse), replacing VGA text mode | 🔜 Planned |
-| **22** | Formal syscall deprecation and compatibility strategy — evolve/fix existing syscalls without breaking already-compiled user programs, once the project reaches v1.0.0 | 🔜 Planned |
+There is deliberately no package-manager phase anywhere in this roadmap — it was considered and decided against.
 
-## Detailed planning (Phases 17–22)
+| Phase | Description | Status | Details |
+|------|-----------|--------|---------|
+| **0** | Bootloader (Multiboot2) + VGA text output | ✅ Done | CHANGELOG `[0.0.1]`, `docs/kernel.md` |
+| **1** | GDT, IDT, PIC, PIT (100 Hz), PS/2 keyboard | ✅ Done | CHANGELOG `[0.1.0]`, `docs/kernel.md` |
+| **2** | PMM (Physical Memory Manager) | ✅ Done | CHANGELOG `[0.2.0]`, `docs/memory.md` |
+| **2b** | VMM with paging + heap (`kmalloc`/`kfree`) | ✅ Done | CHANGELOG `[0.2.0]`, `docs/memory.md` |
+| **3a** | Process table + cooperative round-robin scheduler | ✅ Done | CHANGELOG `[0.3.0]`, `docs/scheduler.md` |
+| **3b** | Per-process context switch, per-process CR3, exception handlers | ✅ Done | CHANGELOG `[0.4.0]`, `docs/scheduler.md` |
+| **4** | TSS, ring 3 usermode, syscalls via `int 0x80` | ✅ Done | CHANGELOG `[0.4.0]`, `docs/kernel.md`, `docs/syscalls.md` |
+| **5** | Multiboot2 module parser, flat ramfs, ELF32 loader, `exec()`, `user/init` | ✅ Done | CHANGELOG `[0.5.0]`, `docs/kernel.md` |
+| **6** | Syscall return value in `eax`, preemption via IRQ0 (10-tick slice) | ✅ Done | CHANGELOG `[0.6.0]`, `docs/scheduler.md`, `docs/syscalls.md` |
+| **7** | `SYS_READ`, keyboard ringbuffer, interactive userland shell | ✅ Done | CHANGELOG `[0.7.0]`, `docs/shell.md`, `docs/syscalls.md` |
+| **8** | `SYS_EXEC`, Ctrl+C, foreground PID, copy-from-user | ✅ Done | CHANGELOG `[0.8.0]`, `docs/shell.md`, `docs/syscalls.md` |
+| **9** | `SYS_OPEN`, `SYS_CLOSE`, `SYS_READ` for ramfs files, per-process fd table | ✅ Done | CHANGELOG `[0.9.0]`, `docs/syscalls.md`, `docs/filesystem.md` |
+| **10** | Persistent disk: ATA PIO driver, FAT16 read/write, `SYS_CREATE`/`SYS_WRITE_FILE`, `touch`, editor with real saving | ✅ Done | CHANGELOG `[0.10.0]`/`[0.10.1]`, `docs/filesystem.md` |
+| **11** | PCI bus enumeration (legacy Configuration Mechanism #1), device table, `SYS_PCI_LIST`/`lspci` | ✅ Done | CHANGELOG `[0.11.0]`, `docs/pci.md` |
+| **12** | ATA IRQ-driven I/O: IRQ14/15 handlers, process blocking instead of busy-wait, exclusion gate, `PROCESS_BLOCKED` | ✅ Done | CHANGELOG `[0.12.0]`, `docs/scheduler.md`, `docs/filesystem.md` |
+| **13** | `fork()`: full address-space duplication, fabricated child kernel stack (resumes via `isr128_resume`), fd table duplication, `SYS_FORK` | ✅ Done | CHANGELOG `[0.13.0]`, `docs/scheduler.md` |
+| **14** | Kernel memory-safety hardening: userland pointer validation (4 confirmed ring 3 → ring 0 bugs), `kmalloc()` overflow fix, `sys_open`/`sys_create`/`sys_exec`/`sys_getarg` string validation; version centralized in `kernel/version.h` | ✅ Done | CHANGELOG `[0.14.0]`, `docs/security.md` |
+| **15** | FAT16 subdirectories: `mkdir`/`cd`, path-aware `touch`/`edit`/`ls`, shared `dir_lookup()`/`dir_insert()`/`resolve_path()` core, `SYS_CHDIR`/`SYS_MKDIR`, `exec()` inherits `cwd_cluster` | ✅ Done | CHANGELOG `[0.15.0]`, `docs/filesystem.md` |
+| **16** | Inter-process pipes (`SYS_PIPE`/`SYS_EXEC_PIPE`) and a real blocking `waitpid()`; shell gains `cmd1 \| cmd2` | ✅ Done | CHANGELOG `[0.16.0]`, `docs/pipes.md`, `docs/scheduler.md` |
+| **17** | Cleanup A — mechanical fixes from the old audit, known technical debt, libnos/shell tool consolidation, test/build infrastructure | 🔜 Planned | below |
+| **17-A** | Mechanical fixes from the old audit | 🔜 Planned | below |
+| **17-B** | Known technical debt | 🔜 Planned | below |
+| **17-C** | libnos consolidation + shell tools | 🔜 Planned | below |
+| **17-D** | Test/build infrastructure | 🔜 Planned | below |
+| **18** | Safety/portability foundation (HAL + Safe Mode) | 🔜 Planned | below |
+| **18-A** | HAL (hardware abstraction layer) | 🔜 Planned | below |
+| **18-B** | Safe Mode | 🔜 Planned | below |
+| **19** | SDK / app-development experience | 🔜 Planned | below |
+| **20** | Copy-on-write `fork()` | 🔜 Planned | below |
+| **21** | `unlink()`/`rmdir()` | 🔜 Planned | below |
+| **22** | Memory/CR3 release in `process_exit()` | 🔜 Planned | below |
+| **22-a** | Free the process's physical data pages | 🔜 Planned | below |
+| **22-b** | Free the page directory (CR3) and page tables | 🔜 Planned | below |
+| **22-c** | Page sharing via fork/COW (needs PMM refcount) | 🔜 Planned | below |
+| **23** | `e1000` driver + minimal TCP/IP (ping) | 🔜 Planned | below |
+| **23-a** | Raw driver: BAR mapping, RX/TX rings, one Ethernet frame | 🔜 Planned | below |
+| **23-b** | ARP | 🔜 Planned | below |
+| **23-c** | IP + ICMP (answer ping) | 🔜 Planned | below |
+| **24** | AHCI driver | 🔜 Planned | below |
+| **25** | USB HID via xHCI | 🔜 Planned | below |
+| **25-a** | Enumerate the xHCI controller | 🔜 Planned | below |
+| **25-b** | Port reset | 🔜 Planned | below |
+| **25-c** | Enumerate the connected device | 🔜 Planned | below |
+| **25-d** | Parse HID reports | 🔜 Planned | below |
+| **26** | Linear framebuffer + simple GUI | 🔜 Planned | below |
+| **27** | Syscall deprecation/compatibility strategy | 🔜 Planned | below |
+| **28** | Second pass of audit fixes | 🔜 Planned | below |
+| **29** | General polish | 🔜 Planned | below |
+| **30** | Technical prerequisites for DOOM (`lseek`, userland `malloc`/`free`) | 🔜 Planned | below |
+| **31** | DOOM engine port (v1.0.0 milestone) | 🔜 Planned | below |
+| **31-a** | Portability layer (`i_video`/`i_system`/`i_input`) | 🔜 Planned | below |
+| **31-b** | `lseek`/`malloc` integration for WAD and memory | 🔜 Planned | below |
+| **31-c** | Full engine build/link, first menu screen | 🔜 Planned | below |
+| **31-d** | Playable without crashing (no audio) | 🔜 Planned | below |
 
-The table above gives the one-line summary of each planned phase. This section expands each one with its goal, intended approach, main risk, and dependencies on other phases, as of the current planning pass. No code has changed as part of this — this is a documentation-only update. (Phases 15–21 here were Phases 14–20 before Phase 14 was taken by the security-hardening work — see CHANGELOG.md. They were renumbered a second time when FAT16 subdirectories — originally planned and listed here as "Phase 17" — was actually implemented ahead of the two process-related phases that preceded it in this list, landing as Phase 15 instead; see CHANGELOG.md `[0.15.0]`. The phases below were 15, 16, 18, 19, 20, 21, 22 before that: only the first two shifted by one, everything from the former network phase onward kept its number. Phase 16, inter-process pipes + real `waitpid()`, was completed as planned — see `[0.16.0]` in CHANGELOG.md and Phase 16 in README.md.)
+## Detailed planning (Phases 17–31)
 
-### Phase 17 — Copy-on-write `fork()`
+The table above gives the one-line summary of each planned phase. This section expands each one with its goal, intended approach, main risk, and dependencies on other phases, as of the current planning pass. No code has changed as part of this — this is a documentation-only update.
+
+History of the numbering: the phases that used to be listed here as 17–22 (copy-on-write `fork()`, `e1000`, AHCI, xHCI, framebuffer/GUI, syscall deprecation) were renumbered as part of a full restructuring of the roadmap, and are now Phases 20, 23, 24, 25, 26 and 27 respectively. Earlier renumberings (FAT16 subdirectories landing as Phase 15, pipes + real `waitpid()` as Phase 16) are recorded in CHANGELOG.md `[0.15.0]`/`[0.16.0]`.
+
+### Phase 17 — Cleanup A
+
+Mechanical work on code that already exists, no new feature.
+
+- **Goal:** close accumulated debt before building new capability.
+- **Depends on:** none.
+
+- **17-A — Mechanical fixes from the old audit:**
+  - `pmm.c`: guard against underflow when `total_pages <= 256`
+  - `vmm_map_page`/`vmm_map_user_page`: return a real error instead of failing silently as `void`
+  - `process.c`: make `next_pid++` atomic (same `cli`/`sti` pattern already used for process slot allocation)
+  - `fat16_init`: validate `sectors_per_cluster != 0` (avoids a divide-by-zero on a corrupted boot sector)
+  - `pci.c`: fix the BAR label on bridge/CardBus devices
+  - `vmm_map_user_page`: reject `virt < 0x800000` (protects the kernel region shared between processes)
+
+- **17-B — Known technical debt:**
+  - Shift bug in `edit.c` (same bug as the shell's, fixed there, never replicated in the editor's raw-scancode path)
+  - Unify the duplicated dirent lookup in `fat16_write_file` with the central `dir_lookup()`/`resolve_path()` created in Phase 15
+  - Unprotected race in `process_spawn`/`process_spawn_user` (same class of race already fixed in `fork()`, never replicated here)
+
+- **17-C — libnos consolidation + shell tools:**
+  - Basic functions in libnos: `memcpy`/`memset`/`strlen`/`strcmp`/`strncmp`/`itoa` (today each program likely reimplements these by hand)
+  - `pwd`/`SYS_GETCWD` (pending since Phase 15)
+  - `>`/`<` redirection in the shell (the `stdin_redirect`/`stdout_redirect` infrastructure from Phase 16 already exists, so this is nearly free)
+  - `cat <file>` (today `cat` only serves as a pipe sink; extending it to read a file is trivial)
+  - Real `reboot`/`shutdown` — via keyboard-controller reset (port 0xFE) or ACPI (the PIIX4 is already detected in PCI enumeration)
+
+- **17-D — Test/build infrastructure:**
+  - Extend `selftest`: an automated pipe with two real processes (today `forktest | cat` was only tested manually), `mkdir`/`cd` at 2+ levels of depth, `waitpid` with multiple children, PCI checking a specific device (not just "found >= 1")
+  - Actually test `docs/setup.md` on Windows (macOS is out of scope, no machine to test on)
+  - Mark or remove `tools/run_qemu.sh` as obsolete (it doesn't attach a disk, which is confusing)
+  - General sweep for forgotten TODO/FIXME in the repo
+  - Makefile target to inject a `.elf` straight into `disk.img` via `mcopy` (host-side tool, no kernel risk) — the base for a faster dev flow than the full Phase 19
+
+### Phase 18 — Safety/portability foundation (HAL + Safe Mode)
+
+- **Goal:** an abstract hardware base plus a safety net against bugs in subsystems that initialize after basic boot.
+- **Depends on:** 18-B depends on 18-A being done.
+
+- **18-A — HAL (hardware abstraction layer):** `console_putc()`, `input_poll_key()`, `block_read_sector()`/`block_write_sector()`, `power_reboot()`/`power_shutdown()`, `boot_get_memory_map()`, and `msg(ID)` (centralized text output — English-only table, no translation column and no language selector; this is repositioning text that already exists today, not i18n work).
+
+- **18-B — Safe Mode** (depends on 18-A):
+  - `key=value` config file, a single disk sector (write atomicity for free thanks to the small size), starting with only `boot_fail_count`
+  - Boot-failure counter + automatic entry into Safe Mode after N consecutive failures
+  - Runs in ring 0, a branch very early in `kernel_main()`, before the scheduler/`process_spawn`/`exec`/`syscall.c` are initialized — never as a user process or a separate kernel
+  - TUI with a numbered menu + submenus: erase with a separate confirmation screen, disk check with a verify-only vs. verify-and-repair submenu, reboot with a submenu (normal/GUI debug/text mode)
+  - Restricted shell: built-in commands only, calling low-level functions directly (never `process_spawn`/`exec`, even if a userland program with the same name exists), no `run` command, static `help`
+  - GRUB menu with 4 entries: Default (GUI) / GUI debug (GUI + auto-opened system terminal, mirrors serial, only exists in nightly builds) / Text mode / Safe Mode
+  - Dependency note: the "GUI debug" and "reboot into GUI" entries only become truly functional once Phase 26 (GUI) exists — until then they sit in the menu with no real implementation behind them
+  - The kernel binary of the latest `main` version is kept as an extra, permanent GRUB entry, updated on every release/merge
+
+### Phase 19 — SDK / app-development experience
+
+- **Goal:** stop requiring a full ISO rebuild to test a new program.
+- **Approach:** today `exec()` only loads from the ramfs (packaged at build time); extend it to the same pattern `vfs_open` already uses (look in the ramfs, then FAT16).
+- **Main risk:** the same area that has already produced three real bugs in this project (`cwd_cluster` in exec, dirent lookup in FAT16) — it deserves an approved approach before any code, with the same rigor as Phases 15/16.
+- **Depends on:** Phase 17 (libnos consolidated).
+
+- `exec()` loading programs from FAT16, not only from the ramfs
+- "Hello world" template + example Makefile
+- Development guide separate from the current technical docs (which are aimed at explaining the kernel, not at teaching an outsider to write a NullOS program)
+- Minimal `printf`/`sprintf` in libnos
+
+### Phase 20 — Copy-on-write `fork()`
 
 - **Goal:** `fork()` no longer copies all physical memory up front; the parent's pages become read-only and shared until the first write.
 - **Approach:** requires a smart page-fault handler (exception 14) that distinguishes a COW fault from a real fault, allocates a new page on demand, copies the data, and remaps it read-write. Needs a per-physical-page refcount in the PMM (which likely doesn't exist yet) to know when it's safe to free a shared page.
 - **Main risk:** without a correct refcount, one process can free a page the other is still using.
 - **Depends on:** Phase 13 (`fork()`) — already done. Phase 16 (pipes), previously recommended as a prerequisite to avoid debugging two new features at once, is also already done.
 
-### Phase 18 — `e1000` network driver + minimal TCP/IP
+### Phase 21 — `unlink()`/`rmdir()`
+
+- **Goal:** complete the basic set of file operations — today `selftest` itself leaves junk on the disk because no delete syscall exists.
+- **Approach:** mark the dirent as `0xE5` (deleted), release the cluster chain back to the FAT's free list; decide a policy for deleting a directory with contents (error vs. recursive).
+- **Main risk:** a bug surface similar to mkdir/subdirectories from Phase 15 — treat with the same "approve the approach before the code" rigor.
+- **Depends on:** FAT16 (already done).
+
+### Phase 22 — Memory/CR3 release in `process_exit()`
+
+- **Goal:** stop leaking real physical memory every time a process terminates (technical debt since Phase 13).
+- **Main risk:** the most dangerous phase in the roadmap — a real risk of double-free or of freeing a page another process still references.
+- **Depends on:** Phase 20 (COW fork) changes how memory is shared between processes, so 22-c depends on Phase 20 being closed.
+
+- 22-a: free the process's physical data pages (heap, stack) in `process_exit()`
+- 22-b: free the page directory (CR3) and its associated page tables
+- 22-c: handle page sharing via fork/COW (Phase 20) — needs a per-physical-page refcount in the PMM before really freeing
+
+### Phase 23 — `e1000` driver + minimal TCP/IP
 
 - **Goal:** a modest starting point — respond to `ping` (ICMP echo request).
 - **Approach:** the `e1000` device was already detected via PCI enumeration in Phase 11. Steps: (a) use `pci.c` to find the device's memory BAR and map it via the VMM (it's memory-mapped I/O, unlike port I/O as used by ATA); (b) initialize RX/TX descriptor rings (the Intel datasheet is well documented publicly); (c) parse Ethernet frames; (d) implement ARP; (e) implement enough of IP+ICMP to answer a ping.
-- **Main risk:** the largest scope in the roadmap — recommended to split into sub-phases (18a: raw driver sending/receiving a frame; 18b: ARP; 18c: IP+ICMP) rather than attempting it all at once.
-- **Depends on:** Phase 11 (PCI) — already done. Independent of Phases 16–17.
+- **Main risk:** the largest scope in the roadmap — split into sub-phases rather than attempting it all at once.
+- **Depends on:** Phase 11 (PCI) — already done. Independent of Phases 17–22.
 
-### Phase 19 — AHCI driver (modern SATA)
+- 23-a: raw driver — map the memory BAR via the VMM, initialize the RX/TX descriptor rings, send/receive one Ethernet frame
+- 23-b: ARP (resolve MAC from IP)
+- 23-c: minimal IP + ICMP (answer ping)
+
+### Phase 24 — AHCI driver (modern SATA)
 
 - **Goal:** disk access on a real SATA controller via AHCI, not just the legacy emulated IDE.
 - **Approach:** requires switching the QEMU machine to `-machine q35` (the ICH9 chipset exposes AHCI; the default i440FX chipset doesn't). AHCI uses memory-mapped registers (BAR5) with a "command list" + "FIS" structure, quite different from the current ATA PIO interface. The VFS interface (`vfs_read`/`vfs_write`) shouldn't need to change — only the driver underneath it.
 - **Main risk / note:** switching QEMU machine type also changes which PCI devices get enumerated (different chipset = different IDs) — this is expected, not a bug, but can be confusing if tested without knowing this in advance.
-- **Depends on:** Phase 11 (PCI). Recommended after Phase 18 (networking), since networking doesn't require a chipset switch — this isolates the environment change to a single phase.
+- **Depends on:** Phase 11 (PCI). Recommended after Phase 23 (networking), since networking doesn't require a chipset switch — this isolates the environment change to a single phase.
 
-### Phase 20 — USB HID via the xHCI controller
+### Phase 25 — USB HID via the xHCI controller
 
 - **Goal:** keyboard/mouse working over USB — essential for running on modern hardware without a physical PS/2 port.
 - **Approach:** xHCI has its own descriptor structures and considerably more state than AHCI, with a full USB protocol stack on top (device enumeration, descriptors, endpoints, control and interrupt transfers).
-- **Main risk:** by far the largest scope/complexity phase in the entire roadmap — recommended to treat as its own sub-roadmap (20a: enumerate the xHCI controller; 20b: port reset; 20c: enumerate the connected device; 20d: parse HID reports; etc.) rather than one monolithic phase.
-- **Depends on:** Phase 11 (PCI). Technically independent of Phases 16–19, but recommended to come last among the driver phases since it's the largest complexity jump.
+- **Main risk:** by far the largest scope/complexity jump in the entire roadmap — treated as its own sub-roadmap rather than one monolithic phase.
+- **Depends on:** Phase 11 (PCI). Technically independent of Phases 22–24, but recommended to come last among the driver phases since it's the largest complexity jump.
 
-### Phase 21 — Linear framebuffer + simple GUI
+- 25-a: enumerate the xHCI controller
+- 25-b: port reset
+- 25-c: enumerate the connected device
+- 25-d: parse HID reports (a real keyboard/mouse)
+
+### Phase 26 — Linear framebuffer + simple GUI
 
 - **Goal:** move off VGA text mode into a real graphics mode (pixels), with rectangular windows and mouse support.
 - **Approach:** GRUB2/Multiboot2 can hand over a linear framebuffer directly via a Multiboot2 protocol tag (no need for a real GPU driver like VBE/BIOS calls, which don't work anymore once protected mode has been entered) — just request it in `grub.cfg` and read the physical address from the structure.
-- **Main risk / note:** without a working mouse (Phase 20), a "GUI" with no decent input has limited value — recommended after Phase 20, even though the framebuffer itself has no technical dependency on USB.
-- **Depends on:** none technically, but gains much more value after Phase 20 (mouse).
+- **Main risk / note:** without a working mouse (Phase 25), a "GUI" with no decent input has limited value — recommended after Phase 25, even though the framebuffer itself has no technical dependency on USB.
+- **Depends on:** none technically, but gains much more value after Phase 25 (mouse).
 
-### Phase 22 — Syscall deprecation and compatibility strategy
+### Phase 27 — Syscall deprecation and compatibility strategy
 
 - **Goal:** allow evolving/fixing existing syscalls without breaking already-compiled user programs — important especially once the project adopts real semver (documented milestone: once the project reaches v1.0.0, the syscall interface becomes the reference "public API", per `CHANGELOG.md`).
 - **Approach (to be decided in detail when this phase is implemented, but the general direction is):**
   - Never remove or rewrite the behavior of an existing syscall number once the project is past v1.0 — instead, add a NEW syscall number (e.g. `SYS_WRITE_FILE_V2`) for the new behavior, keeping the old one working as before, documented as deprecated in `kernel/syscall.h` with an explicit comment pointing to its replacement.
-  - Consider introducing a small shared library (a minimal libc-style layer) that user programs link against, instead of issuing `int 0x80` with a raw syscall number directly — this allows swapping the implementation underneath (including redirecting old calls to new syscalls internally) without recompiling existing user programs, similar to glibc's role on Linux.
+  - Consider introducing a small shared library (a minimal libc-style layer) that user programs link against, instead of issuing `int 0x80` with a raw syscall number directly — this allows swapping the implementation underneath (including redirecting old calls to new syscalls internally) without recompiling existing user programs, similar to glibc's role on Linux. (libnos, added in `[0.15.1]`, is the start of this.)
   - Before v1.0.0, syscall changes remain free (as already documented — major version 0 allows any change), so this phase's compatibility discipline only actually takes effect once the project reaches v1.0.0.
 - **Main risk / note:** this is more an architecture/process discipline decision than a single isolated code feature — it may not require one-off "implementation," but rather be applied gradually as each future syscall is added/changed after v1.0.0.
 - **Depends on:** none technically, but only makes sense to actively apply starting at the v1.0.0 milestone (real semver).
 
+### Phase 28 — Second pass of audit fixes
+
+- **Goal:** close the items from the old audit that require design, not just a mechanical fix (they were left out of 17-A on purpose).
+- **Depends on:** Phase 18 (HAL) — part of this touches the same I/O areas the HAL abstracts.
+
+- Per-process fault isolation in `idt.c` — today any exception (including a user process's page fault) hangs the whole kernel; it should kill only the offending process
+- Whole-operation lock in FAT16 — today only the individual sector is protected by the ATA gate, not the complete `fat16_write_file`/`fat16_create` operation against two processes writing at the same time
+- `elf.c`: `elf_load` never receives/validates the file's real `file_size` — actually thread it through `exec()→elf_load()`
+- `elf.c`: integer overflow in `page_end` near `UINT32_MAX`
+
+### Phase 29 — General polish
+
+- **Goal:** final UX/consistency review before the v1.0 milestone, not a new feature.
+- **Depends on:** makes the most sense with the command/error surface already mature (hence it sits near the end).
+
+- `mv`/`cp` (once `unlink` — Phase 21 — exists)
+- `lseek` is NOT here — it was moved to Phase 30 as a direct DOOM prerequisite
+- Standardize shell error messages (today each command has its own style)
+- Stress test with a huge command line / many spaces
+- Measure boot time as a reference for future performance
+- Re-read the README with "a stranger's eyes" before the release
+- Multiple commands per line with `;` (low priority, optional)
+
+### Phase 30 — Technical prerequisites for DOOM
+
+- **Goal:** only what is strictly necessary to run the original DOOM engine, with no audio and no performance target (explicit decision: "I want to run DOOM, not run DOOM with audio and a stable 240fps").
+- **Depends on:** Phase 26 (framebuffer).
+
+- `lseek` — the WAD is accessed with random positioning inside the file, sequential access isn't enough
+- Real userland `malloc`/`free` (a per-process heap, `sbrk`-style) — DOOM allocates memory dynamically and heavily; today only static buffers exist in user programs
+
+### Phase 31 — DOOM engine port (v1.0.0 milestone)
+
+- **Goal:** the first proof that NullOS runs real, complex third-party software, closing out pre-1.0. Scope explicitly cut: no audio, no performance target, just actually running.
+- **Licensing:** the engine (GPL since 1997) can go in the repo; the WAD NEVER goes in the repo — the user injects `doom1.wad` (shareware) or Freedoom on their own.
+- **Depends on:** Phase 26 (framebuffer/GUI), Phase 30 (`lseek` + `malloc`).
+
+- 31-a: portability layer (`i_video`/`i_system`/`i_input` in the original code) using NullOS's framebuffer, input and timer — reuse 100% of the original game logic (physics, AI, software rendering) untouched
+- 31-b: integration with `lseek`/`malloc` for WAD reading and the engine's memory allocation
+- 31-c: build/link of the full engine running on NullOS, first menu screen appearing
+- 31-d: actually playing without crashing (functional level, no audio)
+
+**v1.0.0** closes right after Phase 31.
+
 ## Recommended priority order
 
-**Phase 18 → Phase 17 → Phase 19 → Phase 20 → Phase 21.**
+**Phase 17 → 18 → 19 → 20 → 21 → 22 → 23 → 24 → 25 → 26 → 27 → 28 → 29 → 30 → 31 → v1.0.0.**
 
-Rationale: start with the lowest-risk work that doesn't require changing the test environment, and save the highest-complexity / environment-changing phases for last. (FAT16 subdirectories, formerly first in this list as "Phase 17", is now done — see Phase 15 in `README.md`. Phase 16, inter-process pipes + real `waitpid()`, is also now done — see Phase 16 in `README.md`.)
+Dependency notes:
+
+- Phase 18 depends on Phase 17 being closed.
+- Phase 19 depends on Phase 17 (libnos consolidated).
+- Phase 22-c depends on Phase 20 (COW fork) being closed.
+- Phase 28 depends on Phase 18 (HAL).
+- Phases 30 and 31 depend on Phase 26 (framebuffer); Phase 31 also depends on Phase 30.
+
+Rationale: first close accumulated debt and build the safety/portability foundation, then improve the app-development flow, then the process/filesystem/memory work, then the drivers (lowest environment-change risk first, the largest complexity jump — xHCI — last), then the GUI, and finally the second audit pass, polish and the DOOM port that closes pre-1.0.

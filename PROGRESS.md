@@ -59,8 +59,22 @@ Prior to Phase 15, Phases 14.1/14.2 were PATCH-only intermediate work
 a `make debug` target) — see CHANGELOG.md `[0.14.1]`/`[0.14.2]` and
 `docs/testing.md`.
 
+**Next planned work: Phase 17 (Cleanup A), starting with sub-phase
+17-A** (mechanical fixes from the old audit: `pmm.c` underflow guard,
+`vmm_map_*` real error returns, atomic `next_pid++`, `fat16_init`
+`sectors_per_cluster` check, `pci.c` bridge BAR label,
+`vmm_map_user_page` `virt < 0x800000` rejection). Nothing of Phase 17
+has been implemented yet.
+
 Future roadmap: see `ROADMAP.md` for the full per-phase breakdown and
-priority order (Phases 17–22).
+priority order (Phases 17–31, ending at the v1.0.0 milestone, which
+closes right after Phase 31 — the DOOM engine port). The roadmap was
+restructured wholesale after Phase 16: the old Phases 17–22 (COW fork,
+`e1000`, AHCI, xHCI, framebuffer/GUI, syscall deprecation) are now
+Phases 20, 23, 24, 25, 26, 27, with new phases inserted around them
+(cleanup, HAL + Safe Mode, SDK, `unlink`, `process_exit()` memory
+release, audit pass 2, polish, DOOM prerequisites/port). A package
+manager phase was deliberately decided against — don't add one.
 
 ## Architecture decisions (non-obvious from reading the code alone)
 
@@ -332,8 +346,8 @@ priority order (Phases 17–22).
   leak: slots stay safely reusable because `process_spawn()`/
   `process_fork()` always allocate a fresh `cr3` for whatever runs next in
   that slot, but physical memory is never returned to the PMM. Relevant
-  to Phase 17 (copy-on-write fork), which will need real refcounting
-  before this can be fixed properly.
+  to Phase 20 (copy-on-write fork), which will need real refcounting
+  before this can be fixed properly; the fix itself is Phase 22.
 
 - **`process_spawn()`/`process_spawn_user()` scan for a free slot without
   `cli`/`sti` protection** (`kernel/process.c`, comment above
