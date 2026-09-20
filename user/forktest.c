@@ -6,25 +6,8 @@
    cwd was correctly shared at the moment of fork(). */
 #include "lib/nullos.h"
 
-static unsigned int ft_strlen(const char *s) {
-    unsigned int n = 0;
-    while (s[n]) n++;
-    return n;
-}
-
 static void ft_puts(const char *s) {
-    nos_write(1, s, ft_strlen(s));
-}
-
-/* converts uint32 to decimal string; returns pointer into buf (not start) */
-static char *ft_uitoa(unsigned int v, char *buf, unsigned int bufsz) {
-    buf[--bufsz] = '\0';
-    if (v == 0) { buf[--bufsz] = '0'; return &buf[bufsz]; }
-    while (v && bufsz > 0) {
-        buf[--bufsz] = '0' + (v % 10);
-        v /= 10;
-    }
-    return &buf[bufsz];
+    nos_write(1, s, strlen(s));
 }
 
 /* Builds "fk<pid>.txt" into fname (must be at least 20 bytes: "fk" + up
@@ -35,7 +18,7 @@ static char *ft_uitoa(unsigned int v, char *buf, unsigned int bufsz) {
    file). */
 static void create_cwd_marker(unsigned int pid, char *fname) {
     char nbuf[16];
-    char *n = ft_uitoa(pid, nbuf, sizeof(nbuf));
+    char *n = nos_uitoa(pid, nbuf, sizeof(nbuf));
 
     fname[0] = 'f';
     fname[1] = 'k';
@@ -74,11 +57,11 @@ void _start(void) {
         nos_exit(1);
     } else if (ret == 0) {
         ft_puts("forktest: I'm the child, pid=");
-        ft_puts(ft_uitoa(nos_getpid(), nbuf, sizeof(nbuf)));
+        ft_puts(nos_uitoa(nos_getpid(), nbuf, sizeof(nbuf)));
         ft_puts("\n");
     } else {
         ft_puts("forktest: I'm the parent, child=");
-        ft_puts(ft_uitoa((unsigned int)ret, nbuf, sizeof(nbuf)));
+        ft_puts(nos_uitoa((unsigned int)ret, nbuf, sizeof(nbuf)));
         ft_puts("\n");
     }
 

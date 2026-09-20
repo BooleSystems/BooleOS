@@ -100,6 +100,7 @@ void vga_set_cursor(uint8_t col, uint8_t row) {
 }
 
 void vga_putchar(char c) {
+    int erased = 0;   /* a '\b' that really blanked a cell (see the serial mirror below) */
     if (c == '\n') {
         term_col = 0;
         term_row++;
@@ -117,6 +118,7 @@ void vga_putchar(char c) {
             term_col--;
             VGA_BUFFER[term_row * VGA_COLS + term_col] =
                 vga_make_entry(' ', term_color);
+            erased = 1;
         }
     } else {
         VGA_BUFFER[term_row * VGA_COLS + term_col] =
@@ -133,7 +135,21 @@ void vga_putchar(char c) {
         vga_scroll();
     }
 
-    serial_putchar(c);
+    /* Mirror to the serial console. A raw '\b' only moves a terminal's cursor
+       left without erasing, so the next characters typed over a longer,
+       already-echoed word leave its tail behind ("shutdown" retyped as
+       "reboot" showed as "rebootdows"). VGA blanks the cell itself; the
+       serial side needs the classic "\b \b" to do the same. A '\b' that
+       erased nothing (column 0) sends nothing, matching what VGA did. */
+    if (c == '\b') {
+        if (erased) {
+            serial_putchar('\b');
+            serial_putchar(' ');
+            serial_putchar('\b');
+        }
+    } else {
+        serial_putchar(c);
+    }
     vga_update_cursor();
 }
 

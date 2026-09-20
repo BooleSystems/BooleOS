@@ -36,6 +36,10 @@
                                   process's fd 0/1 are redirected to the caller's already-open
                                   stdin_fd/stdout_fd (each may be (uint32_t)-1 for "no redirect") →
                                   pid or -1 */
+#define SYS_GETCWD        30  /* getcwd(buf, len) — writes the caller's cwd as an absolute
+                                  path ("/", "/FOO/BAR") into buf → path length, or -1 */
+#define SYS_REBOOT        31  /* reboot() — resets the machine → does not return; -1 if it failed */
+#define SYS_SHUTDOWN      32  /* shutdown() — powers the machine off → does not return; -1 if unsupported/failed */
 
 uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t arg3);
 

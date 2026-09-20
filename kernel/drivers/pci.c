@@ -119,6 +119,21 @@ int pci_scan_bus(void) {
     return (int)g_device_count;
 }
 
+/* Looks vendor/device up in the table built by the last pci_scan_bus(). */
+int pci_find_device(uint16_t vendor_id, uint16_t device_id,
+                    uint8_t *bus, uint8_t *device, uint8_t *function) {
+    for (uint32_t i = 0; i < g_device_count; i++) {
+        const pci_device_t *d = &g_devices[i];
+        if (d->vendor_id == vendor_id && d->device_id == device_id) {
+            if (bus)      *bus      = d->bus;
+            if (device)   *device   = d->device;
+            if (function) *function = d->function;
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /* Returns the count from the last pci_scan_bus() call, without
    rescanning — the numeric counterpart to pci_print_list()'s VGA
    dump, so a caller (e.g. SYS_PCI_LIST) can check "found anything?"

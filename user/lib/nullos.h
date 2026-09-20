@@ -20,6 +20,7 @@
 #define NULLOS_LIB_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 /* SYS_EXIT — never returns. */
 void nos_exit(int code);
@@ -73,5 +74,34 @@ int nos_pipe(int fds[2]);
    un-redirected (default keyboard/VGA). Used by the shell's
    "cmd1 | cmd2" — see docs/pipes.md. */
 int nos_exec_pipe(const char *name, int stdin_fd, int stdout_fd);
+
+/* SYS_GETCWD — writes the caller's current directory as an absolute path
+   ("/", "/FOO/BAR", 8.3 uppercase names) into buf. Returns the path length,
+   or -1 (buf too small, or the path couldn't be reconstructed). */
+int nos_getcwd(char *buf, unsigned len);
+
+/* SYS_REBOOT / SYS_SHUTDOWN — do not return on success; -1 if the request
+   had no effect (the kernel prints why). */
+int nos_reboot(void);
+int nos_shutdown(void);
+
+/* ── string / memory helpers ──────────────────────────────────────
+   Standard libc names and signatures on purpose (not "nos_"-prefixed):
+   GCC may itself emit calls to memcpy/memset/memmove (struct copies,
+   zeroing loops) even with -ffreestanding, and only the standard names
+   resolve those. Not syscall wrappers — plain user-space code, replacing
+   the per-program copies that shell/forktest/selftest/edit each carried. */
+void  *memcpy(void *dst, const void *src, size_t n);
+void  *memset(void *dst, int c, size_t n);
+void  *memmove(void *dst, const void *src, size_t n);
+int    memcmp(const void *a, const void *b, size_t n);
+size_t strlen(const char *s);
+int    strcmp(const char *a, const char *b);
+int    strncmp(const char *a, const char *b, size_t n);
+
+/* Converts v to decimal, filling buf from the END; returns a pointer to
+   the first digit (inside buf, NOT buf itself). bufsz includes the
+   terminating '\0'. Prefixed because nothing implicit ever calls it. */
+char *nos_uitoa(uint32_t v, char *buf, unsigned bufsz);
 
 #endif

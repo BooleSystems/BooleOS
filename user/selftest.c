@@ -8,31 +8,8 @@
 
 /* ── tiny helpers (no libc) ───────────────────────────────────────── */
 
-static unsigned int st_strlen(const char *s) {
-    unsigned int n = 0;
-    while (s[n]) n++;
-    return n;
-}
-
 static void st_puts(const char *s) {
-    nos_write(1, s, st_strlen(s));
-}
-
-static int st_bufeq(const char *a, const char *b, unsigned int n) {
-    for (unsigned int i = 0; i < n; i++)
-        if (a[i] != b[i]) return 0;
-    return 1;
-}
-
-/* converts uint32 to decimal string; returns pointer into buf (not start) */
-static char *st_uitoa(unsigned int v, char *buf, unsigned int bufsz) {
-    buf[--bufsz] = '\0';
-    if (v == 0) { buf[--bufsz] = '0'; return &buf[bufsz]; }
-    while (v && bufsz > 0) {
-        buf[--bufsz] = '0' + (v % 10);
-        v /= 10;
-    }
-    return &buf[bufsz];
+    nos_write(1, s, strlen(s));
 }
 
 /* ── PASS/FAIL bookkeeping ────────────────────────────────────────── */
@@ -92,7 +69,7 @@ void _start(void) {
     {
         const char *fname   = "st_root.txt";
         const char *content = "NullOS selftest data 1234\n";
-        unsigned int clen   = st_strlen(content);
+        unsigned int clen   = strlen(content);
         int file_ok = 1;
 
         /* 3. creation */
@@ -121,11 +98,11 @@ void _start(void) {
             if (ok) {
                 int rfd = nos_open(fname);
                 char rbuf[64];
-                for (unsigned int i = 0; i < sizeof(rbuf); i++) rbuf[i] = 0;
+                memset(rbuf, 0, sizeof(rbuf));
                 int n = (rfd >= 0) ? nos_read(rfd, rbuf, sizeof(rbuf) - 1) : -1;
                 if (rfd >= 0) nos_close(rfd);
 
-                if (rfd < 0 || n != (int)clen || !st_bufeq(rbuf, content, clen)) {
+                if (rfd < 0 || n != (int)clen || memcmp(rbuf, content, clen) != 0) {
                     st_fail("file write/read roundtrip", "content read back does not match what was written");
                     ok = 0;
                 } else {
@@ -154,11 +131,11 @@ void _start(void) {
                 nos_close(fd2);
                 int rfd2 = nos_open(fname);
                 char rbuf2[64];
-                for (unsigned int i = 0; i < sizeof(rbuf2); i++) rbuf2[i] = 0;
+                memset(rbuf2, 0, sizeof(rbuf2));
                 int n2 = (rfd2 >= 0) ? nos_read(rfd2, rbuf2, sizeof(rbuf2) - 1) : -1;
                 if (rfd2 >= 0) nos_close(rfd2);
 
-                if (rfd2 < 0 || n2 != (int)clen || !st_bufeq(rbuf2, content, clen))
+                if (rfd2 < 0 || n2 != (int)clen || memcmp(rbuf2, content, clen) != 0)
                     st_fail("file duplicate-create regression (Phase 10)",
                              "content changed/lost after re-create (possible duplicate entry)");
                 else
@@ -220,7 +197,7 @@ void _start(void) {
         const char *dname     = "selftest_dir";
         const char *subfname  = "st_sub.txt";
         const char *subcontent = "NullOS selftest subdir data 5678\n";
-        unsigned int subclen  = st_strlen(subcontent);
+        unsigned int subclen  = strlen(subcontent);
         const char *markname  = "st_mark.txt";
         int dir_ok = 1;
 
@@ -264,11 +241,11 @@ void _start(void) {
             if (ok) {
                 int rfd = nos_open(subfname);
                 char rbuf[64];
-                for (unsigned int i = 0; i < sizeof(rbuf); i++) rbuf[i] = 0;
+                memset(rbuf, 0, sizeof(rbuf));
                 int n = (rfd >= 0) ? nos_read(rfd, rbuf, sizeof(rbuf) - 1) : -1;
                 if (rfd >= 0) nos_close(rfd);
 
-                if (rfd < 0 || n != (int)subclen || !st_bufeq(rbuf, subcontent, subclen))
+                if (rfd < 0 || n != (int)subclen || memcmp(rbuf, subcontent, subclen) != 0)
                     st_fail("file write/read roundtrip inside selftest_dir",
                              "content read back does not match what was written");
                 else
@@ -352,15 +329,15 @@ void _start(void) {
         /* 13. write known content, read it back from the other end */
         if (pipe_ok) {
             const char *msg = "hello through the pipe";
-            unsigned int mlen = st_strlen(msg);
+            unsigned int mlen = strlen(msg);
             if (nos_write(fds[1], msg, mlen) != (int)mlen) {
                 st_fail("pipe write/read roundtrip", "nos_write() to the write end failed");
                 pipe_ok = 0;
             } else {
                 char rbuf[64];
-                for (unsigned int i = 0; i < sizeof(rbuf); i++) rbuf[i] = 0;
+                memset(rbuf, 0, sizeof(rbuf));
                 int n = nos_read(fds[0], rbuf, sizeof(rbuf) - 1);
-                if (n != (int)mlen || !st_bufeq(rbuf, msg, mlen))
+                if (n != (int)mlen || memcmp(rbuf, msg, mlen) != 0)
                     st_fail("pipe write/read roundtrip", "content read back does not match what was written");
                 else
                     st_pass("pipe write/read roundtrip");
@@ -389,18 +366,84 @@ void _start(void) {
         }
     }
 
-    /* 15. Cleanup — not counted as PASS/FAIL, just a note: there is no
-       delete/unlink/rmdir syscall yet, so st_root.txt, selftest_dir/
-       (and the two files inside it) are left on disk. Harmless: the
+    /* 15. Stream writes accumulate (Phase 17-C regression). SYS_WRITE
+       stages a write in 128-byte chunks, and each chunk used to replace
+       the WHOLE file, so only the last chunk survived a write over 128
+       bytes. This writes 2100 bytes as two nos_write() calls (600 + 1500:
+       several chunks each, and the total crosses the first 2048-byte
+       cluster so the chain has to grow), then reads everything back. */
+    {
+        static char wbuf[2100];
+        static char rbuf[2100 + 16];   /* a little spare, to notice extra data */
+        const unsigned int total = sizeof(wbuf);
+        const unsigned int first = 600;
+        const char *name = "st_big.txt";
+        const char *why  = 0;
+
+        for (unsigned int i = 0; i < total; i++)
+            wbuf[i] = (char)('a' + (i * 7) % 26);
+
+        int fd = nos_create(name);
+        if (fd < 0)
+            why = "nos_create() returned -1 (no disk?)";
+        else if (nos_write_file(fd, "", 0) != 0)
+            why = "could not truncate the file before writing";
+        else if (nos_write(fd, wbuf, first) != (int)first)
+            why = "first nos_write() (600 bytes) failed";
+        else if (nos_write(fd, wbuf + first, total - first) != (int)(total - first))
+            why = "second nos_write() (1500 bytes) failed";
+        if (fd >= 0) nos_close(fd);
+
+        if (why) {
+            st_fail("SYS_WRITE >128 bytes accumulates in a FAT16 file", why);
+        } else {
+            unsigned int got = 0;
+            int rfd = nos_open(name);
+            if (rfd >= 0) {
+                for (;;) {
+                    int r = nos_read(rfd, rbuf + got, (unsigned int)sizeof(rbuf) - got);
+                    if (r <= 0) break;
+                    got += (unsigned int)r;
+                    if (got >= sizeof(rbuf)) break;
+                }
+                nos_close(rfd);
+            }
+
+            if (rfd < 0) {
+                st_fail("SYS_WRITE >128 bytes accumulates in a FAT16 file",
+                         "could not reopen the file");
+            } else if (got != total) {
+                static char msg[64];
+                char nbuf[16];
+                const char *p1 = "read back ";
+                const char *num = nos_uitoa(got, nbuf, sizeof(nbuf));
+                const char *p2 = " of 2100 bytes";
+                unsigned int at = 0;
+                memcpy(msg + at, p1, strlen(p1));   at += strlen(p1);
+                memcpy(msg + at, num, strlen(num)); at += strlen(num);
+                memcpy(msg + at, p2, strlen(p2) + 1);
+                st_fail("SYS_WRITE >128 bytes accumulates in a FAT16 file", msg);
+            } else if (memcmp(rbuf, wbuf, total) != 0) {
+                st_fail("SYS_WRITE >128 bytes accumulates in a FAT16 file",
+                         "size is right but the content differs");
+            } else {
+                st_pass("SYS_WRITE >128 bytes accumulates in a FAT16 file");
+            }
+        }
+    }
+
+    /* 16. Cleanup — not counted as PASS/FAIL, just a note: there is no
+       delete/unlink/rmdir syscall yet, so st_root.txt, st_big.txt,
+       selftest_dir/ (and the two files inside it) are left on disk. Harmless: the
        next run just re-creates/overwrites everything by the same names. */
     st_puts("[INFO] cleanup: no delete/unlink/rmdir syscall exists yet -"
-            " st_root.txt and selftest_dir/ (with its files) left on disk (harmless)\n");
+            " st_root.txt, st_big.txt and selftest_dir/ (with its files) left on disk (harmless)\n");
 
     st_puts("Selftest: ");
     char nbuf[16];
-    st_puts(st_uitoa((unsigned int)g_tests_passed, nbuf, sizeof(nbuf)));
+    st_puts(nos_uitoa((unsigned int)g_tests_passed, nbuf, sizeof(nbuf)));
     st_puts("/");
-    st_puts(st_uitoa((unsigned int)g_tests_run, nbuf, sizeof(nbuf)));
+    st_puts(nos_uitoa((unsigned int)g_tests_run, nbuf, sizeof(nbuf)));
     st_puts(" passed\n");
 
     nos_exit(0);

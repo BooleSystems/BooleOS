@@ -42,17 +42,6 @@ static const char sc_map_shift[128] = {
 };
 
 /* ── string helpers ──────────────────────────────────────────── */
-static unsigned ed_strlen(const char *s) {
-    unsigned n = 0; while (s[n]) n++; return n;
-}
-
-static char *ed_uitoa(unsigned v, char *buf, unsigned sz) {
-    buf[--sz] = '\0';
-    if (v == 0) { buf[--sz] = '0'; return &buf[sz]; }
-    while (v && sz > 0) { buf[--sz] = '0' + (v % 10); v /= 10; }
-    return &buf[sz];
-}
-
 /* ── layout ─────────────────────────────────────────────────────── */
 #define COLS      80
 #define TEXT_ROWS 23
@@ -133,7 +122,7 @@ static void render(void) {
     nos_gotoxy(0, HELP_ROW);
     nos_setcolor(VGA_BLACK, VGA_LIGHT_GREY);
     const char *help = "^S save  ^Q quit  Arrows: navigate";
-    unsigned hlen = ed_strlen(help);
+    unsigned hlen = strlen(help);
     if (hlen > COLS - 1) hlen = COLS - 1;
     nos_write(1, help, hlen);
     write_spaces(COLS - 1 - hlen);
@@ -152,10 +141,10 @@ static void render(void) {
     for (unsigned i = 0; fname[i] && si < COLS - 2; i++) sbar[si++] = fname[i];
     sbar[si++] = ' '; sbar[si++] = ' ';
     if (si < COLS - 2) { sbar[si++] = 'L'; sbar[si++] = ':'; }
-    const char *ln = ed_uitoa(cur_line + 1, nbuf, sizeof(nbuf));
+    const char *ln = nos_uitoa(cur_line + 1, nbuf, sizeof(nbuf));
     for (unsigned i = 0; ln[i] && si < COLS - 2; i++) sbar[si++] = ln[i];
     if (si < COLS - 2) { sbar[si++] = ' '; sbar[si++] = 'C'; sbar[si++] = ':'; }
-    const char *cn = ed_uitoa(cur_col + 1, nbuf, sizeof(nbuf));
+    const char *cn = nos_uitoa(cur_col + 1, nbuf, sizeof(nbuf));
     for (unsigned i = 0; cn[i] && si < COLS - 2; i++) sbar[si++] = cn[i];
     if (status[0] && si < COLS - 2) {
         sbar[si++] = ' '; sbar[si++] = ' ';
@@ -174,13 +163,13 @@ static void render(void) {
 /* ── editing ──────────────────────────────────────────────────────── */
 static void insert_char(char c) {
     if (buf_len >= BUF_SIZE - 1) return;
-    for (unsigned i = buf_len; i > cur; i--) buf[i] = buf[i-1];
+    memmove(&buf[cur + 1], &buf[cur], buf_len - cur);
     buf[cur++] = c; buf_len++;
 }
 static void delete_before(void) {
     if (cur == 0) return;
     cur--; buf_len--;
-    for (unsigned i = cur; i < buf_len; i++) buf[i] = buf[i+1];
+    memmove(&buf[cur], &buf[cur + 1], buf_len - cur);
 }
 
 /* ── movement ────────────────────────────────────────────────── */
@@ -246,9 +235,10 @@ void _start(void) {
                     m = "saved";
                 else
                     m = "saved (no disk)";
-                unsigned i = 0;
-                while (m[i] && i < 63) { status[i] = m[i]; i++; }
-                status[i] = '\0';
+                unsigned mlen = strlen(m);
+                if (mlen > 63) mlen = 63;
+                memcpy(status, m, mlen);
+                status[mlen] = '\0';
             } else if (sc == 0x10) { /* Ctrl+Q: Q = scancode 0x10 */
                 nos_set_raw_mode(0);
                 if (file_fd >= 0) nos_close(file_fd);

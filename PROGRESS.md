@@ -72,8 +72,20 @@ ROADMAP.md; built clean, awaiting manual QEMU test): `edit.c` Shift
 redundant sector re-read removed — the "duplicated lookup" itself had
 already been unified in Phase 15), and `process_spawn_user()` slot
 claim made atomic (dead `process_spawn()`/`scheduler_spawn()` deleted).
-**Next: 17-C.** The version stays `0.17.0-nightly` until all of
-Phase 17 closes.
+**17-C: functionally complete after manual QEMU testing, EXCEPT two known
+open issues** left for the next session (details in `docs/TODO.md` →
+"Known open issues" and CHANGELOG "Known issues (17-C)"): (1) `reboot`
+looks like `shutdown` under `make run` — probably the Makefile's
+`-no-reboot` + `-no-shutdown` combo rather than `power_reboot()`,
+unverified; (2) a bare `run` prints `[EXEC] not found:` instead of a usage
+message (missing empty-name check in `_start()`'s `run` branch, exposed by
+the newline fix below). What 17-C added: libnos string helpers,
+`fat16_write_at` + stream `vfs_write`, `>`/`<` redirect, `cat <file>`,
+`pwd`/`SYS_GETCWD`, `reboot`/`shutdown` — see CHANGELOG `[Unreleased]`.
+Two pre-existing bugs were found and fixed while testing it: bare `edit`
+(trailing `\n` never stripped in the shell) and serial backspace echo.
+**Next: fix those two open issues, then 17-D.** The version stays
+`0.17.0-nightly` until all of Phase 17 closes.
 
 Future roadmap: see `ROADMAP.md` for the full per-phase breakdown and
 priority order (Phases 17–31, ending at the v1.0.0 milestone, which
@@ -334,7 +346,24 @@ manager phase was deliberately decided against — don't add one.
   shell still just discards the return value, so this is additive —
   no existing caller's behavior changed.
 
+- **`vfs_write` is a stream write, `vfs_write_all` the whole-file replace**
+  (17-C). They used to be one function that always replaced the whole
+  file, which silently lost data for any `SYS_WRITE` over 128 bytes (the
+  syscall chunks). Anything meaning "save this buffer as the file"
+  (`SYS_WRITE_FILE`) must use `vfs_write_all`; anything streaming uses
+  `vfs_write` + `fd->pos`. `fat16_write_at` looks the dirent up fresh on
+  every call, so a stale cached `fd->first`/`fd->size` (e.g. after a
+  truncate) is harmless.
+
 ## Known technical debt
+
+- **`exec_arg` (`kernel/syscall.c`) is a single global shared by all
+  processes.** `SYS_GETARG` returns whatever `sys_exec()` last stored, so
+  the argument can be clobbered by another exec before the child reads it.
+  17-C had to make `sys_exec_pipe()` clear it (or `cat` after `cat file`
+  would open `file` from a redirected stdin), but the underlying design
+  needs per-process argument storage. Related: `SYS_EXEC_PIPE` still has
+  no argument at all.
 
 - **`pt_next` in `kernel/memory/vmm.c` starts at `PAGE_TABLE_START`,
   but `vmm_init()` builds the identity map by writing two page tables

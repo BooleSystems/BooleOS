@@ -5,36 +5,8 @@
 
 /* ── string helpers ─────────────────────────────────────────────── */
 
-static unsigned int sh_strlen(const char *s) {
-    unsigned int n = 0;
-    while (s[n]) n++;
-    return n;
-}
-
-static int sh_strcmp(const char *a, const char *b) {
-    while (*a && *a == *b) { a++; b++; }
-    return (unsigned char)*a - (unsigned char)*b;
-}
-
-static int sh_strncmp(const char *a, const char *b, unsigned int n) {
-    while (n-- && *a && *a == *b) { a++; b++; }
-    if (n == (unsigned int)-1) return 0;
-    return (unsigned char)*a - (unsigned char)*b;
-}
-
 static void sh_puts(const char *s) {
-    nos_write(1, s, sh_strlen(s));
-}
-
-/* converts uint32 to decimal string; returns pointer into buf (not start) */
-static char *sh_uitoa(uint32_t v, char *buf, unsigned int bufsz) {
-    buf[--bufsz] = '\0';
-    if (v == 0) { buf[--bufsz] = '0'; return &buf[bufsz]; }
-    while (v && bufsz > 0) {
-        buf[--bufsz] = '0' + (v % 10);
-        v /= 10;
-    }
-    return &buf[bufsz];
+    nos_write(1, s, strlen(s));
 }
 
 /* ── commands ───────────────────────────────────────────────────── */
@@ -70,24 +42,24 @@ static void cmd_fetch(void) {
     /* line 2: logo + Uptime */
     sh_puts(logo[2]);
     sh_puts("  Uptime: ");
-    n = sh_uitoa(uptime, nbuf, sizeof(nbuf));
+    n = nos_uitoa(uptime, nbuf, sizeof(nbuf));
     sh_puts(n); sh_puts("s\n");
 
     /* line 3: logo + PMM */
     sh_puts(logo[3]);
     sh_puts("  Mem PMM: ");
-    n = sh_uitoa(pmm_pages * 4, nbuf, sizeof(nbuf));
+    n = nos_uitoa(pmm_pages * 4, nbuf, sizeof(nbuf));
     sh_puts(n); sh_puts(" KB free\n");
 
     /* line 4: logo + Heap */
     sh_puts(logo[4]);
     sh_puts("  Heap: ");
-    n = sh_uitoa(heap_bytes, nbuf, sizeof(nbuf));
+    n = nos_uitoa(heap_bytes, nbuf, sizeof(nbuf));
     sh_puts(n); sh_puts(" B free\n");
 
     /* line 5: padding + Procs */
     sh_puts("                                   Procs: ");
-    n = sh_uitoa(nprocs, nbuf, sizeof(nbuf));
+    n = nos_uitoa(nprocs, nbuf, sizeof(nbuf));
     sh_puts(n); sh_puts(" running\n");
 }
 
@@ -103,15 +75,15 @@ static void cmd_mem(void) {
     char *n;
 
     sh_puts("PMM:  ");
-    n = sh_uitoa(pmm_pages, nbuf, sizeof(nbuf));
+    n = nos_uitoa(pmm_pages, nbuf, sizeof(nbuf));
     sh_puts(n);
     sh_puts(" free pages (");
-    n = sh_uitoa(pmm_pages * 4, nbuf, sizeof(nbuf));
+    n = nos_uitoa(pmm_pages * 4, nbuf, sizeof(nbuf));
     sh_puts(n);
     sh_puts(" KB)\n");
 
     sh_puts("Heap: ");
-    n = sh_uitoa(heap_bytes, nbuf, sizeof(nbuf));
+    n = nos_uitoa(heap_bytes, nbuf, sizeof(nbuf));
     sh_puts(n);
     sh_puts(" B free\n");
 }
@@ -146,7 +118,7 @@ static void cmd_kill(const char *arg) {
     if (r == 0) {
         sh_puts("process ");
         char nbuf[16];
-        sh_puts(sh_uitoa(pid, nbuf, sizeof(nbuf)));
+        sh_puts(nos_uitoa(pid, nbuf, sizeof(nbuf)));
         sh_puts(" terminated\n");
     } else {
         sh_puts("pid not found\n");
@@ -179,12 +151,23 @@ static void cmd_cd(const char *arg) {
     }
 }
 
+static void cmd_pwd(void) {
+    char path[128];
+    int n = nos_getcwd(path, sizeof(path));
+    if (n < 0) {
+        sh_puts("pwd: cannot determine the current directory\n");
+        return;
+    }
+    sh_puts(path);
+    sh_puts("\n");
+}
+
 /* Trims leading/trailing spaces (and a trailing '\n'/'\r', in case
    this is the tail end of the raw input line) in place, returning a
    pointer into the same buffer. */
 static char *sh_trim(char *s) {
     while (*s == ' ') s++;
-    unsigned n = sh_strlen(s);
+    unsigned n = strlen(s);
     while (n > 0 && (s[n - 1] == ' ' || s[n - 1] == '\n' || s[n - 1] == '\r'))
         s[--n] = '\0';
     return s;
@@ -242,6 +225,88 @@ static void run_pipeline(const char *cmd1, const char *cmd2) {
     nos_wait(pid2);
 }
 
+/* "cmd [< infile] [> outfile]": SYS_EXEC_PIPE with the redirect fds being
+   plain FAT16/ramfs file fds instead of pipe ends — the kernel side never
+   cared which kind of fd it copies (see docs/pipes.md). `>` creates the
+   file if needed and truncates it (nos_write_file with length 0 replaces
+   the content with nothing); the program's writes then accumulate at the
+   fd's position. Only external programs can be redirected: builtins print
+   from inside the shell process (or the kernel), and a process cannot
+   redirect its own fd 1 — that would need a dup2-style syscall. Like the
+   pipeline stages, the program is launched by name only, no arguments
+   (SYS_EXEC_PIPE has no register left for one). `line` is modified in
+   place. */
+static void run_redirected(char *line) {
+    char *in_name = 0, *out_name = 0;
+    int dup = 0;
+
+    char *q = line;
+    while (*q && *q != '<' && *q != '>') q++;
+    char c = *q;
+    *q = '\0';
+    char *cmd = sh_trim(line);
+
+    while (c) {
+        char *start = q + 1;
+        q = start;
+        while (*q && *q != '<' && *q != '>') q++;
+        char next = *q;
+        *q = '\0';
+        char *target = sh_trim(start);
+        if (c == '<') { if (in_name)  dup = 1; in_name  = target; }
+        else          { if (out_name) dup = 1; out_name = target; }
+        c = next;
+    }
+
+    if (!*cmd || dup || (in_name && !*in_name) || (out_name && !*out_name)) {
+        sh_puts("usage: cmd [< infile] [> outfile]\n");
+        return;
+    }
+    for (const char *p = cmd; *p; p++) {
+        if (*p == ' ') {
+            sh_puts("redirect: the program is launched by name only, no arguments\n");
+            return;
+        }
+    }
+
+    int in_fd = -1, out_fd = -1;
+
+    if (in_name) {
+        in_fd = nos_open(in_name);
+        if (in_fd < 0) {
+            sh_puts("redirect: cannot open: ");
+            sh_puts(in_name);
+            sh_puts("\n");
+            return;
+        }
+    }
+    if (out_name) {
+        out_fd = nos_create(out_name);
+        if (out_fd < 0 || nos_write_file(out_fd, "", 0) != 0) {
+            sh_puts("redirect: cannot write to: ");
+            sh_puts(out_name);
+            sh_puts(" (no disk, or not a FAT16 file)\n");
+            if (out_fd >= 0) nos_close(out_fd);
+            if (in_fd >= 0)  nos_close(in_fd);
+            return;
+        }
+    }
+
+    int pid = nos_exec_pipe(cmd, in_fd, out_fd);
+    if (pid < 0) {
+        sh_puts("redirect: program not found: ");
+        sh_puts(cmd);
+        sh_puts(" (built-in commands can't be redirected)\n");
+    }
+
+    /* the shell needs neither file fd anymore: the child holds its own
+       copies (SYS_EXEC_PIPE duplicated them) */
+    if (in_fd >= 0)  nos_close(in_fd);
+    if (out_fd >= 0) nos_close(out_fd);
+
+    if (pid >= 0) nos_wait(pid);
+}
+
 static void cmd_run(const char *name) {
     if (!name || !*name) { sh_puts("usage: run <program>\n"); return; }
     int pid = nos_exec(name, 0);
@@ -266,10 +331,17 @@ static const char *help_text =
     "  touch <name>   create an empty file (path allowed, e.g. docs/a.txt)\n"
     "  mkdir <dir>    create a directory (path allowed)\n"
     "  cd [dir]       change the current directory (no arg = root)\n"
+    "  pwd            print the current directory\n"
     "  echo <text>    print text\n"
     "  kill <pid>     terminate a process\n"
     "  run <prog>     run a program in the background\n"
     "  edit <file>    open the text editor\n"
+    "  cat <file>     print a file\n"
+    "  cmd < in       run a program with stdin read from a file\n"
+    "  cmd > out      run a program with stdout written to a file (truncates;\n"
+    "                 program name only, no arguments, no builtins)\n"
+    "  reboot         restart the machine\n"
+    "  shutdown       power the machine off\n"
     "  cmd1 | cmd2    pipe cmd1's stdout into cmd2's stdin (both must\n"
     "                 be programs, not builtins — e.g. \"forktest | cat\")\n"
     "  clear          clear the screen\n"
@@ -282,37 +354,43 @@ static void run_command(char *line, int len) {
     if (len > 0 && line[len - 1] == '\n') line[--len] = '\0';
     if (len == 0) return;
 
-    if (sh_strcmp(line, "help") == 0) {
+    if (strcmp(line, "help") == 0) {
         sh_puts(help_text);
-    } else if (sh_strcmp(line, "uname") == 0) {
+    } else if (strcmp(line, "uname") == 0) {
         cmd_uname();
-    } else if (sh_strcmp(line, "fetch") == 0) {
+    } else if (strcmp(line, "fetch") == 0) {
         cmd_fetch();
-    } else if (sh_strcmp(line, "ps") == 0) {
+    } else if (strcmp(line, "ps") == 0) {
         cmd_ps();
-    } else if (sh_strcmp(line, "mem") == 0) {
+    } else if (strcmp(line, "mem") == 0) {
         cmd_mem();
-    } else if (sh_strcmp(line, "ls") == 0) {
+    } else if (strcmp(line, "ls") == 0) {
         nos_readdir(0);
-    } else if (sh_strncmp(line, "ls", 2) == 0 && line[2] == ' ') {
+    } else if (strncmp(line, "ls", 2) == 0 && line[2] == ' ') {
         nos_readdir(line + 3);
-    } else if (sh_strcmp(line, "lspci") == 0) {
+    } else if (strcmp(line, "lspci") == 0) {
         nos_pci_list();
-    } else if (sh_strncmp(line, "touch", 5) == 0 && (line[5] == ' ' || line[5] == '\0')) {
+    } else if (strcmp(line, "pwd") == 0) {
+        cmd_pwd();
+    } else if (strcmp(line, "reboot") == 0) {
+        nos_reboot();      /* only returns if the reset failed; the kernel says why */
+    } else if (strcmp(line, "shutdown") == 0) {
+        nos_shutdown();    /* only returns if unsupported/failed; the kernel says why */
+    } else if (strncmp(line, "touch", 5) == 0 && (line[5] == ' ' || line[5] == '\0')) {
         cmd_touch(line[5] == ' ' ? line + 6 : "");
-    } else if (sh_strncmp(line, "mkdir", 5) == 0 && (line[5] == ' ' || line[5] == '\0')) {
+    } else if (strncmp(line, "mkdir", 5) == 0 && (line[5] == ' ' || line[5] == '\0')) {
         cmd_mkdir(line[5] == ' ' ? line + 6 : "");
-    } else if (sh_strncmp(line, "cd", 2) == 0 && (line[2] == ' ' || line[2] == '\0')) {
+    } else if (strncmp(line, "cd", 2) == 0 && (line[2] == ' ' || line[2] == '\0')) {
         cmd_cd(line[2] == ' ' ? line + 3 : "");
-    } else if (sh_strncmp(line, "echo", 4) == 0 && (line[4] == ' ' || line[4] == '\0')) {
+    } else if (strncmp(line, "echo", 4) == 0 && (line[4] == ' ' || line[4] == '\0')) {
         cmd_echo(line);
-    } else if (sh_strncmp(line, "kill", 4) == 0 && (line[4] == ' ' || line[4] == '\0')) {
+    } else if (strncmp(line, "kill", 4) == 0 && (line[4] == ' ' || line[4] == '\0')) {
         cmd_kill(line[4] == ' ' ? line + 5 : "");
-    } else if (sh_strncmp(line, "run", 3) == 0 && (line[3] == ' ' || line[3] == '\0')) {
+    } else if (strncmp(line, "run", 3) == 0 && (line[3] == ' ' || line[3] == '\0')) {
         cmd_run(line[3] == ' ' ? line + 4 : "");
-    } else if (sh_strcmp(line, "clear") == 0) {
+    } else if (strcmp(line, "clear") == 0) {
         sh_puts(clear_text);
-    } else if (sh_strcmp(line, "exit") == 0) {
+    } else if (strcmp(line, "exit") == 0) {
         sh_puts("bye!\n");
         nos_exit(0);
     } else {
@@ -343,6 +421,15 @@ void _start(void) {
         }
         line[n] = '\0';
 
+        /* nos_read() returns the line WITH its trailing '\n'. Drop it (and a
+           stray '\r') before any dispatch below: the "edit"/"run"/"cat"
+           branches test for "the command name followed by ' ' or the end of
+           the string", so with the '\n' still attached a bare "edit" matched
+           neither and fell through to "command not found: edit". */
+        while (n > 0 && (line[n - 1] == '\n' || line[n - 1] == '\r'))
+            line[--n] = '\0';
+        if (n == 0) continue;
+
         /* "cmd1 | cmd2" — checked first, before any other dispatch,
            so it can never be shadowed by "edit"/"run" special-casing
            below (a pipeline's LHS could itself be named "run..." as
@@ -354,7 +441,12 @@ void _start(void) {
         char *bar = 0;
         for (char *p = line; *p; p++) { if (*p == '|') { bar = p; break; } }
 
-        if (bar) {
+        int has_redirect = 0;
+        for (char *p = line; *p; p++) { if (*p == '<' || *p == '>') { has_redirect = 1; break; } }
+
+        if (bar && has_redirect) {
+            sh_puts("redirection can't be combined with a pipe yet\n");
+        } else if (bar) {
             *bar = '\0';
             char *cmd1 = sh_trim(line);
             char *cmd2 = sh_trim(bar + 1);
@@ -364,9 +456,26 @@ void _start(void) {
                 foreground_pid = 0;
                 run_pipeline(cmd1, cmd2);
             }
-        } else if (sh_strncmp(line, "edit", 4) == 0 && (line[4] == ' ' || line[4] == '\0')) {
+        } else if (has_redirect) {
+            foreground_pid = 0;
+            run_redirected(line);
+        } else if (strncmp(line, "cat", 3) == 0 && (line[3] == ' ' || line[3] == '\0')) {
+            char *arg = sh_trim(line + 3);
+            if (!*arg) {
+                sh_puts("usage: cat <file>\n");
+            } else {
+                int pid = nos_exec("cat", arg);
+                if (pid < 0) {
+                    sh_puts("error: cat not found\n");
+                } else {
+                    foreground_pid = pid;
+                    nos_wait(pid);   /* the output appears before the next prompt */
+                    foreground_pid = 0;
+                }
+            }
+        } else if (strncmp(line, "edit", 4) == 0 && (line[4] == ' ' || line[4] == '\0')) {
             char *arg = line[4] == ' ' ? line + 5 : "";
-            unsigned int alen = sh_strlen(arg);
+            unsigned int alen = strlen(arg);
             if (alen > 0 && arg[alen - 1] == '\n') arg[alen - 1] = '\0';
             int pid = nos_exec("edit", arg);
             if (pid < 0) {
@@ -376,9 +485,9 @@ void _start(void) {
                 nos_wait(pid);   /* blocks until the editor exits */
                 foreground_pid = 0;
             }
-        } else if (sh_strncmp(line, "run", 3) == 0 && (line[3] == ' ' || line[3] == '\0')) {
+        } else if (strncmp(line, "run", 3) == 0 && (line[3] == ' ' || line[3] == '\0')) {
             char *name = line[3] == ' ' ? line + 4 : "";
-            unsigned int nlen = sh_strlen(name);
+            unsigned int nlen = strlen(name);
             if (nlen > 0 && name[nlen - 1] == '\n') name[nlen - 1] = '\0';
             int pid = nos_exec(name, 0);
             if (pid < 0) {

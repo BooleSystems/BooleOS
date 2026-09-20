@@ -69,6 +69,17 @@ int fat16_mkdir(uint32_t dir_cluster, const char *path);
    Returns 0 on success, -1 on error.                                                        */
 int fat16_write_file(uint32_t parent_cluster, const char *name, const char *buf, uint32_t len);
 
+/* Positional counterpart of fat16_read_at(): writes len bytes at byte offset
+   pos of the existing file `name` inside parent_cluster (same file addressing
+   as fat16_write_file), WITHOUT replacing the rest of the file, extending the
+   cluster chain and updating the dirent's size as needed. pos must be <= the
+   current file size (no sparse files). Returns bytes written (== len, or
+   fewer if the disk filled up) or -1 if nothing was written. The optional
+   out params receive the file's first cluster and size afterward.           */
+int fat16_write_at(uint32_t parent_cluster, const char *name, uint32_t pos,
+                   const char *buf, uint32_t len,
+                   uint32_t *out_first_cluster, uint32_t *out_size);
+
 /* Iterates valid entries of the directory at dir_cluster (0-based; 0 =
    root). "." and ".." are never returned. Fills name (up to 12 chars +
    '\0'), *size, and, if is_dir is non-NULL, whether the entry is itself
@@ -84,5 +95,16 @@ int fat16_readdir(uint32_t dir_cluster, uint32_t idx, char name[13],
    Returns 1 (and fills *out_cluster) on success, 0 if it doesn't exist,
    -1 on I/O error, -2 if it exists but names a file, not a directory. */
 int fat16_resolve_dir(uint32_t cwd_cluster, const char *path, uint32_t *out_cluster);
+
+/* Reconstructs the absolute path ("/", "/FOO", "/FOO/BAR") of the
+   directory at dir_cluster into out (NUL-terminated), by walking up
+   through each directory's ".." entry — the only place a directory's
+   name lives is its parent's dirent, so the path is not stored anywhere.
+   Names come back in their on-disk 8.3 form (uppercase, as `ls` shows
+   them), not as originally typed. dir_cluster 0 is "/" and needs no disk.
+   Returns the path length (excluding the '\\0'), or -1 if out is too
+   small, the ".." chain is corrupt/too deep (>16 levels), or on I/O
+   error. */
+int fat16_get_path(uint32_t dir_cluster, char *out, uint32_t out_size);
 
 #endif

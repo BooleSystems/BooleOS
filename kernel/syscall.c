@@ -14,6 +14,7 @@
 #include "ramfs.h"
 #include "drivers/pci.h"
 #include "pipe.h"
+#include "power.h"
 #include <stdint.h>
 
 /* ── file descriptor table ─────────────────────────────────── */
@@ -177,8 +178,9 @@ static uint32_t sys_fork(void) {
 /* Writes are staged through a small kernel buffer and copied in with
    copy_from_user() in chunks, same discipline as SYS_READ_CHUNK below
    and sys_write_file()'s kmalloc'd buffer — never hands vfs_write() a
-   raw userland pointer. Only used by the fd>=FD_BASE path (currently
-   pipes; FAT16 writes still go through the separate SYS_WRITE_FILE). */
+   raw userland pointer. Used by the fd>=FD_BASE path: pipes and FAT16
+   files (a stream write at fd->pos, see vfs_write() — consecutive chunks
+   accumulate; SYS_WRITE_FILE is the separate whole-file "save" path). */
 #define SYS_WRITE_CHUNK 128
 
 static uint32_t sys_write(uint32_t fd, const char *buf, uint32_t len) {
@@ -323,8 +325,11 @@ static uint32_t sys_read(uint32_t fd, char *buf, uint32_t len) {
         int in_raw = (raw_mode_pid >= 0 &&
                       process_current() &&
                       (int)process_current()->pid == raw_mode_pid);
-        if (!in_raw)
-            vga_putchar((char)c);   /* echo */
+        /* echo — except a backspace with nothing to erase: vga_putchar('\b')
+           would blank the character to the left of the cursor, i.e. eat the
+           shell's own "> " prompt. */
+        if (!in_raw && !(c == '\b' && n == 0))
+            vga_putchar((char)c);
 
         if (c == '\b') {
             if (n > 0) n--;     /* backspace: discards the last char */
@@ -548,6 +553,13 @@ static uint32_t sys_exec_pipe(const char *user_name, uint32_t stdin_fd, uint32_t
     if (copy_user_str(cur, (uint32_t)user_name, kname, USER_STR_MAX) < 0)
         return (uint32_t)-1;
 
+    /* SYS_EXEC_PIPE carries no argument, but exec_arg is one global that only
+       sys_exec() ever reset — without clearing it here, the new process's
+       SYS_GETARG would return whatever argument the LAST plain exec() left
+       behind (e.g. "cat" after "cat notes.txt" would then try to open
+       notes.txt instead of reading its redirected stdin). */
+    exec_arg[0] = '\0';
+
     int want_stdin  = (stdin_fd  != (uint32_t)-1);
     int want_stdout = (stdout_fd != (uint32_t)-1);
 
@@ -734,6 +746,31 @@ static uint32_t sys_chdir(const char *user_path) {
     return 0;
 }
 
+/* Writes the caller's cwd as an absolute path. fat16_get_path() builds it
+   by walking up through ".." (a process only stores its cwd's cluster,
+   never a path string). Returns the path length (excluding the NUL) or -1
+   if buf is too small, the path can't be reconstructed, or on I/O error. */
+#define GETCWD_MAX 128
+
+static uint32_t sys_getcwd(char *user_buf, uint32_t len) {
+    if (!user_buf || len == 0) return (uint32_t)-1;
+    process_t *cur = process_current();
+    if (!cur) return (uint32_t)-1;
+    if (!user_ptr_valid(cur, (uint32_t)user_buf, len)) return (uint32_t)-1;
+
+    char kbuf[GETCWD_MAX];
+    int n = fat16_get_path(cur->cwd_cluster, kbuf, sizeof(kbuf));
+    if (n < 0) return (uint32_t)-1;
+    if ((uint32_t)n + 1 > len) return (uint32_t)-1;
+
+    if (copy_to_user(cur, (uint32_t)user_buf, kbuf, (uint32_t)n + 1) < 0)
+        return (uint32_t)-1;
+    return (uint32_t)n;
+}
+
+static uint32_t sys_reboot(void)   { return (uint32_t)power_reboot(); }
+static uint32_t sys_shutdown(void) { return (uint32_t)power_shutdown(); }
+
 static uint32_t sys_set_raw_mode(uint32_t enable) {
     process_t *cur = process_current();
     if (!cur) return (uint32_t)-1;
@@ -812,7 +849,7 @@ static uint32_t sys_write_file(uint32_t fd, uint32_t user_buf, uint32_t len) {
     vfs_fd_t *f = &fd_table[slot][idx];
     if (!f->used || f->backend != VFS_FAT16) return (uint32_t)-1;
 
-    if (len == 0) return (uint32_t)vfs_write(f, (const char *)0, 0);
+    if (len == 0) return (uint32_t)vfs_write_all(f, (const char *)0, 0);
     if (len > SYS_WRITE_FILE_MAX_LEN) return (uint32_t)-1;
 
     process_t *cur = process_current();
@@ -827,7 +864,7 @@ static uint32_t sys_write_file(uint32_t fd, uint32_t user_buf, uint32_t len) {
         return (uint32_t)-1;
     }
 
-    int r = vfs_write(f, kbuf, len);
+    int r = vfs_write_all(f, kbuf, len);
     kfree(kbuf);
     return (r < 0) ? (uint32_t)-1 : 0;
 }
@@ -868,6 +905,9 @@ uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t ar
         case SYS_MKDIR:        return sys_mkdir((const char *)arg1);
         case SYS_PIPE:         return sys_pipe(arg1);
         case SYS_EXEC_PIPE:    return sys_exec_pipe((const char *)arg1, arg2, arg3);
+        case SYS_GETCWD:       return sys_getcwd((char *)arg1, arg2);
+        case SYS_REBOOT:       return sys_reboot();
+        case SYS_SHUTDOWN:     return sys_shutdown();
         default:
             vga_set_color(VGA_YELLOW, VGA_BLACK);
             vga_puts("[SYSCALL] unknown number: ");

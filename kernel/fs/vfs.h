@@ -51,14 +51,23 @@ int  vfs_read (vfs_fd_t *fd, char *buf, uint32_t len);
 /* Closes the fd (marks it as unused). */
 void vfs_close(vfs_fd_t *fd);
 
-/* Writes len bytes from buf into the file referenced by fd (FAT16 or a
-   pipe's write end). For FAT16 this uses fd->parent_cluster/fd->name
-   (captured at open/create time), NOT the caller's current cwd — so
-   this is independent of any cd() the process may have done between
-   opening the file and writing to it. Returns 0 on success, -1 if the
-   backend doesn't support writes or on error (including a pipe whose
-   read end has been fully closed — see kernel/pipe.h). */
+/* Stream write: writes len bytes from buf at the fd's current position
+   (fd->pos, advanced by the amount written) — a FAT16 file grows as
+   needed, a pipe's write end appends to the pipe. Consecutive calls
+   ACCUMULATE. For FAT16 this uses fd->parent_cluster/fd->name (captured
+   at open/create time), NOT the caller's current cwd — independent of
+   any cd() between opening and writing. Returns 0 if all len bytes were
+   written, -1 otherwise (backend doesn't support writes, I/O error, disk
+   full — in which case the part that did fit is kept — or a pipe whose
+   read end has been fully closed, see kernel/pipe.h). */
 int  vfs_write(vfs_fd_t *fd, const char *buf, uint32_t len);
+
+/* Whole-file replace (FAT16 only): the file's entire content becomes
+   exactly buf[0..len) — the old chain is freed first, len == 0
+   truncates. This is what SYS_WRITE_FILE ("save the buffer") needs; it
+   is NOT a stream write. Ignores and does not update fd->pos. Returns 0
+   on success, -1 on error or a non-FAT16 fd. */
+int  vfs_write_all(vfs_fd_t *fd, const char *buf, uint32_t len);
 
 /* Adds one reference to fd's underlying resource, if that resource is
    refcounted (currently: pipe ends only — ramfs/FAT16 have no

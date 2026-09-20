@@ -114,6 +114,23 @@ int vfs_write(vfs_fd_t *fd, const char *buf, uint32_t len) {
         return pipe_write(fd->first, buf, len);
 
     if (fd->backend != VFS_FAT16) return -1;  /* ramfs is read-only */
+    if (len == 0) return 0;
+
+    /* stream write: goes to fd->pos and advances it, so consecutive
+       calls accumulate instead of each replacing the whole file */
+    uint32_t first = fd->first, size = fd->size;
+    int r = fat16_write_at(fd->parent_cluster, fd->name, fd->pos, buf, len, &first, &size);
+    if (r < 0) return -1;
+
+    fd->first = first;
+    fd->size  = size;
+    fd->pos  += (uint32_t)r;
+    return ((uint32_t)r == len) ? 0 : -1;   /* short write = disk full */
+}
+
+int vfs_write_all(vfs_fd_t *fd, const char *buf, uint32_t len) {
+    if (!fd || !fd->used) return -1;
+    if (fd->backend != VFS_FAT16) return -1;
     return fat16_write_file(fd->parent_cluster, fd->name, buf, len);
 }
 

@@ -38,4 +38,10 @@ void pci_print_list(void);
    rescanning (same table pci_print_list() reads from). */
 int pci_device_count(void);
 
+/* Finds the first device with this vendor/device ID in the table built by
+   the last pci_scan_bus(); fills the (optional) location out params.
+   Returns 1 if found, 0 if not. */
+int pci_find_device(uint16_t vendor_id, uint16_t device_id,
+                    uint8_t *bus, uint8_t *device, uint8_t *function);
+
 #endif

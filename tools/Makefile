@@ -47,6 +47,7 @@ C_SRCS   = $(ROOT)/kernel/main.c \
             $(ROOT)/kernel/process.c \
             $(ROOT)/kernel/scheduler.c \
             $(ROOT)/kernel/pipe.c \
+            $(ROOT)/kernel/power.c \
             $(ROOT)/kernel/memory/pmm.c \
             $(ROOT)/kernel/memory/vmm.c \
             $(ROOT)/kernel/memory/heap.c \

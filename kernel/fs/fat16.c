@@ -502,6 +502,23 @@ int fat16_find(uint32_t dir_cluster, const char *path,
     return 1;
 }
 
+/* Converts a dirent's 8.3 name back to "name.ext" (at most 12 chars +
+   '\0'). The single place that does this: fat16_readdir() and
+   fat16_get_path() both use it. */
+static void dirent_display_name(const fat16_dirent_t *e, char out[13]) {
+    int p = 0;
+    for (int j = 0; j < 8 && e->name[j] != ' '; j++)
+        out[p++] = (char)e->name[j];
+    int has_ext = 0;
+    for (int j = 0; j < 3; j++) if (e->ext[j] != ' ') { has_ext = 1; break; }
+    if (has_ext) {
+        out[p++] = '.';
+        for (int j = 0; j < 3 && e->ext[j] != ' '; j++)
+            out[p++] = (char)e->ext[j];
+    }
+    out[p] = '\0';
+}
+
 int fat16_readdir(uint32_t dir_cluster, uint32_t idx, char name[13],
                    uint32_t *size, uint8_t *is_dir) {
     if (!g_ready) return 0;
@@ -523,18 +540,7 @@ int fat16_readdir(uint32_t dir_cluster, uint32_t idx, char name[13],
             if (e->name[0] == '.')             continue;  /* skip "." / ".." */
 
             if (found == idx) {
-                /* converts 8.3 back to "name.ext" */
-                int p = 0;
-                for (int j = 0; j < 8 && e->name[j] != ' '; j++)
-                    name[p++] = (char)e->name[j];
-                int has_ext = 0;
-                for (int j = 0; j < 3; j++) if (e->ext[j] != ' ') { has_ext = 1; break; }
-                if (has_ext) {
-                    name[p++] = '.';
-                    for (int j = 0; j < 3 && e->ext[j] != ' '; j++)
-                        name[p++] = (char)e->ext[j];
-                }
-                name[p] = '\0';
+                dirent_display_name(e, name);
                 if (size)   *size   = e->size;
                 if (is_dir) *is_dir = (e->attr & ATTR_DIRECTORY) ? 1 : 0;
                 return 1;
@@ -726,6 +732,238 @@ int fat16_write_file(uint32_t parent_cluster, const char *name, const char *buf,
 
     /* flush the FAT to disk */
     return fat16_flush_fat();
+}
+
+/* ── fat16_get_path (cluster -> path, for pwd) ──────────────── */
+
+/* Searches directory `parent` for the subdirectory whose first cluster is
+   `child`, and fills name with its "name.ext". Returns 1 found, 0 not
+   found, -1 I/O error. ("." / ".." are skipped: they also carry a
+   directory cluster, but are never the entry we want.) */
+static int dir_find_child_name(uint32_t parent, uint32_t child, char name[13]) {
+    dir_iter_t it;
+    dir_iter_init(&it, parent);
+    int r;
+
+    while ((r = dir_iter_next_sector(&it, dir_buf, 0)) == 1) {
+        fat16_dirent_t *entries = (fat16_dirent_t *)dir_buf;
+        uint32_t per_sector = 512 / sizeof(fat16_dirent_t);
+
+        for (uint32_t i = 0; i < per_sector; i++) {
+            fat16_dirent_t *e = &entries[i];
+            if (e->name[0] == DIRENT_EMPTY)   return 0;
+            if (e->name[0] == DIRENT_DELETED)  continue;
+            if (e->attr & ATTR_VOLUME_ID)      continue;
+            if (!(e->attr & ATTR_DIRECTORY))   continue;
+            if (e->name[0] == '.')             continue;
+            if (e->first_cluster != child)     continue;
+            dirent_display_name(e, name);
+            return 1;
+        }
+    }
+    return r;
+}
+
+/* Guards against a corrupted ".." chain (a loop, or one that never
+   reaches the root): a path deeper than this fails instead of spinning. */
+#define FAT16_PATH_MAX_DEPTH 16
+
+int fat16_get_path(uint32_t dir_cluster, char *out, uint32_t out_size) {
+    if (!out || out_size < 2) return -1;
+
+    if (dir_cluster == 0) {            /* the root needs no disk access */
+        out[0] = '/';
+        out[1] = '\0';
+        return 1;
+    }
+    if (!g_ready) return -1;
+
+    uint8_t dotdot83[11];
+    to_8_3("..", dotdot83);
+
+    /* Walks UP from dir_cluster to the root: each subdirectory's ".."
+       entry gives its parent's cluster, then the parent is searched for
+       the entry pointing back at this cluster to learn its name. The path
+       is therefore discovered leaf-first, so it is assembled from the END
+       of tmp toward the start. */
+    char tmp[128];
+    uint32_t p = sizeof(tmp) - 1;
+    tmp[p] = '\0';
+
+    uint32_t cluster = dir_cluster;
+    for (uint32_t depth = 0; cluster != 0; depth++) {
+        if (depth >= FAT16_PATH_MAX_DEPTH) return -1;
+        if (cluster < 2 || cluster >= 0xFFF8) return -1;
+
+        fat16_dirent_t up;
+        if (dir_lookup(cluster, dotdot83, &up, 0, 0) != 1) return -1;
+        uint32_t parent = up.first_cluster;
+
+        char name[13];
+        if (dir_find_child_name(parent, cluster, name) != 1) return -1;
+
+        uint32_t nlen = 0;
+        while (name[nlen]) nlen++;
+        if (nlen + 1 > p) return -1;           /* would not fit tmp */
+        p -= nlen;
+        for (uint32_t i = 0; i < nlen; i++) tmp[p + i] = name[i];
+        tmp[--p] = '/';
+
+        cluster = parent;
+    }
+
+    uint32_t len = (uint32_t)(sizeof(tmp) - 1) - p;
+    if (len + 1 > out_size) return -1;
+    for (uint32_t i = 0; i <= len; i++) out[i] = tmp[p + i];   /* incl. '\0' */
+    return (int)len;
+}
+
+/* ── fat16_write_at ─────────────────────────────────────────── */
+
+/* Positional write, the counterpart of fat16_read_at(): stores len bytes
+   at byte offset pos WITHOUT replacing the rest of the file, growing the
+   cluster chain as needed. fat16_write_file() (whole-file replace) can't
+   be used for a stream of consecutive writes — each call would throw the
+   previous one away.
+
+   The file is identified by (parent_cluster, name), like
+   fat16_write_file, and NOT by its first cluster: the dirent (size, and
+   first_cluster for a file that was empty) has to be updated too, and
+   the dirent is looked up fresh here on every call, so a caller holding
+   a stale cached first_cluster/size (a vfs_fd_t after a truncate) is
+   harmless.
+
+   pos must be <= the current size (no sparse files). Data goes to disk
+   first, then the FAT, and only then the dirent, so an I/O failure part
+   way never leaves a dirent claiming more than was written. dir_buf is
+   deliberately NOT held across the data writes (unlike
+   fat16_write_file): the dirent is looked up a second time at the end.
+
+   Returns the number of bytes written (== len, or less if the disk filled
+   up part way — what was written is kept and reflected in the size), or
+   -1 if nothing could be written. *out_first_cluster / *out_size (each
+   optional) receive the file's first cluster and size afterward. */
+int fat16_write_at(uint32_t parent_cluster, const char *name, uint32_t pos,
+                   const char *buf, uint32_t len,
+                   uint32_t *out_first_cluster, uint32_t *out_size) {
+    if (!g_ready || !name || (!buf && len > 0)) return -1;
+
+    uint8_t name83[11];
+    to_8_3(name, name83);
+
+    fat16_dirent_t existing;
+    if (dir_lookup(parent_cluster, name83, &existing, 0, 0) != 1) return -1;
+    if (existing.attr & ATTR_DIRECTORY) return -1;
+
+    uint32_t first = existing.first_cluster;
+    uint32_t size  = existing.size;
+
+    if (pos > size) return -1;                 /* no sparse files */
+    if (len > 0xFFFFFFFFu - pos) return -1;    /* pos + len would overflow */
+    if (first < 2 && pos != 0) return -1;      /* inconsistent: no chain but pos > 0 */
+
+    if (len == 0) {
+        if (out_first_cluster) *out_first_cluster = first;
+        if (out_size)          *out_size          = size;
+        return 0;
+    }
+
+    uint32_t bpc      = g_sectors_per_cluster * 512;
+    uint32_t written  = 0;
+    int      fat_dirty = 0;
+    int      fresh    = 0;   /* current cluster was allocated by THIS call, so
+                                its old on-disk content is stale garbage */
+    uint32_t cluster;
+
+    /* ── 1. find (or allocate) the cluster that holds byte `pos` ── */
+    if (first < 2) {
+        cluster = fat16_alloc_cluster();
+        if (cluster == 0) return -1;           /* disk full, nothing changed */
+        first     = cluster;
+        fat_dirty = 1;
+        fresh     = 1;
+    } else {
+        cluster = first;
+        uint32_t target = pos / bpc;
+        for (uint32_t idx = 0; idx < target; idx++) {
+            uint32_t next = g_fat[cluster];
+            if (next < 2 || next >= 0xFFF8) {
+                /* chain ends exactly at pos (EOF on a cluster boundary):
+                   grow it */
+                next = fat16_alloc_cluster();
+                if (next == 0) {
+                    if (fat_dirty) fat16_flush_fat();
+                    return -1;
+                }
+                g_fat[cluster] = (uint16_t)next;
+                fat_dirty = 1;
+                fresh     = 1;
+            } else {
+                fresh = 0;
+            }
+            cluster = next;
+        }
+    }
+
+    /* ── 2. write the data sector by sector (read-modify-write for a
+          partial sector), growing the chain when a cluster fills up ── */
+    uint32_t off = pos % bpc;
+    while (written < len) {
+        uint32_t sec_idx = off / 512;
+        uint32_t sec_off = off % 512;
+        uint32_t lba     = fat16_cluster_to_lba(cluster) + sec_idx;
+        uint32_t n       = 512 - sec_off;
+        if (n > len - written) n = len - written;
+
+        if (n < 512) {
+            if (fresh) {
+                for (int i = 0; i < 512; i++) sector_buf[i] = 0;
+            } else if (ata_read_sector(lba, sector_buf) < 0) {
+                break;
+            }
+        }
+        for (uint32_t i = 0; i < n; i++)
+            sector_buf[sec_off + i] = (uint8_t)buf[written + i];
+        if (ata_write_sector(lba, sector_buf) < 0) break;
+
+        written += n;
+        off     += n;
+
+        if (off >= bpc && written < len) {
+            uint32_t next = g_fat[cluster];
+            if (next < 2 || next >= 0xFFF8) {
+                next = fat16_alloc_cluster();
+                if (next == 0) break;          /* disk full: keep what we have */
+                g_fat[cluster] = (uint16_t)next;
+                fat_dirty = 1;
+                fresh     = 1;
+            } else {
+                fresh = 0;
+            }
+            cluster = next;
+            off     = 0;
+        }
+    }
+
+    /* ── 3. commit: FAT first (only if it changed), then the dirent ── */
+    uint32_t new_size = size;
+    if (pos + written > new_size) new_size = pos + written;
+
+    if (fat_dirty && fat16_flush_fat() < 0) return -1;
+
+    if (new_size != size || first != existing.first_cluster) {
+        fat16_dirent_t again;
+        uint32_t dlba, dindex;
+        if (dir_lookup(parent_cluster, name83, &again, &dlba, &dindex) != 1) return -1;
+        fat16_dirent_t *entry = (fat16_dirent_t *)dir_buf + dindex;
+        entry->first_cluster = (uint16_t)first;
+        entry->size          = new_size;
+        if (ata_write_sector(dlba, dir_buf) < 0) return -1;
+    }
+
+    if (out_first_cluster) *out_first_cluster = first;
+    if (out_size)          *out_size          = new_size;
+    return (written > 0) ? (int)written : -1;
 }
 
 int fat16_read_at(uint32_t first_cluster, uint32_t pos,

@@ -217,3 +217,96 @@ int nos_exec_pipe(const char *name, int stdin_fd, int stdout_fd) {
         : "=a"(ret) : "0"(SYS_EXEC_PIPE), "b"(name), "c"(stdin_fd), "d"(stdout_fd) : "memory");
     return ret;
 }
+
+int nos_getcwd(char *buf, unsigned len) {
+    int ret;
+    __asm__ volatile ("int $0x80"
+        : "=a"(ret) : "0"(SYS_GETCWD), "b"(buf), "c"(len) : "memory");
+    return ret;
+}
+
+int nos_reboot(void) {
+    int ret;
+    __asm__ volatile ("int $0x80"
+        : "=a"(ret) : "0"(SYS_REBOOT) : "memory");
+    return ret;
+}
+
+int nos_shutdown(void) {
+    int ret;
+    __asm__ volatile ("int $0x80"
+        : "=a"(ret) : "0"(SYS_SHUTDOWN) : "memory");
+    return ret;
+}
+
+/* ── string / memory helpers (see nullos.h) ───────────────────────
+   memcpy/memset/memmove use rep movsb / rep stosb instead of C loops:
+   a plain byte loop can be recognized by GCC's loop-idiom pass and
+   turned back into a call to the very function being defined
+   (infinite recursion). The direction flag is clear on entry per the
+   i386 ABI; memmove sets it for the backward copy and clears it again. */
+
+void *memcpy(void *dst, const void *src, size_t n) {
+    void *d = dst;
+    __asm__ volatile ("rep movsb"
+        : "+D"(d), "+S"(src), "+c"(n) : : "memory");
+    return dst;
+}
+
+void *memset(void *dst, int c, size_t n) {
+    void *d = dst;
+    __asm__ volatile ("rep stosb"
+        : "+D"(d), "+c"(n) : "a"(c) : "memory");
+    return dst;
+}
+
+void *memmove(void *dst, const void *src, size_t n) {
+    uint8_t *d = (uint8_t *)dst;
+    const uint8_t *s = (const uint8_t *)src;
+    if (d == s || n == 0) return dst;
+    if (d < s || d >= s + n) {
+        return memcpy(dst, src, n);          /* no harmful overlap: forward copy */
+    }
+    /* overlapping with dst above src: copy backward */
+    d += n - 1;
+    s += n - 1;
+    __asm__ volatile ("std; rep movsb; cld"
+        : "+D"(d), "+S"(s), "+c"(n) : : "memory", "cc");
+    return dst;
+}
+
+int memcmp(const void *a, const void *b, size_t n) {
+    const uint8_t *x = (const uint8_t *)a;
+    const uint8_t *y = (const uint8_t *)b;
+    for (size_t i = 0; i < n; i++) {
+        if (x[i] != y[i]) return (int)x[i] - (int)y[i];
+    }
+    return 0;
+}
+
+size_t strlen(const char *s) {
+    size_t n = 0;
+    while (s[n]) n++;
+    return n;
+}
+
+int strcmp(const char *a, const char *b) {
+    while (*a && *a == *b) { a++; b++; }
+    return (int)(uint8_t)*a - (int)(uint8_t)*b;
+}
+
+int strncmp(const char *a, const char *b, size_t n) {
+    while (n > 0 && *a && *a == *b) { a++; b++; n--; }
+    if (n == 0) return 0;
+    return (int)(uint8_t)*a - (int)(uint8_t)*b;
+}
+
+char *nos_uitoa(uint32_t v, char *buf, unsigned bufsz) {
+    buf[--bufsz] = '\0';
+    if (v == 0) { buf[--bufsz] = '0'; return &buf[bufsz]; }
+    while (v && bufsz > 0) {
+        buf[--bufsz] = (char)('0' + (v % 10));
+        v /= 10;
+    }
+    return &buf[bufsz];
+}

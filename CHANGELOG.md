@@ -102,6 +102,87 @@ gives the capital, Shift+1 gives `!`, Shift+\ gives `|`).
   whose `esp`/`cr3` weren't built yet. New `irq_save()`/`irq_restore()`
   helpers, also used by `alloc_pid()`.
 
+Phase 17-C (libnos consolidation + shell tools) — functionally complete
+after manual QEMU testing, EXCEPT for the two known issues listed under
+"Known issues (17-C)" below, which are deliberately left open for the
+next session.
+
+- `user/lib/nullos.c/h`, `user/shell.c`, `forktest.c`, `selftest.c`,
+  `edit.c`: libnos gained `memcpy`/`memset`/`memmove`/`memcmp`/`strlen`/
+  `strcmp`/`strncmp` (standard libc names and signatures, so a call GCC
+  emits by itself resolves) and `nos_uitoa`; the four per-program copies
+  of `strlen`/`uitoa`, shell's `strcmp`/`strncmp`, selftest's `st_bufeq`
+  and the inline zero/shift/copy loops in selftest and edit now call them.
+- `kernel/fs/fat16.c`, `fat16.h`, `vfs.c`, `vfs.h`, `kernel/syscall.c`:
+  **`SYS_WRITE` on a FAT16 fd no longer loses data.** `sys_write()` staged
+  writes in 128-byte chunks and each `vfs_write()` replaced the WHOLE file,
+  so only the last chunk survived a write over 128 bytes. New
+  `fat16_write_at()` (positional write: grows the chain, updates the dirent,
+  data -> FAT -> dirent order) backs a new stream `vfs_write()` that writes
+  at `fd->pos` and advances it. The whole-file replace `SYS_WRITE_FILE`
+  needs moved to `vfs_write_all()`, so the editor's save is unchanged.
+- `kernel/syscall.c` (`sys_exec_pipe`): clears the global `exec_arg`. Before,
+  a piped/redirected program's `SYS_GETARG` returned the argument left by the
+  last plain `exec()` — harmless while nothing read it on that path, wrong for
+  `cat` (which now reads it).
+
+- `user/shell.c`: a bare `edit` (no argument) printed `command not found:
+  edit`. `nos_read()` returns the line with its trailing `\n`, and the
+  `edit`/`run`/`cat` branches only match "name followed by a space or the
+  end of the string", so with the `\n` attached a bare command matched
+  nothing and fell through. Pre-existing (the condition is identical in
+  v0.16.0; only `edit <file>` was ever exercised), not caused by 17-C. The
+  shell now strips the trailing `\n`/`\r` right after reading the line.
+  Same fix makes a bare `run` and a bare `cat` (usage message) work.
+- Line editing echo (pre-existing): erasing a typed character did not
+  erase it on the serial console. `vga_putchar('\b')` blanks the cell on
+  screen, but its serial mirror sent a raw `\b`, which only moves a
+  terminal's cursor left — retyping `shutdown` as `reboot` showed
+  `rebootdows`. `kernel/drivers/vga.c` now mirrors an erasing backspace as
+  `\b \b` (nothing if VGA erased nothing). Also `sys_read()` no longer
+  echoes a backspace on an empty line, which used to blank the shell's own
+  `> ` prompt. The typed buffer itself was always right (a backspace just
+  decrements the count).
+
+### Known issues (17-C)
+
+Found in the final 17-C test, not fixed (details in `docs/TODO.md`):
+
+- `reboot` and `shutdown` look the same under `make run` (window
+  "Stopped"). Probably not a kernel bug: the Makefile passes both
+  `-no-reboot` and `-no-shutdown`, and together a guest reset becomes a
+  paused shutdown. Not yet verified with other QEMU flags. If it still
+  doesn't restart with the flags relaxed, `power_reboot()` may need a
+  fallback (port 0xCF9 / triple fault).
+- A bare `run` prints `[EXEC] not found:` (empty name) instead of
+  `usage: run <program>`. Regression from the trailing-newline fix: the
+  `_start()` branch for `run` has no empty-name check, and used to be
+  shadowed by `cmd_run()`'s.
+
+### Added (17-C)
+
+- `user/selftest.c`: new test "SYS_WRITE >128 bytes accumulates in a FAT16
+  file" — writes 2100 bytes as two `nos_write()` calls (crossing the first
+  2048-byte cluster) and reads them all back; the regression test for the
+  chunked-write data loss. Suite is now 14 tests (`st_big.txt` is left on
+  disk like the other test files).
+
+- `pwd` / `SYS_GETCWD` (30): `fat16_get_path()` rebuilds a cwd path from the
+  cwd's cluster by walking up through `..` (names in 8.3 uppercase).
+  `nos_getcwd()`, shell `pwd`.
+- `cat <file>`: `user/cat.c` opens the file named by its argument and prints
+  it; with no argument it still copies stdin (pipe sink). The shell's `cat
+  <file>` launches it and waits.
+- `cmd < file` and `cmd > file` in the shell (`run_redirected()`): file fds
+  through the existing `SYS_EXEC_PIPE`; `>` creates + truncates. External
+  programs only, launched by name without arguments, not combinable with `|`.
+- `kernel/power.c/h`: `power_reboot()` (8042 reset, port 0x64 <- 0xFE) and
+  `power_shutdown()` (PIIX4 PM base from PCI config 0x40, `outw(base+4,
+  0x2000)`; prints "shutdown not supported on this hardware" when the PIIX4
+  isn't in the PCI table). `pci_find_device()`. Syscalls `SYS_REBOOT` (31) and
+  `SYS_SHUTDOWN` (32), `nos_reboot()`/`nos_shutdown()`, shell `reboot`/
+  `shutdown`.
+
 ### Removed
 
 - `process_spawn()`, `scheduler_spawn()` and the now-unused
