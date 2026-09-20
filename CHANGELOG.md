@@ -66,6 +66,13 @@ at the time.
   processes exist, a limit recorded in `PROGRESS.md` for Phase 22.
 - `tools/Makefile`: the user ELFs have the `user` target as an order-only
   prerequisite, so any target that needs them builds `user/` first.
+- `CLAUDE.md`: a "Definition of Done" checklist (literal, not prose) at the top:
+  what must be done in every subtask commit (a `docs/TODO.md` trace, a
+  `[Unreleased]` CHANGELOG entry) and in the closing commit of a phase (the
+  consolidated CHANGELOG entry as a blocking item, README, ROADMAP, `version.h`,
+  TODO resolved into real docs, PROGRESS, syscall table, selftest), ending with
+  "read this checklist item by item against the real state of the files".
+  `docs/TODO.md` now lists the documentation owed by Phase 19.
 - `ROADMAP.md`: a proposed phase "Crash handler leads into Safe Mode" is
   recorded (unnumbered, outside the priority order until it gets a place): a
   kernel crash saves its dump in the boot config sector, resets by itself and

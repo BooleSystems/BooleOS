@@ -19,6 +19,57 @@
   real colado pelo usuário — não infira do fato de ter compilado sem
   erro que o comportamento em runtime está correto.
 
+## Definition of Done (checklist obrigatório — leia antes de commitar e antes de fechar fase)
+
+Duas coisas foram esquecidas sistematicamente em fases anteriores, e de novo na
+Fase 19: a entrada de `CHANGELOG.md` em `[Unreleased]` e o rastro de pendência
+em `docs/TODO.md`. A fase era implementada e testada direitinho, e o
+encerramento (changelog e doc) era pulado sem ninguém perceber. Por isso esta
+seção é um checklist literal, não prosa: cada item precisa estar de fato
+cumprido, nenhum é opcional, e nenhum pode ser pulado em silêncio. As seções
+"Documentação", "Registro obrigatório no CHANGELOG" e "Convenções de fim de
+fase" abaixo detalham COMO; esta seção diz O QUE precisa estar feito e QUANDO.
+
+### A) Durante o desenvolvimento — em cada commit que fecha uma subtarefa real
+(não em cada linha alterada)
+
+- [ ] Se a documentação técnica formal daquilo ainda não existe, deixar rastro
+  mínimo em `docs/TODO.md`, num destes dois formatos:
+  ```
+  WIP: documentar <feature> (arquivos: caminho/a.c, caminho/b.h)
+  TODO later doc. Related files: caminho/a.c, caminho/b.h
+  ```
+  Obrigatório MESMO quando parece óbvio o que foi feito — quem escreve o código
+  tem o contexto mais fresco, e recuperá-lo depois é caro.
+- [ ] Deixar uma entrada em `CHANGELOG.md`, seção `[Unreleased]` (Added / Changed
+  / Fixed), descrevendo a subtarefa. Vale para toda tarefa que edita qualquer
+  arquivo do repositório, inclusive doc pura. Não deixar "pro polish".
+
+### B) No commit de polish final de qualquer fase (o que fecha a fase, antes do merge `nightly` -> `main`)
+
+Todos os itens abaixo, nenhum pulado silenciosamente:
+
+- [ ] **CHANGELOG.md — item BLOQUEANTE, o mais esquecido até agora.** A seção
+  `[Unreleased]` contém, de verdade no arquivo, UMA entrada consolidada
+  (Added/Changed/Fixed) cobrindo a fase inteira — não uma entrada por subfase, e
+  sem narrar bug que nasceu e morreu dentro da própria fase — e ela é renomeada
+  para `## [X.Y.Z]` no fechamento. **A fase NÃO está fechada sem essa entrada
+  existir no arquivo.** Confirmar abrindo o arquivo, não por lembrança.
+- [ ] README.md atualizado (só fase inteira fechada aparece; banner ASCII do topo
+  editado à mão; lista de arquivos e de docs em dia).
+- [ ] ROADMAP.md sincronizado (tabela granular, seção da fase, dependências).
+- [ ] `kernel/version.h` atualizado (sufixo `-nightly` removido, fase e descrição).
+- [ ] Toda pendência de `docs/TODO.md` referente à fase virou documentação de
+  verdade nos `docs/*.md` corretos e SAIU do `TODO.md` (o arquivo fica só com os
+  cabeçalhos quando a versão fecha).
+- [ ] PROGRESS.md atualizado (fase atual, dívidas técnicas, próxima fase).
+- [ ] `docs/syscalls.md` conferido contra `kernel/syscall.h` (ver seção de
+  números de syscall).
+- [ ] Selftest 100% passando (o usuário roda no QEMU e cola a saída).
+
+**Antes de declarar qualquer fase fechada, releia esse checklist item por item
+contra o estado real dos arquivos, não contra a lembrança do que foi feito.**
+
 ## Debug e instrumentação temporária
 
 - Prints de debug adicionados durante investigação DEVEM escrever
@@ -182,7 +233,8 @@
   históricas com letra, ex: Fase 2/2b, 3a/3b), apontando pra
   docs/*.md e CHANGELOG.md como fonte de detalhe — sem duplicar
   parágrafo técnico nessa tabela, só nome + link.
-- **Documentação escrita DURANTE o desenvolvimento em `nightly`, não
+- **(Item obrigatório da "Definition of Done", A — não é opcional.)
+  Documentação escrita DURANTE o desenvolvimento em `nightly`, não
   só no polish final:** toda mudança de código relevante deixa, no
   mínimo, um ponteiro/stub em docs/TODO.md (ou seção equivalente
   centralizada) tipo "WIP: documentar <feature> (arquivos: X, Y, Z)"
@@ -332,7 +384,8 @@
   substituída por uma referência a version.h (ou, se for um arquivo
   que não é C, gerada em build-time a partir dele), não corrigida
   manualmente toda vez que a versão mudar.
-- Antes de finalizar qualquer fase, faça um checklist explícito:
+- Antes de finalizar qualquer fase, cumpra a "Definition of Done" (B) do início
+  deste arquivo E faça este checklist explícito:
   kernel/version.h atualizado (sufixo `-nightly` removido)? README
   (tabela de fases concluídas) atualizado? docs/<assunto>.md
   relevante atualizado com o detalhe da feature? ROADMAP.md com a
@@ -469,6 +522,10 @@
   erro silenciosamente.
 
 ## Registro obrigatório no CHANGELOG
+
+(Esta seção detalha o item de CHANGELOG da "Definition of Done", A e B, no
+início deste arquivo: a entrada não pode ser adiada para o polish, e a fase não
+fecha sem a entrada consolidada existir no arquivo.)
 
 - TODA tarefa concluída nesta sessão — mesmo que seja só documentação
   pura, mesmo que não libere `git push` pela regra de push já
