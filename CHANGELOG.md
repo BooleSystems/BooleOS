@@ -66,6 +66,10 @@ at the time.
   processes exist, a limit recorded in `PROGRESS.md` for Phase 22.
 - `tools/Makefile`: the user ELFs have the `user` target as an order-only
   prerequisite, so any target that needs them builds `user/` first.
+- `ROADMAP.md`: a proposed phase "Crash handler leads into Safe Mode" is
+  recorded (unnumbered, outside the priority order until it gets a place): a
+  kernel crash saves its dump in the boot config sector, resets by itself and
+  lands in Safe Mode with the reason and a "view last crash" item.
 
 - Documentation split by audience: the new `docs/quickstart.md` covers only
   "download a release zip, install QEMU, run one command" (no toolchain, no

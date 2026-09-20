@@ -209,6 +209,22 @@ Done; see the table above, CHANGELOG `[0.18.0]`, `docs/hal.md` and `docs/safemod
 
 **v1.0.0** closes right after Phase 30.
 
+## Proposed phase (number not assigned yet)
+
+Not in the table above and not in the priority order until it gets a number and a place in the sequence (inserting it renumbers the phases after it).
+
+### Proposed — Crash handler leads into Safe Mode
+
+- **Goal:** today an unhandled kernel exception prints a red screen and halts forever (`exception_handler()` in `idt.c` ends in a `cli; hlt` loop), so the machine needs a manual reset and the context of the error is lost as soon as it restarts. A real crash should restart on its own and land in Safe Mode, with the reason at the top of the screen and a way to read the full dump.
+- **Approach:** reuse the boot configuration sector (`kernel/bootcfg.c`, raw sector LBA 1, outside FAT16, survives a broken filesystem) — the same store `boot_fail_count` uses — with new keys for the crash dump. The exception handler writes them and then forces a real CPU reset. Safe Mode, when it starts, detects a *crash* flag (separate from the boot failure counter) and its header changes from "too many consecutive failed boots (boot_fail_count = N ...)" to "System crashed: <exception> (EIP ...)", with a new menu item "View last crash details". The two banners must never be confused.
+- **Subtasks:**
+  - Extend the config with the crash fields: exception type, EIP, error code, CR2 (for #PF), the page-fault flags, and the uptime ticks at the moment of the crash. The whole config must still fit in the one 512-byte sector.
+  - The exception handler saves them BEFORE halting/resetting, as minimally and self-containedly as possible: no heap, no scheduler, no VFS/FAT16.
+  - A real reset instead of `hlt`. `power_reboot()` (`kernel/power.c`, keyboard-controller reset `0xFE` on port `0x64`) already exists and can be reused; a fallback (a triple fault, by loading an empty IDT) is worth adding for the case where the 8042 path does nothing.
+  - Safe Mode: the crash banner, the new menu item that prints the persisted fields formatted like the live red screen, and a decision on when the crash flag is cleared. Suggested: only after a subsequent complete normal boot (the first keyboard read, like the counter reset), so that entering and leaving Safe Mode by accident does not lose the information.
+- **Main risk:** the code that saves the crash cannot depend on anything the crash may have corrupted. If the dump write itself faults, both the dump and the original reason are lost. Keep that path as dumb and direct as possible: raw disk I/O, no heap. **Concretely: `block_write_sector()` is not safe to call from the handler as it is** — when `process_current()` is non-NULL the ATA driver waits for its IRQ and blocks through the scheduler (`ata_wait_irq()`, the exclusion gate), which cannot work inside an exception handler (interrupts and the scheduler may be unusable, the ATA controller may be in the middle of a command, the gate may be held). This phase needs a dedicated, polling-only, interrupt-independent sector write for the crash path that ignores the gate and the IRQ machinery. Also keep the handler's own stack use tiny (a stack overflow is one of the crashes it must survive) and guard against a second exception while saving.
+- **Depends on:** Phase 18 (Safe Mode, `boot_fail_count`, HAL, `bootcfg`).
+
 ## Recommended priority order
 
 **Phase 19 → 20 → 21 → 22 → 23 → 24 → 25 → 26 → 27 → 28 → 29 → 30 → v1.0.0.**
