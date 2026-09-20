@@ -16,6 +16,9 @@ CFLAGS = -m32 \
           -I../kernel
 
 LIBNOS = $(BUILD)/lib/nullos.o
+# msg() table: linked only into the programs that print user-facing text
+# through it (shell, edit, cat) — every program that links it carries the whole table.
+LIBMSG = $(BUILD)/lib/messages.o
 
 .PHONY: all clean
 
@@ -25,6 +28,10 @@ $(LIBNOS): lib/nullos.c lib/nullos.h
 	@mkdir -p $(BUILD)/lib
 	$(CC) $(CFLAGS) -c -o $@ lib/nullos.c
 
+$(LIBMSG): lib/messages.c lib/messages.h
+	@mkdir -p $(BUILD)/lib
+	$(CC) $(CFLAGS) -c -o $@ lib/messages.c
+
 $(BUILD)/init.elf: init.c link.ld $(LIBNOS)
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -T link.ld -o $@ init.c $(LIBNOS)
@@ -33,13 +40,13 @@ $(BUILD)/spintest.elf: spintest.c link.ld $(LIBNOS)
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -T link.ld -o $@ spintest.c $(LIBNOS)
 
-$(BUILD)/shell.elf: shell.c link.ld ../kernel/version.h $(LIBNOS)
+$(BUILD)/shell.elf: shell.c link.ld lib/messages.h ../kernel/version.h $(LIBNOS) $(LIBMSG)
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -T link.ld -o $@ shell.c $(LIBNOS)
+	$(CC) $(CFLAGS) -T link.ld -o $@ shell.c $(LIBNOS) $(LIBMSG)
 
-$(BUILD)/edit.elf: edit.c link.ld $(LIBNOS)
+$(BUILD)/edit.elf: edit.c link.ld lib/messages.h $(LIBNOS) $(LIBMSG)
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -T link.ld -o $@ edit.c $(LIBNOS)
+	$(CC) $(CFLAGS) -T link.ld -o $@ edit.c $(LIBNOS) $(LIBMSG)
 
 $(BUILD)/forktest.elf: forktest.c link.ld $(LIBNOS)
 	@mkdir -p $(BUILD)
@@ -49,9 +56,9 @@ $(BUILD)/selftest.elf: selftest.c link.ld $(LIBNOS)
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -T link.ld -o $@ selftest.c $(LIBNOS)
 
-$(BUILD)/cat.elf: cat.c link.ld $(LIBNOS)
+$(BUILD)/cat.elf: cat.c link.ld lib/messages.h $(LIBNOS) $(LIBMSG)
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -T link.ld -o $@ cat.c $(LIBNOS)
+	$(CC) $(CFLAGS) -T link.ld -o $@ cat.c $(LIBNOS) $(LIBMSG)
 
 clean:
 	@rm -rf $(BUILD)

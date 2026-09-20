@@ -7,6 +7,7 @@
    redirected into a pipe's write end. "forktest | cat" is the manual test
    in docs/pipes.md; "cat < file" reads stdin from a file the same way. */
 #include "lib/nullos.h"
+#include "lib/messages.h"
 
 static void cat_puts(const char *s) {
     nos_write(1, s, (unsigned)strlen(s));
@@ -20,7 +21,7 @@ void _start(void) {
     if (n > 0 && arg[0]) {
         fd = nos_open(arg);
         if (fd < 0) {
-            cat_puts("cat: cannot open ");
+            cat_puts(msg(UMSG_CAT_CANNOT_OPEN));
             cat_puts(arg);
             cat_puts("\n");
             nos_exit(1);

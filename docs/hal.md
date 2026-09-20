@@ -49,7 +49,17 @@ This is **not a translation system**: one column, English, no language selector.
 - **Naming and stability.** `MSG_<SUBSYSTEM>_<DESCRIPTION>` (`MSG_TAG_*` for the `[BOOT] `-style prefixes, `MSG_EXC_*` for the CPU exception names, `MSG_PROC_STATE_*` for `ps` states), grouped by subsystem in the enum. Identical strings share one ID. An ID is never reused for a different string; add new IDs before `MSG_COUNT`.
 - **Safe everywhere.** `msg()` is a bounds-checked lookup in a static const table: no init, no heap, no hardware. An out-of-range ID (or an entry left empty) returns `"(?)"`, never `NULL`. That is why `idt.c`'s exception handler may use it even though it bypasses the HAL for output: `exception_msgs[32]` holds IDs instead of pointers.
 - **Compile-time check.** `g_msgs[]` has no explicit size, so its size is set by the highest designated initializer; a `typedef char ...[(sizeof(g_msgs)/sizeof(g_msgs[0]) == MSG_COUNT) ? 1 : -1]` fails the build if an ID was added at the end of the enum without a text (C99 has no `_Static_assert`). A missing entry in the middle is caught at run time by the `"(?)"` fallback.
-- **Scope so far:** the whole `kernel/` (~130 call sites, 12 files). The userland (`shell.c`, `edit.c`, `cat.c`) is pass 2 — it needs its own table, because user programs cannot call the kernel's `msg()`. `selftest.c` and `forktest.c` are diagnostic output and are deliberately excluded.
+- **Scope:** the whole `kernel/` (~130 call sites, 12 files) plus the userland (below). `selftest.c` and `forktest.c` are diagnostic output and are deliberately excluded.
+
+### Userland table (`user/lib/messages.h/.c`, pass 2)
+
+User programs cannot call the kernel's `msg()` (separate address space, no shared code), so the userland has its own table with the same mechanism: `umsg_id_t` enum with `UMSG_<PROGRAM>_<DESCRIPTION>` IDs, `const char *msg(umsg_id_t)` (bounds-checked, `"(?)"` fallback, never `NULL`) and the same compile-time size check. The prefix and type differ from the kernel's on purpose, and since the function is also called `msg()`, including both headers in one file is a compile error rather than a silent mixup.
+
+- **Migrated:** `shell.c` (~50 output strings, the five `fetch` logo lines, `help_text` as one ID), `edit.c` (help bar, `[no name]`, the two save messages) and `cat.c` (1 string). Printing is `sh_puts(msg(UMSG_SH_...))`; the table is linked (`user/Makefile`, `$(LIBMSG)`) only into `shell`, `edit` and `cat`.
+- **Not migrated:** shell command names compared with `strcmp`/`strncmp`, program names given to `nos_exec()`, the default path `"/"`, `nos_write_file(fd, "", 0)`, `clear_text` (25 newlines — layout), whitespace-only strings, and the two lines built from the version macro (`sh_puts(NULLOS_SHORT_BANNER " i686\n")`, `"  OS: " NULLOS_SHORT_BANNER ...`). `init.c` and `spintest.c` print one demo line each; linking the whole table into them would cost more than it saves.
+- **Cost:** every program that links the table carries all of it (~2.7 KB; `cat.elf` went from 9.7 KB to 12.4 KB). Accepted; `user/Makefile` links objects directly, not an archive.
+- **Layout-sensitive text is unchanged byte for byte:** the `fetch` logo lines and the `"Procs: "` line (its leading spaces align it under the logo) and the multi-line `help_text` are moved verbatim. `edit.c`'s status bar `sbar[80]` is still built column by column: only the whole-word pieces (`[no name]`, the save message) come from the table; the single characters (`L:`, `C:`) are assembled one at a time and stay as they are.
+- **Known fragile spots, left as they are (migration only moved text):** the status bar's manual `sbar`/`memcpy` assembly, and `selftest.c`'s message built by `memcpy` into a shared `static char msg[64]` (excluded from this pass). Note `init.c`/`spintest.c`/`selftest.c` already use local variables named `msg`; they don't include `lib/messages.h`, so there is no clash.
 
 ## Relevant files
 
@@ -59,4 +69,6 @@ kernel/hal.c          x86 implementation (forwards to the drivers)
 kernel/multiboot2.h   Multiboot2 tag parser (module + memory map)
 kernel/messages.h     msg_id_t enum + msg()
 kernel/messages.c     the message table
+user/lib/messages.h   userland umsg_id_t enum + msg()
+user/lib/messages.c   the userland message table
 ```

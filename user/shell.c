@@ -2,6 +2,7 @@
 
 #include "version.h"
 #include "lib/nullos.h"
+#include "lib/messages.h"
 
 /* ── string helpers ─────────────────────────────────────────────── */
 
@@ -16,12 +17,8 @@ static void cmd_uname(void) {
 }
 
 static void cmd_fetch(void) {
-    static const char *logo[] = {
-        "  _   _       _ _  ___  ____  ",
-        " | \\ | |_   _| | |/ _ \\/ ___| ",
-        " |  \\| | | | | | | | | \\___ \\ ",
-        " | |\\  | |_| | | | |_| |___) |",
-        " |_| \\_|\\__,_|_|_|\\___/|____/ ",
+    static const umsg_id_t logo[] = {
+        UMSG_SH_LOGO_1, UMSG_SH_LOGO_2, UMSG_SH_LOGO_3, UMSG_SH_LOGO_4, UMSG_SH_LOGO_5,
     };
 
     uint32_t pmm_pages = 0, heap_bytes = 0, nprocs = 0;
@@ -34,33 +31,33 @@ static void cmd_fetch(void) {
     char *n;
 
     /* line 0: logo + OS */
-    sh_puts(logo[0]); sh_puts("  OS: " NULLOS_SHORT_BANNER " i686\n");
+    sh_puts(msg(logo[0])); sh_puts("  OS: " NULLOS_SHORT_BANNER " i686\n");
 
     /* line 1: logo + Arch */
-    sh_puts(logo[1]); sh_puts("  Arch: i686\n");
+    sh_puts(msg(logo[1])); sh_puts(msg(UMSG_SH_FETCH_ARCH));
 
     /* line 2: logo + Uptime */
-    sh_puts(logo[2]);
-    sh_puts("  Uptime: ");
+    sh_puts(msg(logo[2]));
+    sh_puts(msg(UMSG_SH_FETCH_UPTIME));
     n = nos_uitoa(uptime, nbuf, sizeof(nbuf));
-    sh_puts(n); sh_puts("s\n");
+    sh_puts(n); sh_puts(msg(UMSG_SH_FETCH_SECONDS_NL));
 
     /* line 3: logo + PMM */
-    sh_puts(logo[3]);
-    sh_puts("  Mem PMM: ");
+    sh_puts(msg(logo[3]));
+    sh_puts(msg(UMSG_SH_FETCH_MEM_PMM));
     n = nos_uitoa(pmm_pages * 4, nbuf, sizeof(nbuf));
-    sh_puts(n); sh_puts(" KB free\n");
+    sh_puts(n); sh_puts(msg(UMSG_SH_FETCH_KB_FREE_NL));
 
     /* line 4: logo + Heap */
-    sh_puts(logo[4]);
-    sh_puts("  Heap: ");
+    sh_puts(msg(logo[4]));
+    sh_puts(msg(UMSG_SH_FETCH_HEAP));
     n = nos_uitoa(heap_bytes, nbuf, sizeof(nbuf));
-    sh_puts(n); sh_puts(" B free\n");
+    sh_puts(n); sh_puts(msg(UMSG_SH_FETCH_B_FREE_NL));
 
     /* line 5: padding + Procs */
-    sh_puts("                                   Procs: ");
+    sh_puts(msg(UMSG_SH_FETCH_PROCS));
     n = nos_uitoa(nprocs, nbuf, sizeof(nbuf));
-    sh_puts(n); sh_puts(" running\n");
+    sh_puts(n); sh_puts(msg(UMSG_SH_FETCH_RUNNING_NL));
 }
 
 static void cmd_ps(void) {
@@ -74,18 +71,18 @@ static void cmd_mem(void) {
     char nbuf[16];
     char *n;
 
-    sh_puts("PMM:  ");
+    sh_puts(msg(UMSG_SH_MEM_PMM_LINE));
     n = nos_uitoa(pmm_pages, nbuf, sizeof(nbuf));
     sh_puts(n);
-    sh_puts(" free pages (");
+    sh_puts(msg(UMSG_SH_MEM_FREE_PAGES));
     n = nos_uitoa(pmm_pages * 4, nbuf, sizeof(nbuf));
     sh_puts(n);
-    sh_puts(" KB)\n");
+    sh_puts(msg(UMSG_SH_MEM_KB_CLOSE_NL));
 
-    sh_puts("Heap: ");
+    sh_puts(msg(UMSG_SH_MEM_HEAP_LINE));
     n = nos_uitoa(heap_bytes, nbuf, sizeof(nbuf));
     sh_puts(n);
-    sh_puts(" B free\n");
+    sh_puts(msg(UMSG_SH_FETCH_B_FREE_NL));
 }
 
 static void cmd_echo(const char *line) {
@@ -100,52 +97,52 @@ static void cmd_echo(const char *line) {
 }
 
 static void cmd_kill(const char *arg) {
-    if (!arg || !*arg) { sh_puts("usage: kill <pid>\n"); return; }
+    if (!arg || !*arg) { sh_puts(msg(UMSG_SH_USAGE_KILL_PID)); return; }
 
     uint32_t pid = 0;
     while (*arg >= '0' && *arg <= '9')
         pid = pid * 10 + (uint32_t)(*arg++ - '0');
 
-    if (pid == 0) { sh_puts("invalid pid\n"); return; }
+    if (pid == 0) { sh_puts(msg(UMSG_SH_INVALID_PID)); return; }
 
     /* warn if it's the shell itself */
     if (pid == nos_getpid()) {
-        sh_puts("shutting down shell...\n");
+        sh_puts(msg(UMSG_SH_SHUTTING_DOWN_SHELL));
         nos_exit(0);
     }
 
     int r = nos_kill(pid);
     if (r == 0) {
-        sh_puts("process ");
+        sh_puts(msg(UMSG_SH_KILL_PROCESS));
         char nbuf[16];
         sh_puts(nos_uitoa(pid, nbuf, sizeof(nbuf)));
-        sh_puts(" terminated\n");
+        sh_puts(msg(UMSG_SH_KILL_TERMINATED_NL));
     } else {
-        sh_puts("pid not found\n");
+        sh_puts(msg(UMSG_SH_PID_NOT_FOUND));
     }
 }
 
 static void cmd_touch(const char *arg) {
-    if (!arg || !*arg) { sh_puts("usage: touch <file>\n"); return; }
+    if (!arg || !*arg) { sh_puts(msg(UMSG_SH_USAGE_TOUCH_FILE)); return; }
     int fd = nos_create(arg);
     if (fd < 0) {
-        sh_puts("error: could not create (no disk?)\n");
+        sh_puts(msg(UMSG_SH_TOUCH_CANNOT_CREATE));
         return;
     }
     nos_close(fd);
 }
 
 static void cmd_mkdir(const char *arg) {
-    if (!arg || !*arg) { sh_puts("usage: mkdir <dir>\n"); return; }
+    if (!arg || !*arg) { sh_puts(msg(UMSG_SH_USAGE_MKDIR_DIR)); return; }
     if (nos_mkdir(arg) < 0) {
-        sh_puts("error: could not create directory (no disk, path missing, or name taken by a file)\n");
+        sh_puts(msg(UMSG_SH_MKDIR_CANNOT_CREATE));
     }
 }
 
 static void cmd_cd(const char *arg) {
     const char *path = (arg && *arg) ? arg : "/";
     if (nos_chdir(path) != 0) {
-        sh_puts("cd: no such directory: ");
+        sh_puts(msg(UMSG_SH_CD_NO_SUCH_DIRECTORY));
         sh_puts(path);
         sh_puts("\n");
     }
@@ -155,7 +152,7 @@ static void cmd_pwd(void) {
     char path[128];
     int n = nos_getcwd(path, sizeof(path));
     if (n < 0) {
-        sh_puts("pwd: cannot determine the current directory\n");
+        sh_puts(msg(UMSG_SH_PWD_CANNOT_DETERMINE));
         return;
     }
     sh_puts(path);
@@ -191,14 +188,14 @@ static char *sh_trim(char *s) {
 static void run_pipeline(const char *cmd1, const char *cmd2) {
     int fds[2];
     if (nos_pipe(fds) != 0) {
-        sh_puts("pipe: could not create pipe\n");
+        sh_puts(msg(UMSG_SH_PIPE_COULD_NOT_CREATE_PIPE));
         return;
     }
     int read_fd = fds[0], write_fd = fds[1];
 
     int pid1 = nos_exec_pipe(cmd1, -1, write_fd);
     if (pid1 < 0) {
-        sh_puts("pipe: program not found: ");
+        sh_puts(msg(UMSG_SH_PIPE_PROGRAM_NOT_FOUND));
         sh_puts(cmd1);
         sh_puts("\n");
         nos_close(read_fd);
@@ -208,7 +205,7 @@ static void run_pipeline(const char *cmd1, const char *cmd2) {
 
     int pid2 = nos_exec_pipe(cmd2, read_fd, -1);
     if (pid2 < 0) {
-        sh_puts("pipe: program not found: ");
+        sh_puts(msg(UMSG_SH_PIPE_PROGRAM_NOT_FOUND));
         sh_puts(cmd2);
         sh_puts("\n");
         nos_close(read_fd);
@@ -259,12 +256,12 @@ static void run_redirected(char *line) {
     }
 
     if (!*cmd || dup || (in_name && !*in_name) || (out_name && !*out_name)) {
-        sh_puts("usage: cmd [< infile] [> outfile]\n");
+        sh_puts(msg(UMSG_SH_USAGE_CMD_INFILE_OUTFILE));
         return;
     }
     for (const char *p = cmd; *p; p++) {
         if (*p == ' ') {
-            sh_puts("redirect: the program is launched by name only, no arguments\n");
+            sh_puts(msg(UMSG_SH_REDIRECT_NO_ARGS));
             return;
         }
     }
@@ -274,7 +271,7 @@ static void run_redirected(char *line) {
     if (in_name) {
         in_fd = nos_open(in_name);
         if (in_fd < 0) {
-            sh_puts("redirect: cannot open: ");
+            sh_puts(msg(UMSG_SH_REDIRECT_CANNOT_OPEN));
             sh_puts(in_name);
             sh_puts("\n");
             return;
@@ -283,9 +280,9 @@ static void run_redirected(char *line) {
     if (out_name) {
         out_fd = nos_create(out_name);
         if (out_fd < 0 || nos_write_file(out_fd, "", 0) != 0) {
-            sh_puts("redirect: cannot write to: ");
+            sh_puts(msg(UMSG_SH_REDIRECT_CANNOT_WRITE_TO));
             sh_puts(out_name);
-            sh_puts(" (no disk, or not a FAT16 file)\n");
+            sh_puts(msg(UMSG_SH_REDIRECT_NOT_FAT16_NL));
             if (out_fd >= 0) nos_close(out_fd);
             if (in_fd >= 0)  nos_close(in_fd);
             return;
@@ -294,9 +291,9 @@ static void run_redirected(char *line) {
 
     int pid = nos_exec_pipe(cmd, in_fd, out_fd);
     if (pid < 0) {
-        sh_puts("redirect: program not found: ");
+        sh_puts(msg(UMSG_SH_REDIRECT_PROGRAM_NOT_FOUND));
         sh_puts(cmd);
-        sh_puts(" (built-in commands can't be redirected)\n");
+        sh_puts(msg(UMSG_SH_REDIRECT_BUILTIN_NL));
     }
 
     /* the shell needs neither file fd anymore: the child holds its own
@@ -312,45 +309,17 @@ static void run_redirected(char *line) {
    foreground path both call it, so validation cannot diverge. */
 static int cmd_run(char *name) {
     name = sh_trim(name);
-    if (!*name) { sh_puts("usage: run <program>\n"); return -1; }
+    if (!*name) { sh_puts(msg(UMSG_SH_USAGE_RUN_PROGRAM)); return -1; }
     int pid = nos_exec(name, 0);
     if (pid < 0) {
-        sh_puts("error: program not found\n");
+        sh_puts(msg(UMSG_SH_RUN_NOT_FOUND));
         return -1;
     }
-    sh_puts("running: ");
+    sh_puts(msg(UMSG_SH_RUN_RUNNING));
     sh_puts(name);
     sh_puts("\n");
     return pid;
 }
-
-static const char *help_text =
-    "commands:\n"
-    "  help           this message\n"
-    "  uname          system version\n"
-    "  fetch          system info\n"
-    "  ps             process table\n"
-    "  mem            memory usage\n"
-    "  ls [dir]       list files (cwd, or a given path)\n"
-    "  lspci          list PCI devices\n"
-    "  touch <name>   create an empty file (path allowed, e.g. docs/a.txt)\n"
-    "  mkdir <dir>    create a directory (path allowed)\n"
-    "  cd [dir]       change the current directory (no arg = root)\n"
-    "  pwd            print the current directory\n"
-    "  echo <text>    print text\n"
-    "  kill <pid>     terminate a process\n"
-    "  run <prog>     run a program in the background\n"
-    "  edit <file>    open the text editor\n"
-    "  cat <file>     print a file\n"
-    "  cmd < in       run a program with stdin read from a file\n"
-    "  cmd > out      run a program with stdout written to a file (truncates;\n"
-    "                 program name only, no arguments, no builtins)\n"
-    "  reboot         restart the machine\n"
-    "  shutdown       power the machine off\n"
-    "  cmd1 | cmd2    pipe cmd1's stdout into cmd2's stdin (both must\n"
-    "                 be programs, not builtins — e.g. \"forktest | cat\")\n"
-    "  clear          clear the screen\n"
-    "  exit           exit the shell\n";
 
 static const char *clear_text =
     "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n";
@@ -360,7 +329,7 @@ static void run_command(char *line, int len) {
     if (len == 0) return;
 
     if (strcmp(line, "help") == 0) {
-        sh_puts(help_text);
+        sh_puts(msg(UMSG_SH_HELP_TEXT));
     } else if (strcmp(line, "uname") == 0) {
         cmd_uname();
     } else if (strcmp(line, "fetch") == 0) {
@@ -396,10 +365,10 @@ static void run_command(char *line, int len) {
     } else if (strcmp(line, "clear") == 0) {
         sh_puts(clear_text);
     } else if (strcmp(line, "exit") == 0) {
-        sh_puts("bye!\n");
+        sh_puts(msg(UMSG_SH_BYE));
         nos_exit(0);
     } else {
-        sh_puts("command not found: ");
+        sh_puts(msg(UMSG_SH_COMMAND_NOT_FOUND));
         sh_puts(line);
         sh_puts("\n");
     }
@@ -411,10 +380,10 @@ void _start(void) {
     static char line[128];
     static int foreground_pid = 0;
 
-    sh_puts("NullOS shell — type 'help'\n");
+    sh_puts(msg(UMSG_SH_WELCOME));
 
     for (;;) {
-        sh_puts("> ");
+        sh_puts(msg(UMSG_SH_PROMPT));
         int n = nos_read(0, line, 127);
         if (n <= 0) continue;
         if (n == 1 && line[0] == 0x03) {
@@ -450,13 +419,13 @@ void _start(void) {
         for (char *p = line; *p; p++) { if (*p == '<' || *p == '>') { has_redirect = 1; break; } }
 
         if (bar && has_redirect) {
-            sh_puts("redirection can't be combined with a pipe yet\n");
+            sh_puts(msg(UMSG_SH_REDIRECT_WITH_PIPE));
         } else if (bar) {
             *bar = '\0';
             char *cmd1 = sh_trim(line);
             char *cmd2 = sh_trim(bar + 1);
             if (!*cmd1 || !*cmd2) {
-                sh_puts("usage: cmd1 | cmd2\n");
+                sh_puts(msg(UMSG_SH_USAGE_CMD1_CMD2));
             } else {
                 foreground_pid = 0;
                 run_pipeline(cmd1, cmd2);
@@ -467,11 +436,11 @@ void _start(void) {
         } else if (strncmp(line, "cat", 3) == 0 && (line[3] == ' ' || line[3] == '\0')) {
             char *arg = sh_trim(line + 3);
             if (!*arg) {
-                sh_puts("usage: cat <file>\n");
+                sh_puts(msg(UMSG_SH_USAGE_CAT_FILE));
             } else {
                 int pid = nos_exec("cat", arg);
                 if (pid < 0) {
-                    sh_puts("error: cat not found\n");
+                    sh_puts(msg(UMSG_SH_ERROR_CAT_NOT_FOUND));
                 } else {
                     foreground_pid = pid;
                     nos_wait(pid);   /* the output appears before the next prompt */
@@ -484,7 +453,7 @@ void _start(void) {
             if (alen > 0 && arg[alen - 1] == '\n') arg[alen - 1] = '\0';
             int pid = nos_exec("edit", arg);
             if (pid < 0) {
-                sh_puts("error: edit not found\n");
+                sh_puts(msg(UMSG_SH_ERROR_EDIT_NOT_FOUND));
             } else {
                 foreground_pid = pid;
                 nos_wait(pid);   /* blocks until the editor exits */

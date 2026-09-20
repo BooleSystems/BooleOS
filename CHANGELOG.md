@@ -45,6 +45,13 @@ at the time.
   English column. `msg()` never returns NULL (`"(?)"` for a bad ID) and
   works from the exception handler. See `docs/hal.md`.
 
+- `msg(ID)`, pass 2 (userland): `user/lib/messages.h/.c` (`umsg_id_t`,
+  `UMSG_*` IDs, its own `msg()` with the same never-NULL/`"(?)"` behavior)
+  and the shell (including the `fetch` logo and `help` text), the editor and
+  `cat` now fetch their output text from it; text is unchanged. Linked only
+  into `shell`, `edit` and `cat`. `selftest`/`forktest` (diagnostic output)
+  and `init`/`spintest` (one demo line each) are not migrated.
+
 ### Changed
 
 - Everything outside the drivers now goes through the HAL: `kmain`,

@@ -1,5 +1,6 @@
 /* nullos/user/edit.c — minimal nano-style text editor */
 #include "lib/nullos.h"
+#include "lib/messages.h"
 
 /* ── VGA colors (subset) ──────────────────────────────────────────── */
 #define VGA_BLACK      0
@@ -121,7 +122,7 @@ static void render(void) {
     /* ── help bar (line 23) ── */
     nos_gotoxy(0, HELP_ROW);
     nos_setcolor(VGA_BLACK, VGA_LIGHT_GREY);
-    const char *help = "^S save  ^Q quit  Arrows: navigate";
+    const char *help = msg(UMSG_ED_HELP_BAR);
     unsigned hlen = strlen(help);
     if (hlen > COLS - 1) hlen = COLS - 1;
     nos_write(1, help, hlen);
@@ -137,7 +138,7 @@ static void render(void) {
     static char sbar[80];
     unsigned si = 0;
     sbar[si++] = ' ';
-    const char *fname = filename[0] ? filename : "[no name]";
+    const char *fname = filename[0] ? filename : msg(UMSG_ED_NO_NAME);
     for (unsigned i = 0; fname[i] && si < COLS - 2; i++) sbar[si++] = fname[i];
     sbar[si++] = ' '; sbar[si++] = ' ';
     if (si < COLS - 2) { sbar[si++] = 'L'; sbar[si++] = ':'; }
@@ -232,9 +233,9 @@ void _start(void) {
             if (sc == 0x1F) {      /* Ctrl+S: S = scancode 0x1F */
                 const char *m;
                 if (file_fd >= 0 && nos_write_file(file_fd, buf, buf_len) == 0)
-                    m = "saved";
+                    m = msg(UMSG_ED_SAVED);
                 else
-                    m = "saved (no disk)";
+                    m = msg(UMSG_ED_SAVED_NO_DISK);
                 unsigned mlen = strlen(m);
                 if (mlen > 63) mlen = 63;
                 memcpy(status, m, mlen);

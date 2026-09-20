@@ -26,14 +26,15 @@ Last closed phase: **Phase 17** (Cleanup A).
 - Phase 17 — Cleanup A (audit fixes, technical debt, libnos/shell tools +
   reboot/shutdown, test/build infrastructure) — `0.17.0`.
 
-### Current work: Phase 18-A (HAL) — first pass done, uncommitted
+### Current work: Phase 18-A (HAL + msg(ID)) — HAL and msg passes 1-2 done
 
 `kernel/hal.h/.c` + `docs/hal.md`: thin wrappers over vga/keyboard/ata/
-power/Multiboot2, call sites outside the drivers migrated (build clean,
-no runtime test yet). `msg(ID)` pass 1 (kernel/) done (uncommitted):
-`kernel/messages.h/.c`, text verified identical via .rodata string-set diff.
-Still owed in 18-A: `msg(ID)` pass 2 (userland: own table, shell/edit/cat;
-selftest/forktest deliberately excluded); loose ends in `docs/TODO.md` (idt.c exception handler,
+power/Multiboot2, call sites outside the drivers migrated (committed, QEMU-tested).
+`msg(ID)` pass 1 (kernel/) committed: `kernel/messages.h/.c`, text verified
+identical via .rodata string-set diff.
+`msg(ID)` pass 2 (userland: shell/edit/cat, own table in
+`user/lib/messages.*`) done (this change, verified by .rodata/call-site diff); selftest/forktest/init/spintest
+not migrated on purpose. Still owed in 18-A: loose ends in `docs/TODO.md` (idt.c exception handler,
 wiring `boot_get_memory_map()` into `pmm_init`). Then 18-B (Safe Mode; must
 not rely on `process_spawn_user`/fork/exec/scheduler — see CLAUDE.md).
 Also owed to 18-B: the permanent "NullOS vX.Y.Z (anterior)" GRUB entry

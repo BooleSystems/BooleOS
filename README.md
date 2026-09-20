@@ -105,6 +105,7 @@ kernel/
     vmm.c             Virtual Memory Manager
     heap.c            kmalloc/kfree
 user/
+  lib/messages.c/h    msg(ID): userland output-text table (shell, edit, cat) — see docs/hal.md
   lib/nullos.c/h      Syscall wrapper library (libnos, "nos_*") — one thin wrapper per syscall, see docs/kernel.md
   init.c              simple user process: nos_write + nos_exit
   spintest.c          process without yield: validates IRQ0 preemption
