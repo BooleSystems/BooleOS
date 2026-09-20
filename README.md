@@ -24,10 +24,8 @@ See [CHANGELOG.md](CHANGELOG.md) for version history and [ROADMAP.md](ROADMAP.md
 |------|-----------|--------|
 | **0** | Bootloader (Multiboot2) + VGA text output | ✅ Done |
 | **1** | GDT, IDT, PIC, PIT (100 Hz), PS/2 keyboard | ✅ Done |
-| **2** | PMM (Physical Memory Manager) | ✅ Done |
-| **2b** | VMM with paging + heap (`kmalloc`/`kfree`) | ✅ Done |
-| **3a** | Process table + cooperative round-robin scheduler | ✅ Done |
-| **3b** | Per-process context switch, per-process CR3, exception handlers | ✅ Done |
+| **2** | PMM (Physical Memory Manager) + VMM with paging + kernel heap (`kmalloc`/`kfree`) | ✅ Done |
+| **3** | Process table + cooperative round-robin scheduler, per-process context switch, per-process CR3, exception handlers | ✅ Done |
 | **4** | TSS, ring 3 usermode, syscalls via `int 0x80` | ✅ Done |
 | **5** | Multiboot2 module parser, flat ramfs, ELF32 loader, `exec()`, `user/init` | ✅ Done |
 | **6** | Syscall return value in `eax`, preemption via IRQ0 (10-tick slice) | ✅ Done |

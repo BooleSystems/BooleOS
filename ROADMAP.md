@@ -12,8 +12,9 @@ There is deliberately no package-manager phase anywhere in this roadmap — it w
 |------|-----------|--------|---------|
 | **0** | Bootloader (Multiboot2) + VGA text output | ✅ Done | CHANGELOG `[0.0.1]`, `docs/kernel.md` |
 | **1** | GDT, IDT, PIC, PIT (100 Hz), PS/2 keyboard | ✅ Done | CHANGELOG `[0.1.0]`, `docs/kernel.md` |
-| **2** | PMM (Physical Memory Manager) | ✅ Done | CHANGELOG `[0.2.0]`, `docs/memory.md` |
+| **2** | PMM (Physical Memory Manager) + VMM with paging + kernel heap (`kmalloc`/`kfree`) | ✅ Done | CHANGELOG `[0.2.0]`, `docs/memory.md` |
 | **2b** | VMM with paging + heap (`kmalloc`/`kfree`) | ✅ Done | CHANGELOG `[0.2.0]`, `docs/memory.md` |
+| **3** | Process table + cooperative round-robin scheduler, per-process context switch, per-process CR3, exception handlers | ✅ Done | CHANGELOG `[0.3.0]`/`[0.4.0]`, `docs/scheduler.md` |
 | **3a** | Process table + cooperative round-robin scheduler | ✅ Done | CHANGELOG `[0.3.0]`, `docs/scheduler.md` |
 | **3b** | Per-process context switch, per-process CR3, exception handlers | ✅ Done | CHANGELOG `[0.4.0]`, `docs/scheduler.md` |
 | **4** | TSS, ring 3 usermode, syscalls via `int 0x80` | ✅ Done | CHANGELOG `[0.4.0]`, `docs/kernel.md`, `docs/syscalls.md` |

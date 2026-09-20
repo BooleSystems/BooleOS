@@ -20,24 +20,31 @@ static void zero_4kb(uint32_t addr) {
     for (i = 0; i < 1024; i++) p[i] = 0;
 }
 
-static void map_page_early(uint32_t virt, uint32_t phys, uint32_t flags) {
+/* Returns 0 on success, VMM_ERR_NOMEM if the static page-table pool
+   (PAGE_TABLE_START..PAGE_TABLE_END) is exhausted; nothing is mapped
+   in that case. */
+static int map_page_early(uint32_t virt, uint32_t phys, uint32_t flags) {
     uint32_t di = virt >> 22;
     uint32_t ti = (virt >> 12) & 0x3FF;
     pde_t *pd = (pde_t *)PAGE_DIR_ADDR;
     if (!(pd[di] & VMM_PRESENT)) {
-        if (pt_next >= PAGE_TABLE_END) return;
+        if (pt_next >= PAGE_TABLE_END) return VMM_ERR_NOMEM;
         zero_4kb(pt_next);
         pd[di] = pt_next | VMM_KERNEL;
         pt_next += PAGE_SIZE;
     }
     pte_t *pt = (pte_t *)(pd[di] & 0xFFFFF000);
     pt[ti] = (phys & 0xFFFFF000) | (flags & 0xFFF) | VMM_PRESENT;
+    return 0;
 }
 
-void vmm_map_page(uint32_t virt, uint32_t phys, uint32_t flags) {
-    map_page_early(virt, phys, flags);
+int vmm_map_page(uint32_t virt, uint32_t phys, uint32_t flags) {
+    int r = map_page_early(virt, phys, flags);
+    if (r != 0)
+        return r;
     if (paging_active)
         __asm__ volatile ("invlpg (%0)" : : "r"(virt) : "memory");
+    return 0;
 }
 
 void vmm_unmap_page(uint32_t virt) {
@@ -100,20 +107,33 @@ void vmm_switch_directory(uint32_t cr3) {
     __asm__ volatile ("mov %0, %%cr3" : : "r"(cr3) : "memory");
 }
 
-void vmm_map_user_page(uint32_t pd_phys, uint32_t virt, uint32_t phys) {
+int vmm_map_user_page(uint32_t pd_phys, uint32_t virt, uint32_t phys) {
+    /* The first 8MB (PDE 0/1) is the kernel's identity map, cloned into
+       every process's directory. A user mapping there would either
+       overwrite a shared kernel PTE or hand ring 3 access to kernel
+       memory, so refuse it outright. */
+    if (virt < 0x800000)
+        return VMM_ERR_RANGE;
+
     uint32_t di = virt >> 22;
     uint32_t ti = (virt >> 12) & 0x3FF;
     pde_t *pd = (pde_t *)pd_phys;   /* pd_phys is identity-mapped (<8MB) */
 
     if (!(pd[di] & VMM_PRESENT)) {
         uint32_t pt_phys = pmm_alloc_page();
-        if (!pt_phys || pt_phys >= 0x800000) return;
+        if (!pt_phys) return VMM_ERR_NOMEM;
+        if (pt_phys >= 0x800000) {
+            /* can't be zeroed/written through its physical address */
+            pmm_free_page(pt_phys);
+            return VMM_ERR_NOMEM;
+        }
         zero_4kb(pt_phys);
         pd[di] = pt_phys | VMM_PRESENT | VMM_WRITABLE | VMM_USER;
     }
 
     pte_t *pt = (pte_t *)(pd[di] & 0xFFFFF000);
     pt[ti] = (phys & 0xFFFFF000) | VMM_PRESENT | VMM_WRITABLE | VMM_USER;
+    return 0;
 }
 
 uint32_t vmm_create_directory(void) {

@@ -49,6 +49,24 @@ uint8_t pci_config_read8(uint8_t bus, uint8_t device, uint8_t function, uint8_t 
 static pci_device_t g_devices[PCI_MAX_DEVICES];
 static uint32_t     g_device_count = 0;
 
+/* Number of real BARs for a header type. Bit 7 of the raw value only
+   says "multi-function device", it is NOT part of the layout type, so
+   it is masked off first: 0x80 is a general device (type 0) that
+   happens to be multi-function, not a bridge.
+     type 0 (general device): BAR0-BAR5
+     type 1 (PCI-PCI bridge): BAR0-BAR1
+     type 2 (CardBus bridge): none in the BAR0 sense (its 0x10 dword is a
+                              single memory base register, reported as one)
+   Any other type is unknown, so no BARs are assumed. */
+static int pci_bar_count(uint8_t header_type) {
+    switch (header_type & 0x7F) {
+    case 0x00: return 6;
+    case 0x01: return 2;
+    case 0x02: return 1;
+    default:   return 0;
+    }
+}
+
 static void scan_function(uint8_t bus, uint8_t device, uint8_t function) {
     uint16_t vendor_id = pci_config_read16(bus, device, function, 0x00);
     if (vendor_id == 0xFFFF) return;   /* no device in this slot */
@@ -65,8 +83,15 @@ static void scan_function(uint8_t bus, uint8_t device, uint8_t function) {
     d->class_code  = pci_config_read8 (bus, device, function, 0x0B);
     d->header_type = pci_config_read8 (bus, device, function, 0x0E);
 
+    /* Only read the BARs this header layout actually has; the rest stay
+       zero. Past them, the same config-space offsets mean something else
+       (e.g. a PCI-PCI bridge's bus numbers / I/O base+limit), which is
+       not a BAR and must not be reported as one. */
+    int nbars = pci_bar_count(d->header_type);
     for (int i = 0; i < 6; i++)
-        d->bar[i] = pci_config_read32(bus, device, function, (uint8_t)(0x10 + i * 4));
+        d->bar[i] = (i < nbars)
+            ? pci_config_read32(bus, device, function, (uint8_t)(0x10 + i * 4))
+            : 0;
 
     g_device_count++;
 }
@@ -139,13 +164,14 @@ void pci_print_list(void) {
         print_hex_padded(d->header_type, 2);
         vga_puts("\n");
 
+        int nbars = pci_bar_count(d->header_type);
         int any_bar = 0;
-        for (int b = 0; b < 6; b++)
+        for (int b = 0; b < nbars; b++)
             if (d->bar[b] != 0) { any_bar = 1; break; }
 
         if (any_bar) {
             vga_puts("        bars:");
-            for (int b = 0; b < 6; b++) {
+            for (int b = 0; b < nbars; b++) {
                 if (d->bar[b] == 0) continue;
                 vga_puts(" bar");
                 vga_putchar((char)('0' + b));

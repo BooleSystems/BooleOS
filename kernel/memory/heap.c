@@ -47,7 +47,11 @@ static int heap_expand(uint32_t size) {
             vga_puts("heap: ERROR out of physical pages!\n");
             return 0;
         }
-        vmm_map_page(heap_end, phys, VMM_KERNEL);
+        if (vmm_map_page(heap_end, phys, VMM_KERNEL) != 0) {
+            pmm_free_page(phys);
+            vga_puts("heap: ERROR out of page tables!\n");
+            return 0;
+        }
         heap_end += PAGE_SIZE;
     }
     return 1;

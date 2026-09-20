@@ -11,6 +11,21 @@ static uint8_t process_stacks[PROCESS_MAX][PROCESS_STACK_SIZE] __attribute__((al
 static process_t *current_process = 0;
 static uint32_t next_pid = 1;
 
+/* Atomic "return the next pid and increment". The increment is a
+   read-modify-write, so a timer tick landing in the middle of it could
+   hand the same pid to two processes.
+   Saves EFLAGS and restores it instead of doing a bare cli/sti:
+   process_fork() calls this from inside its own cli...sti slot-claim
+   section, and an unconditional sti here would re-enable interrupts in
+   the middle of that section. */
+static uint32_t alloc_pid(void) {
+    uint32_t flags;
+    __asm__ volatile ("pushf; pop %0; cli" : "=r"(flags) : : "memory");
+    uint32_t pid = next_pid++;
+    __asm__ volatile ("push %0; popf" : : "r"(flags) : "memory", "cc");
+    return pid;
+}
+
 static uint32_t *stack_push(uint32_t *stack, uint32_t value) {
     stack--;
     *stack = value;
@@ -84,7 +99,7 @@ process_t *process_spawn(const char *name, process_entry_t entry, void *arg, voi
     for (uint32_t i = 0; i < PROCESS_MAX; i++) {
         process_t *process = &process_table[i];
         if (process->state == PROCESS_UNUSED) {
-            process->pid = next_pid++;
+            process->pid = alloc_pid();
             copy_name(process->name, name);
 
             process->state = PROCESS_READY;
@@ -120,7 +135,7 @@ process_t *process_spawn_user(const char *name, uint32_t user_entry,
         process_t *p = &process_table[i];
         if (p->state != PROCESS_UNUSED) continue;
 
-        p->pid        = next_pid++;
+        p->pid        = alloc_pid();
         copy_name(p->name, name);
         /* PROCESS_BLOCKED here means "reserved but not runnable yet" —
            see the start_blocked parameter doc in process.h. */
@@ -191,7 +206,7 @@ process_t *process_fork(process_t *parent, const uint32_t *saved_frame) {
     for (uint32_t i = 0; i < PROCESS_MAX; i++) {
         if (process_table[i].state == PROCESS_UNUSED) {
             slot = (int)i;
-            process_table[i].pid = next_pid++;
+            process_table[i].pid = alloc_pid();
             /* PROCESS_BLOCKED: reserved but not runnable yet — cr3 and
                the kernel stack below aren't built. Only flipped to
                PROCESS_READY once the child is fully formed, so
@@ -261,7 +276,11 @@ process_t *process_fork(process_t *parent, const uint32_t *saved_frame) {
             uint32_t *dst = (uint32_t *)child_phys;
             for (uint32_t w = 0; w < PAGE_SIZE / 4; w++) dst[w] = src[w];
 
-            vmm_map_user_page(child_cr3, virt, child_phys);
+            if (vmm_map_user_page(child_cr3, virt, child_phys) != 0) {
+                pmm_free_page(child_phys);   /* not mapped, so the unwind below can't find it */
+                failed = 1;
+                break;
+            }
         }
     }
 

@@ -34,8 +34,54 @@ at the time.
   stubs left during `nightly` development, resolved at each version's
   final polish (per the new CLAUDE.md documentation rule).
 
+### Fixed
+
+Phase 17-A (mechanical fixes from the old audit) — all 6 items done.
+Confirmed via manual QEMU testing: clean build, boot, `selftest` 13/13,
+and the `[PCI]` boot output identical to before the change.
+
+- `kernel/memory/pmm.c`: `pmm_init()` computed the page count as
+  `(1024 + mem_upper) * 1024 / PAGE_SIZE`, which overflows `uint32_t`
+  for a huge `mem_upper` and wraps to a tiny `total_pages`, underflowing
+  `total_pages - 256`. Now `256 + mem_upper / 4` (same value, no
+  overflow), and freeing high memory is skipped with a warning when
+  `total_pages <= 256`.
+- `kernel/fs/fat16.c`: `fat16_init()` now rejects a BPB with
+  `sectors_per_cluster == 0` (printing the reason) before it is used as
+  a divisor, instead of dividing by zero.
+- `kernel/process.c`: `next_pid++` (three places) now goes through
+  `alloc_pid()`, which saves/restores EFLAGS around the increment
+  instead of a bare cli/sti, since `process_fork()` calls it from
+  inside its own cli section.
+- `kernel/drivers/pci.c`/`pci.h`: only the BARs a header type really
+  has are read and printed (type 0: 6, type 1 PCI-PCI bridge: 2,
+  type 2 CardBus: 1), with the multi-function bit (0x80) masked off
+  first; the rest of `bar[]` stays 0.
+
+- `kernel/memory/vmm.c`/`vmm.h`: `vmm_map_page()` and
+  `vmm_map_user_page()` now return `int` (0 = success, `VMM_ERR_RANGE`
+  / `VMM_ERR_NOMEM` on failure) instead of failing silently as `void`;
+  `map_page_early()` reports an exhausted page-table pool.
+  `vmm_map_user_page()` also rejects `virt < 0x800000` (the kernel's
+  shared identity map) and frees a page-table page it can't use.
+  Every call site checks the result: `heap_expand()` frees the page and
+  returns 0; `exec()`'s user-stack loop prints an error and returns 0;
+  `elf_load()` returns -1; `process_fork()` unwinds via its existing
+  `failed` path. The three `vmm_map_user_page` sites also free the
+  just-allocated physical page instead of leaking it.
+
 ### Changed
 
+- `ROADMAP.md`: the granular table's phase "2" is now a parent row with
+  only "2b" as its child (no "2a" row — that never existed historically).
+- `README.md`: "Completed phases" table now shows only whole phases —
+  the old rows 2/2b and 3a/3b are merged into one row each ("2": PMM +
+  VMM/paging + heap; "3": process table/scheduler + context
+  switch/exceptions). No phase count appears in the README's prose, so
+  nothing else needed correcting.
+- `ROADMAP.md`: granular table uses the parent-row + child-rows style
+  for old lettered phases too: new parent rows "2" and "3", children
+  "2a"/"2b" and "3a"/"3b".
 - `CLAUDE.md`: new sections/rules for the `nightly`/`main` branch
   strategy, `-nightly` version suffix, sub-phases, HAL, centralized
   `msg()` text output, key=value system config file, and Safe Mode;

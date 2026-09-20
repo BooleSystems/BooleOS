@@ -54,7 +54,13 @@ process_t *exec(const char *name, uint32_t cwd_cluster, int start_blocked) {
             vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
             return 0;
         }
-        vmm_map_user_page(cr3, va, phys);
+        if (vmm_map_user_page(cr3, va, phys) != 0) {
+            pmm_free_page(phys);
+            vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+            vga_puts("[EXEC] failed to map user stack\n");
+            vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+            return 0;
+        }
     }
 
     uint32_t user_esp = USER_STACK_VIRT + USER_STACK_PAGES * PAGE_SIZE;

@@ -59,12 +59,17 @@ Prior to Phase 15, Phases 14.1/14.2 were PATCH-only intermediate work
 a `make debug` target) — see CHANGELOG.md `[0.14.1]`/`[0.14.2]` and
 `docs/testing.md`.
 
-**Next planned work: Phase 17 (Cleanup A), starting with sub-phase
-17-A** (mechanical fixes from the old audit: `pmm.c` underflow guard,
-`vmm_map_*` real error returns, atomic `next_pid++`, `fat16_init`
-`sectors_per_cluster` check, `pci.c` bridge BAR label,
-`vmm_map_user_page` `virt < 0x800000` rejection). Nothing of Phase 17
-has been implemented yet.
+**Current work: Phase 17 (Cleanup A).** Sub-phase **17-A is complete**
+(mechanical audit fixes: `pmm_init` page-count overflow/underflow,
+`fat16_init` `sectors_per_cluster` check, atomic `next_pid` via
+`alloc_pid()`, `vmm_map_page`/`vmm_map_user_page` int returns with
+checked call sites, `virt < 0x800000` rejection, `pci.c` BARs per
+header type) — see CHANGELOG.md `[Unreleased]` → Fixed. Confirmed
+manually: build, boot, `selftest` 13/13, `[PCI]` output unchanged.
+**Next: 17-B** (known technical debt: `edit.c` Shift, `fat16_write_file`
+dirent-lookup duplication, `process_spawn`/`process_spawn_user` slot
+race — see ROADMAP.md). The version stays `0.17.0-nightly` until all of
+Phase 17 closes.
 
 Future roadmap: see `ROADMAP.md` for the full per-phase breakdown and
 priority order (Phases 17–31, ending at the v1.0.0 milestone, which
@@ -327,6 +332,18 @@ manager phase was deliberately decided against — don't add one.
   no existing caller's behavior changed.
 
 ## Known technical debt
+
+- **`pt_next` in `kernel/memory/vmm.c` starts at `PAGE_TABLE_START`,
+  but `vmm_init()` builds the identity map by writing two page tables
+  directly at `PAGE_TABLE_START` and `+PAGE_SIZE` without advancing
+  it** (found during 17-A; `vmm_init()` doesn't go through
+  `map_page_early()`). The first time `map_page_early()` has to create
+  a NEW page table (a `vmm_map_page()` to a PDE that isn't present yet)
+  it would hand out `PAGE_TABLE_START` again and overwrite the 0-4MB
+  identity map. Harmless today: the heap is 4-8MB, inside the
+  already-present PDE 1, so that path never triggers. Not fixed (out of
+  17-A's scope); fix by initializing `pt_next` to `PAGE_TABLE_START +
+  2 * PAGE_SIZE`.
 
 - **`user/edit.c`'s raw-scancode input has no Shift support** — typing
   an uppercase letter or a shifted symbol (`%`, `|`, `!`, etc.) while

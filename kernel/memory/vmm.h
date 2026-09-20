@@ -12,11 +12,16 @@
 #define VMM_USER       0x04  // Accessible from userland
 #define VMM_KERNEL     (VMM_PRESENT | VMM_WRITABLE)
 
+// Error codes returned (negated) by the mapping functions
+#define VMM_ERR_RANGE  (-1)  // virt is inside the kernel's first 8MB (user mappings)
+#define VMM_ERR_NOMEM  (-2)  // no memory for a new page table
+
 // Initializes paging and enables the CR0.PG bit
 void vmm_init(void);
 
-// Maps a virtual address -> physical
-void vmm_map_page(uint32_t virt, uint32_t phys, uint32_t flags);
+// Maps a virtual address -> physical in the kernel directory.
+// Returns 0 on success, VMM_ERR_NOMEM if the page-table pool is exhausted.
+int vmm_map_page(uint32_t virt, uint32_t phys, uint32_t flags);
 
 // Unmaps a virtual address
 void vmm_unmap_page(uint32_t virt);
@@ -34,8 +39,10 @@ uint32_t vmm_create_directory(void);
 void vmm_switch_directory(uint32_t cr3);
 
 // Maps virt->phys in page directory pd_phys with user flags (RW + USER)
-// pd_phys must be within the first 8MB (identity-mapped)
-void vmm_map_user_page(uint32_t pd_phys, uint32_t virt, uint32_t phys);
+// pd_phys must be within the first 8MB (identity-mapped).
+// Returns 0 on success, or a negative VMM_ERR_* code on failure (nothing
+// was mapped). The caller still owns `phys` on failure and must free it.
+int vmm_map_user_page(uint32_t pd_phys, uint32_t virt, uint32_t phys);
 
 // Resolves virt->phys in an arbitrary page directory (identity-mapped)
 uint32_t vmm_get_phys_from_dir(uint32_t pd_phys, uint32_t virt);

@@ -57,7 +57,10 @@ int elf_load(uint32_t cr3, const void *elf_data, uint32_t *entry_point) {
 
             /* Zero the physical page (identity-mapped, <8MB) */
             memzero8((uint8_t *)phys, PAGE_SIZE);
-            vmm_map_user_page(cr3, va, phys);
+            if (vmm_map_user_page(cr3, va, phys) != 0) {
+                pmm_free_page(phys);
+                return -1;
+            }
         }
 
         /* Copy file data into mapped virtual pages.

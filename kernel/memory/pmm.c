@@ -70,7 +70,12 @@ void pmm_free_page(uint32_t addr) {
 
 void pmm_init(uint32_t mem_upper) {
     uint32_t i;
-    uint32_t total_pages = (1024 + mem_upper) * 1024 / PAGE_SIZE;
+    /* mem_upper is KB above the first 1MB, so the total page count is
+       256 (the first 1MB) + mem_upper/4. The old form,
+       (1024 + mem_upper) * 1024 / PAGE_SIZE, overflowed uint32_t for a
+       huge mem_upper and wrapped to a tiny total_pages, which then
+       underflowed the (total_pages - 256) below. */
+    uint32_t total_pages = 256 + mem_upper / (PAGE_SIZE / 1024);
     if (total_pages > PMM_MAX_PAGES) total_pages = PMM_MAX_PAGES;
     pmm_total = total_pages;
     pmm_used  = 0;
@@ -79,7 +84,10 @@ void pmm_init(uint32_t mem_upper) {
     for (i = 0; i < PMM_BITMAP_SIZE; i++) get_bitmap()[i] = 0xFFFFFFFF;
 
     vga_puts("   pmm: [2] freeing high mem\n");
-    pmm_mark_free(0x100000, (total_pages - 256) * PAGE_SIZE);
+    if (total_pages > 256)
+        pmm_mark_free(0x100000, (total_pages - 256) * PAGE_SIZE);
+    else
+        vga_puts("   pmm: WARNING no memory above 1MB to free\n");
 
     vga_puts("   pmm: [3] marking used regions\n");
     pmm_mark_used(0x100000, 0x300000);

@@ -16,7 +16,7 @@ typedef struct {
     uint8_t  subclass;
     uint8_t  prog_if;
     uint8_t  header_type;
-    uint32_t bar[6];   /* raw BAR0-BAR5, offsets 0x10-0x24 */
+    uint32_t bar[6];   /* raw BARs from offset 0x10; only as many as the header type has (0: 6, 1: 2, 2: 1), the rest are 0 */
 } pci_device_t;
 
 /* Raw configuration space access. offset must be within 0x00-0xFF;

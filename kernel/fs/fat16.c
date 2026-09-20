@@ -2,6 +2,7 @@
 #include "fat16.h"
 #include "../drivers/ata.h"
 #include "../memory/heap.h"
+#include "../drivers/vga.h"
 #include <stdint.h>
 
 /* ── BPB (BIOS Parameter Block) — fixed on-disk layout ─────── */
@@ -137,6 +138,13 @@ int fat16_init(void) {
     if (bpb->bytes_per_sector != 512) return 0;
     if (bpb->fat_size_sectors == 0)   return 0;
     if (bpb->num_fats == 0)           return 0;
+    if (bpb->sectors_per_cluster == 0) {
+        /* would divide by zero in the cluster count below and break every
+           cluster -> LBA computation afterward; fail before any state is
+           set. The caller prints "no FAT16 disk" right after this. */
+        vga_puts("invalid BPB (sectors_per_cluster=0), ");
+        return 0;
+    }
 
     g_sectors_per_cluster = bpb->sectors_per_cluster;
     g_num_fats            = bpb->num_fats;
