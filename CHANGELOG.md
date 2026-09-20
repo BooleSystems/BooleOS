@@ -24,7 +24,48 @@ at the time.
 
 ## [Unreleased]
 
+### Added
+
+- **`exec()` runs programs from FAT16**, not only from the ramfs baked into the
+  ISO. The program is found with `vfs_open()` — the lookup every file open
+  uses: the ramfs first (so a disk file can never shadow a system program),
+  then FAT16 resolved against the caller's cwd, so `run dir/prog.elf` works. A
+  FAT16 program is read from disk whole by its directory-entry size (at most
+  192 KB) into a temporary heap buffer, loaded and freed; the ramfs path stays
+  zero-copy. No change to the on-disk format.
+- **SDK for writing programs from outside the kernel tree:** `sdk/hello.c` (the
+  template) and `sdk/Makefile`, which builds every `*.c` to `build/<name>.elf`
+  reusing the system's own compiler flags, linker script (`user/link.ld`) and
+  library sources, and `make inject PROG=<name>` to copy the result into
+  `build/disk.img` without rebuilding the ISO. New guide `docs/sdk.md` for
+  someone writing a program (rules, build, running it, the library, `printf`).
+- **`printf` family in libnos** (`user/lib/nosstdio.c`): `printf`, `vprintf`,
+  `sprintf`, `snprintf`, `vsnprintf` with the standard libc names — `%d %i %u %x
+  %X %c %s %p %%`, flags `- 0 + space`, width and precision (also `*`), `h`/`hh`/`l`.
+  No floating point, no 64-bit, no `#`. A separate object linked only into the
+  programs that use it.
+- **`make test-elf`** (`tools/test_elf_load.c`): a host-side test of the real
+  `kernel/elf.c` on every built user program, plus truncation, header fuzzing and
+  crafted hostile headers.
+- selftest: four new tests (exec of a program that exists only on FAT16;
+  malformed, truncated and missing programs rejected; the printf family) —
+  22 tests.
+
 ### Changed
+
+- `elf_load()` takes the file size and no longer trusts the image: the program
+  header table and every segment's file data are checked against it, segments
+  must lie in `[0x00800000, 0x02000000)`, and all checks use 64-bit arithmetic so
+  a 32-bit field cannot wrap. All headers are validated before anything is
+  mapped. This also closes the "`elf_load` never receives the file size / `page_end`
+  overflow" item of the Phase 28 plan.
+- The kernel heap is grown to 256 KB when it is initialized, and `heap_expand()`
+  takes exactly the physical page at `heap_end` (`pmm_alloc_page_at()`, new)
+  instead of the lowest free one — the heap's virtual addresses are the
+  identity-mapped physical ones (see Fixed). The heap can no longer grow once
+  processes exist, a limit recorded in `PROGRESS.md` for Phase 22.
+- `tools/Makefile`: the user ELFs have the `user` target as an order-only
+  prerequisite, so any target that needs them builds `user/` first.
 
 - Documentation split by audience: the new `docs/quickstart.md` covers only
   "download a release zip, install QEMU, run one command" (no toolchain, no
@@ -51,6 +92,20 @@ at the time.
   merged into `main` gets an annotated `vX.Y.Z` tag at the same moment, and right
   after the tag `make snapshot` is run on the tagged tree and `tools/prev/` is
   committed back to `nightly` before the next phase starts.
+
+### Fixed
+
+- A kernel page fault (`#PF` inside `vmm_get_user_phys_from_dir`) when the heap
+  had to grow after a process existed. `heap_expand()` mapped `heap_end` — an
+  address inside the identity-mapped 4–8 MB range — to the lowest free physical
+  page, which repointed the kernel's view of the physical page at that address;
+  if it held a process's page directory or page table, the kernel read another
+  page's contents through it. Latent since the heap and processes shared that
+  range; the first `kmalloc` large enough to grow the heap after boot (an
+  `exec()` from FAT16) exposed it.
+- `make run` (or any target that needs the user programs) right after `make
+  clean` failed with "No rule to make target ../build/user/init.elf"; it now builds
+  `user/` first.
 
 ## [0.18.0] - Phase 18: Safety/portability foundation (HAL, msg(ID), Safe Mode)
 
