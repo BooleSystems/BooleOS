@@ -350,6 +350,22 @@
   de uma vez)? merge de `nightly` pra `main` feito? Só considere a
   fase "concluída" quando todos esses pontos estiverem sincronizados
   no mesmo commit.
+- **Tag de release (convenção formal, sem precisar perguntar caso a
+  caso):** toda versão fechada e mergeada em `main` recebe uma tag
+  anotada `vX.Y.Z` (`git tag -a`, mensagem curta com versão e nome da
+  fase) no mesmo momento do merge, apontando pro commit de fechamento em
+  `main`, e a tag é enviada pro `origin`.
+- **Snapshot da release anterior (`tools/prev/`):** logo depois de criar
+  a tag, e ANTES de começar a próxima fase, rodar `make snapshot` NA
+  ÁRVORE DA TAG (um worktree ou checkout limpo da tag, com `make clean &&
+  make` antes — nunca na árvore de trabalho de `nightly`) e commitar o
+  `tools/prev/` resultante de volta em `nightly`. Assim a entrada
+  "previous release" do GRUB da versão seguinte é de fato a release
+  anterior e não um build da própria versão em andamento (isso já
+  aconteceu no fechamento da 0.18.0: `tools/prev/` tinha um nightly de
+  si mesmo e teve que ser refeito a partir da tag v0.17.1). Se o alvo
+  `snapshot` ainda não existir na tag (releases anteriores à 0.18.0),
+  copiar `build/nullos.elf` e `build/ramfs.img` pro mesmo layout à mão.
 - NUNCA invente um número de versão pra uma fase que não existe ou
   não foi pedida — se não tiver certeza do número de fase correto,
   pergunte antes de decidir, não assuma.

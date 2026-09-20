@@ -22,6 +22,15 @@ called out inline rather than silently "corrected", and `[0.11.0]`–
 Phase 10), not a version string that ever actually appeared in the repo
 at the time.
 
+## [Unreleased]
+
+### Changed
+
+- `CLAUDE.md`: two release conventions made formal — every version closed and
+  merged into `main` gets an annotated `vX.Y.Z` tag at the same moment, and right
+  after the tag `make snapshot` is run on the tagged tree and `tools/prev/` is
+  committed back to `nightly` before the next phase starts.
+
 ## [0.18.0] - Phase 18: Safety/portability foundation (HAL, msg(ID), Safe Mode)
 
 ### Added
