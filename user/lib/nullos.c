@@ -225,6 +225,13 @@ int nos_getcwd(char *buf, unsigned len) {
     return ret;
 }
 
+int nos_pci_find(unsigned vendor, unsigned device) {
+    int ret;
+    __asm__ volatile ("int $0x80"
+        : "=a"(ret) : "0"(SYS_PCI_FIND), "b"(vendor), "c"(device) : "memory");
+    return ret;
+}
+
 int nos_reboot(void) {
     int ret;
     __asm__ volatile ("int $0x80"

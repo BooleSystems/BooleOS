@@ -44,6 +44,12 @@
 - `process_exit()` (`process.c`) is what wakes a waiter: after marking the exiting process `PROCESS_UNUSED`, it scans the table for any `PROCESS_BLOCKED` process whose `waiting_for_pid` matches the pid that just exited, and flips only those to `PROCESS_READY` — a process waiting on one specific child is never woken by an unrelated sibling's exit. No `cli`/`sti` guard around this scan, matching `process_wake_sleepers()` right below it in the same file (also an unprotected full-table scan) — `process_exit()` only ever runs synchronously inside `sys_exit()`/`sys_kill()`, never from IRQ context, so there's no concurrent mutator to race against here.
 - `nos_wait()` (libnos) and every existing caller (the shell waiting on `edit`, `selftest.c` reaping a forked child) are unaffected — same syscall number, same blocking-until-that-pid-exits behavior, just without the 100ms polling latency and busy-wakes.
 
+## Atomic slot reservation and pids (Phase 17)
+
+- `alloc_pid()` (`process.c`) hands out pids; it saves and restores EFLAGS (`irq_save()`/`irq_restore()`) instead of a bare `cli`/`sti`, because `process_fork()` calls it from inside its own `cli` section and a bare `sti` would re-enable interrupts too early.
+- `process_spawn_user()` reserves its slot atomically like `fork()`: under saved-EFLAGS `cli` it picks a free slot, marks it `PROCESS_BLOCKED`, assigns the pid and resets `waiting_for_pid`; it then fills in every field and only publishes `PROCESS_READY` last (or leaves it `PROCESS_BLOCKED` for `start_blocked`). This closes two races: two spawns picking the same free slot, and the scheduler running a slot whose `esp`/`cr3` weren't built yet.
+- The old kernel-task path `process_spawn()`/`scheduler_spawn()` (and `scheduler_task_bootstrap()`) was dead code and was removed.
+
 ## Spawning a process "not ready yet" (`process_make_ready`, Phase 16)
 
 - `process_spawn_user()` gained a `start_blocked` parameter, threaded through `scheduler_spawn_user()`/`exec()` from their sole callers (mirroring exactly how `cwd_cluster` was threaded through in Phase 15). `0` (used by plain `SYS_EXEC`, and by `kmain`'s boot-time `exec("shell", 0, 0)`) is the original behavior: the new process is `PROCESS_READY` immediately.

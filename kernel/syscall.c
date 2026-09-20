@@ -908,6 +908,7 @@ uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t ar
         case SYS_GETCWD:       return sys_getcwd((char *)arg1, arg2);
         case SYS_REBOOT:       return sys_reboot();
         case SYS_SHUTDOWN:     return sys_shutdown();
+        case SYS_PCI_FIND:     return (uint32_t)pci_find_device((uint16_t)arg1, (uint16_t)arg2, 0, 0, 0);
         default:
             vga_set_color(VGA_YELLOW, VGA_BLACK);
             vga_puts("[SYSCALL] unknown number: ");

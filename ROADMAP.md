@@ -37,11 +37,11 @@ restructuring after Phase 16) use a hyphen and an uppercase letter
 | **14** | Kernel memory-safety hardening: userland pointer validation (4 confirmed ring 3 → ring 0 bugs), `kmalloc()` overflow fix, `sys_open`/`sys_create`/`sys_exec`/`sys_getarg` string validation; version centralized in `kernel/version.h` | ✅ Done | CHANGELOG `[0.14.0]`, `docs/security.md` |
 | **15** | FAT16 subdirectories: `mkdir`/`cd`, path-aware `touch`/`edit`/`ls`, shared `dir_lookup()`/`dir_insert()`/`resolve_path()` core, `SYS_CHDIR`/`SYS_MKDIR`, `exec()` inherits `cwd_cluster` | ✅ Done | CHANGELOG `[0.15.0]`, `docs/filesystem.md` |
 | **16** | Inter-process pipes (`SYS_PIPE`/`SYS_EXEC_PIPE`) and a real blocking `waitpid()`; shell gains `cmd1 \| cmd2` | ✅ Done | CHANGELOG `[0.16.0]`, `docs/pipes.md`, `docs/scheduler.md` |
-| **17** | Cleanup A — mechanical fixes from the old audit, known technical debt, libnos/shell tool consolidation, test/build infrastructure | 🔜 Planned | below |
-| **17-A** | Mechanical fixes from the old audit | 🔜 Planned | below |
-| **17-B** | Known technical debt | 🔜 Planned | below |
-| **17-C** | libnos consolidation + shell tools | 🔜 Planned | below |
-| **17-D** | Test/build infrastructure | 🔜 Planned | below |
+| **17** | Cleanup A — mechanical fixes from the old audit, known technical debt, libnos/shell tool consolidation, test/build infrastructure | ✅ Done | CHANGELOG `[0.17.0]`, `README.md` |
+| **17-A** | Mechanical fixes from the old audit | ✅ Done | CHANGELOG `[0.17.0]` |
+| **17-B** | Known technical debt | ✅ Done | CHANGELOG `[0.17.0]` |
+| **17-C** | libnos consolidation + shell tools | ✅ Done | CHANGELOG `[0.17.0]` |
+| **17-D** | Test/build infrastructure | ✅ Done | CHANGELOG `[0.17.0]` |
 | **18** | Safety/portability foundation (HAL + Safe Mode) | 🔜 Planned | below |
 | **18-A** | HAL (hardware abstraction layer) | 🔜 Planned | below |
 | **18-B** | Safe Mode | 🔜 Planned | below |
@@ -79,39 +79,9 @@ The table above gives the one-line summary of each planned phase. This section e
 
 History of the numbering: the phases that used to be listed here as 17–22 (copy-on-write `fork()`, `e1000`, AHCI, xHCI, framebuffer/GUI, syscall deprecation) were renumbered as part of a full restructuring of the roadmap, and are now Phases 20, 23, 24, 25, 26 and 27 respectively. Earlier renumberings (FAT16 subdirectories landing as Phase 15, pipes + real `waitpid()` as Phase 16) are recorded in CHANGELOG.md `[0.15.0]`/`[0.16.0]`.
 
-### Phase 17 — Cleanup A
+### Phase 17 — Cleanup A (closed in 0.17.0)
 
-Mechanical work on code that already exists, no new feature.
-
-- **Goal:** close accumulated debt before building new capability.
-- **Depends on:** none.
-
-- **17-A — Mechanical fixes from the old audit:**
-  - `pmm.c`: guard against underflow when `total_pages <= 256`
-  - `vmm_map_page`/`vmm_map_user_page`: return a real error instead of failing silently as `void`
-  - `process.c`: make `next_pid++` atomic (same `cli`/`sti` pattern already used for process slot allocation)
-  - `fat16_init`: validate `sectors_per_cluster != 0` (avoids a divide-by-zero on a corrupted boot sector)
-  - `pci.c`: fix the BAR label on bridge/CardBus devices
-  - `vmm_map_user_page`: reject `virt < 0x800000` (protects the kernel region shared between processes)
-
-- **17-B — Known technical debt:**
-  - Shift bug in `edit.c` (same bug as the shell's, fixed there, never replicated in the editor's raw-scancode path)
-  - Unify the duplicated dirent lookup in `fat16_write_file` with the central `dir_lookup()`/`resolve_path()` created in Phase 15
-  - Unprotected race in `process_spawn`/`process_spawn_user` (same class of race already fixed in `fork()`, never replicated here)
-
-- **17-C — libnos consolidation + shell tools:**
-  - Basic functions in libnos: `memcpy`/`memset`/`strlen`/`strcmp`/`strncmp`/`itoa` (today each program likely reimplements these by hand)
-  - `pwd`/`SYS_GETCWD` (pending since Phase 15)
-  - `>`/`<` redirection in the shell (the `stdin_redirect`/`stdout_redirect` infrastructure from Phase 16 already exists, so this is nearly free)
-  - `cat <file>` (today `cat` only serves as a pipe sink; extending it to read a file is trivial)
-  - Real `reboot`/`shutdown` — via keyboard-controller reset (port 0xFE) or ACPI (the PIIX4 is already detected in PCI enumeration)
-
-- **17-D — Test/build infrastructure:**
-  - Extend `selftest`: an automated pipe with two real processes (today `forktest | cat` was only tested manually), `mkdir`/`cd` at 2+ levels of depth, `waitpid` with multiple children, PCI checking a specific device (not just "found >= 1")
-  - Actually test `docs/setup.md` on Windows (macOS is out of scope, no machine to test on)
-  - Mark or remove `tools/run_qemu.sh` as obsolete (it doesn't attach a disk, which is confusing)
-  - General sweep for forgotten TODO/FIXME in the repo
-  - Makefile target to inject a `.elf` straight into `disk.img` via `mcopy` (host-side tool, no kernel risk) — the base for a faster dev flow than the full Phase 19
+Done; see the table above and CHANGELOG `[0.17.0]`. One item carried over, not blocking: **test `docs/setup.md` end-to-end on Windows** (no machine available; macOS is out of scope). Do it whenever a Windows environment is available, or in Phase 30 (polish).
 
 ### Phase 18 — Safety/portability foundation (HAL + Safe Mode)
 
@@ -180,7 +150,7 @@ Mechanical work on code that already exists, no new feature.
 ### Phase 24 — AHCI driver (modern SATA)
 
 - **Goal:** disk access on a real SATA controller via AHCI, not just the legacy emulated IDE.
-- **Approach:** requires switching the QEMU machine to `-machine q35` (the ICH9 chipset exposes AHCI; the default i440FX chipset doesn't). AHCI uses memory-mapped registers (BAR5) with a "command list" + "FIS" structure, quite different from the current ATA PIO interface. The VFS interface (`vfs_read`/`vfs_write`) shouldn't need to change — only the driver underneath it.
+- **Approach:** requires switching the QEMU machine to `-machine q35` (the ICH9 chipset exposes AHCI; the default i440FX chipset doesn't). **Also update `user/selftest.c`'s Intel 440FX check (`8086:1237`, test "PCI: Intel 440FX host bridge") to q35's host bridge IDs — it fails there by design.** AHCI uses memory-mapped registers (BAR5) with a "command list" + "FIS" structure, quite different from the current ATA PIO interface. The VFS interface (`vfs_read`/`vfs_write`) shouldn't need to change — only the driver underneath it.
 - **Main risk / note:** switching QEMU machine type also changes which PCI devices get enumerated (different chipset = different IDs) — this is expected, not a bug, but can be confusing if tested without knowing this in advance.
 - **Depends on:** Phase 11 (PCI). Recommended after Phase 23 (networking), since networking doesn't require a chipset switch — this isolates the environment change to a single phase.
 

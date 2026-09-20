@@ -17,9 +17,9 @@
 #ifndef NULLOS_VERSION_H
 #define NULLOS_VERSION_H
 
-#define NULLOS_VERSION      "0.17.0-nightly"
-#define NULLOS_PHASE        "16"
-#define NULLOS_PHASE_DESC   "Pipes and real waitpid"
+#define NULLOS_VERSION      "0.17.0"
+#define NULLOS_PHASE        "17"
+#define NULLOS_PHASE_DESC   "Cleanup A"
 
 // Composed strings so callers don't have to concatenate these by hand.
 #define NULLOS_BANNER       "NullOS v" NULLOS_VERSION " - Phase " NULLOS_PHASE ": " NULLOS_PHASE_DESC

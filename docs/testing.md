@@ -40,6 +40,8 @@ needing to reproduce the bug by hand first.
 
 ## What each test checks
 
+**18 tests in total** (numbering below: the cleanup note is item 19).
+
 1. **Memory** — calls `SYS_MEMINFO` and checks it returns a plausible
    process count. There is no userland-facing syscall that allocates a
    raw heap block directly, so this exercises the closest available
@@ -121,17 +123,43 @@ needing to reproduce the bug by hand first.
     the other end — that's the whole point of `SYS_EXEC_PIPE` — so
     it isn't something this single-process automated test can
     substitute for; see "Manual test: a real pipeline" below instead.
-14. **Cleanup** — not a PASS/FAIL check: there's no delete/unlink/rmdir
-    syscall yet, so `st_root.txt`, `selftest_dir/`, and the two
-    files inside it are left on disk. Noted in the output as a known
+14. **`SYS_WRITE` > 128 bytes accumulates** — writes 2100 bytes as two
+    `nos_write()` calls (600 + 1500, crossing the first 2048-byte
+    cluster) to `st_big.txt` and reads them all back; the regression
+    test for the chunked-write data loss (`fat16_write_at`).
+15. **PCI: Intel 440FX host bridge** — `nos_pci_find(0x8086, 0x1237)`
+    (`SYS_PCI_FIND`). **Expected to fail once Phase 24 switches QEMU to
+    `-machine q35`** (different host bridge IDs): update the IDs then;
+    the generic "≥ 1 device" test (7) is unaffected.
+16. **Two-process pipeline** — a `fork()`ed child writes a known string
+    into pipe 1, `cat` is launched with `SYS_EXEC_PIPE` (stdin ← pipe 1,
+    stdout → pipe 2), and the parent reads pipe 2 to EOF and compares.
+    Each process closes the pipe ends it doesn't use, otherwise EOF never
+    arrives (see [pipes.md](pipes.md)). Automates what `forktest | cat`
+    only covered by hand.
+17. **`waitpid` with 3 children** — three `fork()`s; child *i* yields a
+    different number of times (child 0 longest) and reports
+    `C<i>:<its pid>` through its own pipe. The parent waits for the
+    slowest child first, then the others; for each pid it checks the
+    process is really gone (`SYS_KILL` on it fails) and that the result
+    read from that child's pipe matches the pid `fork()` returned. A pipe
+    carries the result because there is no exit-code syscall.
+18. **`mkdir`/`cd` 3 levels deep** — `/ST_D1/ST_D2/ST_D3`: `pwd`
+    (`SYS_GETCWD`) checked after every step, a file created/read at the
+    bottom, the file opened by its 3-component path from the root, and
+    `cd ..` back to `/` one level at a time (cwd always restored to the
+    root, even on failure).
+19. **Cleanup** — not a PASS/FAIL check: there's no delete/unlink/rmdir
+    syscall yet, so `st_root.txt`, `st_big.txt`, `selftest_dir/` and the
+    files inside it, and `st_d1/st_d2/st_d3/` with `st_deep.txt`, are left
+    on disk. Noted in the output as a known
     limitation, not a failure.
 
 ## Manual test: a real pipeline (`cmd1 | cmd2`)
 
-Automated `selftest` coverage stops at single-process pipe mechanics
-(tests 12-13 above) — a real pipeline needs two independent processes
-launched via `SYS_EXEC_PIPE`, which is exactly what the shell's
-`cmd1 | cmd2` exercises. None of the shell's builtins (`ps`, `echo`,
+The automated two-process pipeline (test 16 above) covers a `fork()`
+writer feeding an exec'd `cat`; the shell's `cmd1 | cmd2` additionally
+exercises two processes both launched via `SYS_EXEC_PIPE`. None of the shell's builtins (`ps`, `echo`,
 ...) can sit on either side of a real pipe (they write straight to VGA
 via syscalls that never touch fd 1), so `user/cat.c` was added
 specifically as a minimal pipe sink, and `forktest` — which already
@@ -164,9 +192,9 @@ see EOF and exit.
   "can this name be opened at the root" instead.
 - Test 1 doesn't perform a real heap allocation, since no syscall
   exposes `kmalloc()` to userland.
-- Tests 12-13 can't cover a real two-process pipeline (that needs
-  `SYS_EXEC_PIPE`, which spawns an independent process) — see "Manual
-  test: a real pipeline" above for the coverage that does.
+- Tests 12-13 are single-process; test 16 covers the two-process case.
+- There is no exit-code syscall, so test 17 passes each child's result
+  through a pipe.
 
 ## Relevant files
 

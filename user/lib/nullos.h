@@ -80,6 +80,10 @@ int nos_exec_pipe(const char *name, int stdin_fd, int stdout_fd);
    or -1 (buf too small, or the path couldn't be reconstructed). */
 int nos_getcwd(char *buf, unsigned len);
 
+/* SYS_PCI_FIND — 1 if a PCI device with this vendor/device ID was found
+   during enumeration, 0 if not (used by selftest to check a specific device). */
+int nos_pci_find(unsigned vendor, unsigned device);
+
 /* SYS_REBOOT / SYS_SHUTDOWN — do not return on success; -1 if the request
    had no effect (the kernel prints why). */
 int nos_reboot(void);

@@ -68,6 +68,10 @@ Because there's no `fork()` in this launch path, the "someone must close their o
 4. **The shell closes both `read_fd` and `write_fd` in its own `fd_table`.** This is not optional: if skipped, the shell's own lingering reference means the write end's refcount never reaches 0 even after `cmd1` (the real writer) exits and closes its own copy — so `cmd2` never sees real EOF and blocks forever waiting for data that will never come. This is the textbook Unix "close unused pipe ends in the parent" bug, adapted to a model with no `fork()` in this particular path.
 5. `nos_wait(pid1)` then `nos_wait(pid2)` — real blocking (see `docs/scheduler.md`), so the shell uses no CPU while either stage runs.
 
+## File redirection reuses the same path (Phase 17)
+
+`cmd < file` / `cmd > file` open the file in the shell and pass its fd to `SYS_EXEC_PIPE` as `stdin_fd`/`stdout_fd`; the kernel copies that fd row exactly like a pipe end (`vfs_dup()` is a no-op for FAT16 fds). `sys_exec_pipe()` also clears the global `exec_arg`, since it carries no argument itself and a leftover one from an earlier plain `exec()` would otherwise reach the new process's `SYS_GETARG` (e.g. `cat` opening a stale file name instead of reading its redirected stdin).
+
 ## Manual test: `forktest | cat`
 
 None of the shell's existing builtins (`ps`, `echo`, ...) can sit on either side of a real pipe — they write straight to VGA via syscalls that never go through fd 1 at all (e.g. `SYS_PS` calls `process_dump()` directly), so there was nothing suitable already in the tree to demonstrate an actual two-process pipeline end to end. `user/cat.c` was added for exactly this: it reads all of stdin and writes it to stdout, the minimal real pipe sink. `forktest` already writes several lines via `nos_write(1, ...)`, making it a usable (if incidental) pipe source. See `docs/testing.md` for the exact manual test steps and expected output.

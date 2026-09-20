@@ -172,10 +172,16 @@ make run
 make clean
 ```
 
-`tools/run_qemu.sh` is a separate, older standalone script that boots
-`build/nullos.iso` directly — it does **not** attach `disk.img`, so
-prefer `make run`/`make debug` unless you specifically want to boot
-without the disk.
+`make run-reboot-test` is the same as `make run` but without `-no-reboot`,
+so the `reboot` command really restarts the guest (`run`/`debug` keep the
+flag on purpose: it makes QEMU exit on a triple fault instead of silently
+rebooting, and it also turns a guest reset into a shutdown).
+
+`make inject FILE=path/to/file [NAME=name.ext]` copies a file into the
+root of `build/disk.img` with `mcopy`, without rebuilding the ISO. It is
+host-side infrastructure only: the kernel still cannot `exec()` programs
+from FAT16 (that arrives with Phase 19), so it is for putting test files on
+the disk quickly. Don't run it while QEMU has the image open.
 
 ## Debugging with GDB
 

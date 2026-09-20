@@ -28,6 +28,31 @@ static void st_fail(const char *name, const char *reason) {
     g_tests_run++;
 }
 
+/* True if the caller's current directory is exactly `want`
+   ("/" or e.g. "/ST_D1/ST_D2" — 8.3 uppercase, see SYS_GETCWD). */
+static int st_cwd_is(const char *want) {
+    char b[64];
+    int n = nos_getcwd(b, sizeof(b));
+    return n >= 0 && strcmp(b, want) == 0;
+}
+
+/* Builds "C<idx>:<pid>\n" into out (>= 32 bytes) and returns its length.
+   Used by the multi-child waitpid test: each child reports this string
+   about itself, and the parent rebuilds the expected one from the pid
+   fork() returned. */
+static unsigned int st_child_result(char *out, unsigned int idx, unsigned int pid) {
+    char nbuf[16];
+    char *num = nos_uitoa(pid, nbuf, sizeof(nbuf));
+    unsigned int at = 0;
+    out[at++] = 'C';
+    out[at++] = (char)('0' + idx);
+    out[at++] = ':';
+    while (*num) out[at++] = *num++;
+    out[at++] = '\n';
+    out[at] = '\0';
+    return at;
+}
+
 /* ── the test suite itself ────────────────────────────────────────── */
 
 void _start(void) {
@@ -171,6 +196,26 @@ void _start(void) {
             st_pass("PCI enumeration found at least 1 device");
         else
             st_fail("PCI enumeration found at least 1 device", "device count == 0");
+    }
+
+    /* 7b. PCI: a SPECIFIC, stable device — the Intel 440FX host bridge
+       (vendor 0x8086, device 0x1237) that QEMU's default "pc" machine
+       always has, and that already shows up in the boot log.
+
+       ###################################################################
+       # WARNING — THIS TEST WILL (EXPECTEDLY) BREAK IN PHASE 24 (AHCI). #
+       # Phase 24 switches QEMU to `-machine q35`, whose host bridge is  #
+       # a different chip (Intel 82G33, 8086:29c0), so 8086:1237 is no   #
+       # longer enumerated. That is NOT a kernel bug: whoever does       #
+       # Phase 24 must update the vendor/device IDs below (see also      #
+       # docs/TODO.md). The generic ">= 1 device" test above stays valid.#
+       ################################################################### */
+    {
+        if (nos_pci_find(0x8086, 0x1237))
+            st_pass("PCI: Intel 440FX host bridge (8086:1237) present [QEMU -machine pc only]");
+        else
+            st_fail("PCI: Intel 440FX host bridge (8086:1237) present [QEMU -machine pc only]",
+                     "not found (expected if QEMU no longer runs -machine pc, e.g. Phase 24's q35)");
     }
 
     /* 8-11. Phase 15: FAT16 subdirectories. Everything below runs on
@@ -432,12 +477,217 @@ void _start(void) {
         }
     }
 
-    /* 16. Cleanup — not counted as PASS/FAIL, just a note: there is no
+    /* 16. Two-process pipeline, automated (Phase 17-D). Until now
+       "forktest | cat" was only ever run by hand in the shell; the pipe
+       tests above use both ends inside ONE process. Here the two ends
+       really belong to different processes:
+           writer  = a fork()ed child (inherits the pipe fds via vfs_dup)
+           reader  = "cat", launched with SYS_EXEC_PIPE, stdin <- pipe 1,
+                     stdout -> pipe 2
+           parent  = reads pipe 2 to EOF and compares with what the writer sent.
+       EOF only arrives once EVERY copy of a write end is closed, so each
+       process closes what it doesn't use (this is the same discipline
+       docs/pipes.md describes for the shell). */
+    {
+        const char *tname = "two-process pipe (fork writer -> exec cat -> parent)";
+        const char *msg   = "NullOS two-process pipe test 4242\n";
+        unsigned int mlen = strlen(msg);
+        int p1[2] = { -1, -1 }, p2[2] = { -1, -1 };
+        int wpid = -1, cpid = -1;
+        const char *why = 0;
+
+        if (nos_pipe(p1) != 0) {
+            why = "nos_pipe() #1 failed";
+        } else if (nos_pipe(p2) != 0) {
+            why = "nos_pipe() #2 failed";
+            nos_close(p1[0]); nos_close(p1[1]);
+        } else {
+            wpid = nos_fork();
+            if (wpid == 0) {
+                /* writer child: keep only p1's write end */
+                nos_close(p1[0]); nos_close(p2[0]); nos_close(p2[1]);
+                nos_write(p1[1], msg, mlen);
+                nos_close(p1[1]);
+                nos_exit(0);
+            }
+            if (wpid < 0) {
+                why = "fork() for the writer failed";
+            } else {
+                cpid = nos_exec_pipe("cat", p1[0], p2[1]);
+                if (cpid < 0) why = "nos_exec_pipe(\"cat\") failed";
+            }
+            /* the parent's own copies must go before reading to EOF */
+            nos_close(p1[0]); nos_close(p1[1]); nos_close(p2[1]);
+
+            if (!why) {
+                static char rbuf[128];
+                unsigned int got = 0;
+                memset(rbuf, 0, sizeof(rbuf));
+                for (;;) {
+                    int r = nos_read(p2[0], rbuf + got, (unsigned)sizeof(rbuf) - 1 - got);
+                    if (r <= 0) break;   /* 0 = EOF: writer and cat are both done */
+                    got += (unsigned int)r;
+                    if (got >= sizeof(rbuf) - 1) break;
+                }
+                if (got != mlen || memcmp(rbuf, msg, mlen) != 0)
+                    why = "data read from the pipeline output differs from what the writer sent";
+            }
+            nos_close(p2[0]);
+            if (wpid > 0) nos_wait(wpid);
+            if (cpid > 0) nos_wait(cpid);
+        }
+
+        if (why) st_fail(tname, why);
+        else     st_pass(tname);
+    }
+
+    /* 17. waitpid with several children (Phase 17-D). fork() three
+       children; child i yields a DIFFERENT number of times (child 0 the
+       longest) so they finish in the opposite order to how they were
+       forked, then reports "C<i>:<its own pid>" through its own pipe.
+       The parent waits for the SLOWEST child first, then the others, and
+       for each specific pid checks that (a) the pid is really gone
+       afterwards (SYS_KILL on it fails), and (b) the result read from
+       THAT child's pipe is the one built from THAT pid — not just "all
+       three ended". (There is no exit-code syscall yet, hence a pipe.) */
+    {
+        enum { NCH = 3 };
+        const char *tname = "waitpid with 3 children: each pid collected with its own result";
+        int pfd[NCH][2];
+        int cpid[NCH];
+        const char *why = 0;
+        int i, j, forked = 0;
+
+        for (i = 0; i < NCH; i++) { pfd[i][0] = pfd[i][1] = -1; cpid[i] = -1; }
+
+        for (i = 0; i < NCH && !why; i++)
+            if (nos_pipe(pfd[i]) != 0) why = "nos_pipe() failed";
+
+        for (i = 0; i < NCH && !why; i++) {
+            int r = nos_fork();
+            if (r == 0) {
+                char m[32];
+                unsigned int ml = st_child_result(m, (unsigned)i, nos_getpid());
+                for (j = 0; j < NCH; j++) {
+                    nos_close(pfd[j][0]);
+                    if (j != i) nos_close(pfd[j][1]);
+                }
+                for (j = 0; j < (NCH - i) * 3; j++) nos_yield();
+                nos_write(pfd[i][1], m, ml);
+                nos_close(pfd[i][1]);
+                nos_exit(0);
+            }
+            if (r < 0) { why = "fork() failed"; break; }
+            cpid[i] = r;
+            forked++;
+        }
+
+        /* the parent's write ends are never used */
+        for (i = 0; i < NCH; i++) if (pfd[i][1] >= 0) nos_close(pfd[i][1]);
+
+        if (!why) {
+            static const int order[NCH] = { 0, 2, 1 };   /* slowest child first */
+            for (j = 0; j < NCH && !why; j++) {
+                int k = order[j];
+                char want[32], got[32];
+                unsigned int wl = st_child_result(want, (unsigned)k, (unsigned)cpid[k]);
+                nos_wait(cpid[k]);
+                if (nos_kill((uint32_t)cpid[k]) != -1) {
+                    why = "a pid is still alive after nos_wait() returned for it";
+                    break;
+                }
+                memset(got, 0, sizeof(got));
+                int n = nos_read(pfd[k][0], got, sizeof(got) - 1);
+                if (n != (int)wl || memcmp(got, want, wl) != 0)
+                    why = "a child's result does not match its own pid";
+            }
+        }
+
+        for (i = 0; i < NCH; i++) if (pfd[i][0] >= 0) nos_close(pfd[i][0]);
+        if (why) {   /* don't leave children behind on failure */
+            for (i = 0; i < forked; i++) nos_wait(cpid[i]);
+            st_fail(tname, why);
+        } else {
+            st_pass(tname);
+        }
+    }
+
+    /* 18. mkdir/cd three levels deep (Phase 17-D): /ST_D1/ST_D2/ST_D3.
+       Checks pwd after every step, a file created and read at the
+       deepest level, that a multi-component path from the root resolves
+       to it, and that "cd .." walks back up to "/" one level at a time.
+       Directory names are 8.3-distinct from every other name here.
+       Assumes the earlier tests left cwd at the root. */
+    {
+        const char *tname   = "mkdir/cd 3 levels deep, file at the bottom, cd .. back to /";
+        const char *content = "NullOS selftest deep data 9012\n";
+        unsigned int clen   = strlen(content);
+        const char *why     = 0;
+        int depth = 0;   /* successful cd's below the root, for cleanup */
+
+        static const char *dirs[3]  = { "st_d1", "st_d2", "st_d3" };
+        static const char *paths[4] = { "/", "/ST_D1", "/ST_D1/ST_D2", "/ST_D1/ST_D2/ST_D3" };
+
+        if (!st_cwd_is("/")) why = "cwd is not the root before the test starts";
+
+        for (int i = 0; i < 3 && !why; i++) {
+            if (nos_mkdir(dirs[i]) != 0)      why = "nos_mkdir() failed";
+            else if (nos_chdir(dirs[i]) != 0) why = "nos_chdir() into the new directory failed";
+            else {
+                depth++;
+                if (!st_cwd_is(paths[i + 1])) why = "pwd is wrong after cd into a level";
+            }
+        }
+
+        if (!why) {
+            int fd = nos_create("st_deep.txt");
+            if (fd < 0) why = "nos_create() at the deepest level failed";
+            else {
+                nos_close(fd);
+                int wfd = nos_open("st_deep.txt");
+                if (wfd < 0 || nos_write_file(wfd, content, clen) != 0)
+                    why = "writing the file at the deepest level failed";
+                if (wfd >= 0) nos_close(wfd);
+            }
+        }
+        if (!why) {
+            char rbuf[64];
+            memset(rbuf, 0, sizeof(rbuf));
+            int rfd = nos_open("st_deep.txt");
+            int n = (rfd >= 0) ? nos_read(rfd, rbuf, sizeof(rbuf) - 1) : -1;
+            if (rfd >= 0) nos_close(rfd);
+            if (n != (int)clen || memcmp(rbuf, content, clen) != 0)
+                why = "content read back at the deepest level does not match";
+        }
+
+        while (depth > 0) {   /* also the failure-path cleanup: always end at the root */
+            if (nos_chdir("..") != 0) { if (!why) why = "nos_chdir(\"..\") failed"; break; }
+            depth--;
+            if (!why && !st_cwd_is(paths[depth])) why = "pwd is wrong after cd ..";
+        }
+
+        if (!why) {   /* from the root, by a multi-component relative path */
+            char rbuf[64];
+            memset(rbuf, 0, sizeof(rbuf));
+            int rfd = nos_open("st_d1/st_d2/st_d3/st_deep.txt");
+            int n = (rfd >= 0) ? nos_read(rfd, rbuf, sizeof(rbuf) - 1) : -1;
+            if (rfd >= 0) nos_close(rfd);
+            if (n != (int)clen || memcmp(rbuf, content, clen) != 0)
+                why = "the file is not reachable by its 3-component path from the root";
+            else if (nos_open("st_deep.txt") >= 0)
+                why = "the deep file leaked into the root";
+        }
+
+        if (why) st_fail(tname, why);
+        else     st_pass(tname);
+    }
+
+    /* 19. Cleanup — not counted as PASS/FAIL, just a note: there is no
        delete/unlink/rmdir syscall yet, so st_root.txt, st_big.txt,
-       selftest_dir/ (and the two files inside it) are left on disk. Harmless: the
+       selftest_dir/ (and the two files inside it) and st_d1/st_d2/st_d3/ (with st_deep.txt) are left on disk. Harmless: the
        next run just re-creates/overwrites everything by the same names. */
     st_puts("[INFO] cleanup: no delete/unlink/rmdir syscall exists yet -"
-            " st_root.txt, st_big.txt and selftest_dir/ (with its files) left on disk (harmless)\n");
+            " st_root.txt, st_big.txt, selftest_dir/ and st_d1/ (with their files) left on disk (harmless)\n");
 
     st_puts("Selftest: ");
     char nbuf[16];

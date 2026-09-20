@@ -22,7 +22,7 @@ called out inline rather than silently "corrected", and `[0.11.0]`–
 Phase 10), not a version string that ever actually appeared in the repo
 at the time.
 
-## [Unreleased]
+## [0.17.0] - Phase 17: Cleanup A (audit fixes, libnos/shell tools, test/build infrastructure)
 
 ### Added
 
@@ -61,6 +61,19 @@ at the time.
   isn't in the PCI table). `pci_find_device()`. Syscalls `SYS_REBOOT` (31) and
   `SYS_SHUTDOWN` (32), `nos_reboot()`/`nos_shutdown()`, shell `reboot`/
   `shutdown`.
+- `user/selftest.c`: four new tests (18 total): a two-process pipeline
+  (a `fork()`ed writer and `cat` launched with `SYS_EXEC_PIPE`, parent
+  compares the output), `waitpid` with three children (each pid collected
+  with the result that child reported, and gone afterwards), `mkdir`/`cd`
+  three levels deep (pwd at every level, a file at the bottom, `cd ..` back
+  to `/`), and a check for the Intel 440FX host bridge (`8086:1237`) next to
+  the generic PCI count. The 440FX test is expected to fail once Phase 24
+  moves QEMU to `-machine q35` (see `docs/TODO.md`).
+- `SYS_PCI_FIND` (33) / `nos_pci_find(vendor, device)`: 1 if a device with
+  that ID is in the PCI table, 0 if not (`pci_find_device()` for userland).
+- `tools/Makefile`: `make inject FILE=... [NAME=...]` copies a file into the
+  root of `build/disk.img` with `mcopy`, without rebuilding the ISO.
+  Host-side only — the kernel still can't `exec()` from FAT16 (Phase 19).
 - `tools/Makefile`: `make run-reboot-test` runs QEMU without `-no-reboot`, so
   `reboot` really restarts the guest. `run` and `debug` keep `-no-reboot` on
   purpose (post-mortem state on a triple fault; it also turns a guest reset
@@ -68,62 +81,32 @@ at the time.
 
 ### Changed
 
-- `PROGRESS.md`: consolidated from 411 to ~170 lines. Closed phases are now
-  one line each and architecture decisions are tightened to their essential
-  point with links to `docs/`.
+- `kernel/version.h`: `NULLOS_VERSION` `"0.17.0"`, `NULLOS_PHASE` `"17"`,
+  `NULLOS_PHASE_DESC` `"Cleanup A"`.
 - `user/shell.c`: `run` has a single implementation, `cmd_run()`, shared by
   the foreground path and `run_command()`; it trims and validates the name.
-- `CLAUDE.md`: Safe Mode rules now name `process_spawn_user` instead of the
-  deleted `process_spawn` (same rule, function name updated).
-- `ROADMAP.md`: the two Safe Mode references (Phase 18-B) to
-  `process_spawn` now name `process_spawn_user`, matching the removal
-  of `process_spawn()`.
-- `docs/scheduler.md`: removed the two stale statements about
-  `process_spawn()` (the kernel-task path, and the "still claims a free
-  slot without cli/sti" limitation) now that the function is gone and
-  `process_spawn_user()` reserves its slot atomically.
-- `PROGRESS.md`: removed the "`process_spawn()`/`process_spawn_user()`
-  scan for a free slot without cli/sti" bullet from Known technical debt
-  (resolved in 17-B), and the resolved `edit.c` raw-scancode Shift
-  bullet; reworded the `process_exit()` leak note to name
-  `process_spawn_user()`.
-- Documentation consistency pass after 17-A: `README.md` said "planned
-  Phases 17–22" (now 17–31; no other numeric phase count exists in its
-  prose). Sub-phase notation for the NEW phases (17 onward) normalized
-  to `X-A` (hyphen, uppercase) everywhere — 22-c, 23-a..c, 25-a..d and
-  31-a..d were lowercase — and `ROADMAP.md` gained a note explaining
-  that historical phases (2b, 3a, 3b) keep their original notation.
-- `docs/TODO.md`: stubs added for the 17-A code changes whose write-up
-  in `docs/*.md` is still owed.
-- `ROADMAP.md`: the granular table's phase "2" is now a parent row with
-  only "2b" as its child (no "2a" row — that never existed historically).
-- `README.md`: "Completed phases" table now shows only whole phases —
-  the old rows 2/2b and 3a/3b are merged into one row each ("2": PMM +
-  VMM/paging + heap; "3": process table/scheduler + context
-  switch/exceptions). No phase count appears in the README's prose, so
-  nothing else needed correcting.
-- `ROADMAP.md`: granular table uses the parent-row + child-rows style
-  for old lettered phases too: parent rows "2" and "3", children "2b"
-  and "3a"/"3b".
-- `CLAUDE.md`: new sections/rules for the `nightly`/`main` branch
-  strategy, `-nightly` version suffix, sub-phases, HAL, centralized
-  `msg()` text output, key=value system config file, and Safe Mode;
-  serial-mirroring, exec()/fork() threading and docs-verification rules
-  extended.
-- `kernel/version.h`: `NULLOS_VERSION` `"0.16.0"` -> `"0.17.0-nightly"`
-  (work toward 0.17.0; `NULLOS_PHASE`/`NULLOS_PHASE_DESC` intentionally
-  still point at Phase 16 until Phase 17 actually lands).
 - `ROADMAP.md`: replaced the Phases 17–22 plan with the restructured
   Phases 17–31 sequence (Cleanup A, HAL + Safe Mode, SDK, COW fork,
   `unlink`/`rmdir`, `process_exit()` memory release, `e1000`, AHCI,
   xHCI, framebuffer/GUI, syscall deprecation, audit pass 2, polish,
   DOOM prerequisites, DOOM port / v1.0.0). Old Phases 17–22 renumbered
-  to 20, 23, 24, 25, 26, 27. Priority order rewritten with dependency
-  notes. No package-manager phase, by decision.
-- `PROGRESS.md`: "Current status" now tracks Phase 17 (Cleanup A)
-  sub-phase progress (17-A and 17-B closed, next 17-C); roadmap range
-  updated to 17–31; the `process_exit()` leak note now references
-  Phases 20/22.
+  to 20, 23, 24, 25, 26, 27, with a granular one-row-per-phase/sub-phase
+  table (historical lettered phases as parent + child rows). No
+  package-manager phase, by decision.
+- `README.md`: "Completed phases" table shows only whole phases (the old
+  rows 2/2b and 3a/3b merged into one row each); the "planned phases" range
+  is 17–31.
+- `CLAUDE.md`: new sections/rules for the `nightly`/`main` branch strategy,
+  `-nightly` version suffix, sub-phases, HAL, centralized `msg()` text
+  output, key=value system config file, and Safe Mode; serial-mirroring,
+  exec()/fork() threading and docs-verification rules extended; Safe Mode
+  rules name `process_spawn_user`.
+- `PROGRESS.md`: consolidated from 411 to ~150 lines (closed phases one
+  line each, decisions tightened with links to `docs/`).
+- `docs/`: `memory.md`, `filesystem.md`, `scheduler.md`, `pci.md`,
+  `kernel.md`, `shell.md`, `pipes.md`, `testing.md`, `syscalls.md` updated
+  for everything above; `docs/scheduler.md` no longer describes the removed
+  `process_spawn()`.
 
 ### Fixed
 
@@ -157,21 +140,21 @@ at the time.
   `failed` path. The three `vmm_map_user_page` sites also free the
   just-allocated physical page instead of leaking it.
 
-- `kernel/keyboard.c`, `user/edit.c` (Phase 17-B): Shift in the editor.
+- `kernel/keyboard.c`, `user/edit.c`: Shift in the editor.
   The raw scancode path (`SYS_READ_RAW`) now carries a Shift bit
   (bit 9, next to Ctrl's bit 8), because the kernel consumes the Shift
   make/break scancodes itself and `edit.c` could never see them; the
   editor selects a new `sc_map_shift[]` table from it, so Shift+5 gives
   `%`, Shift+\ gives `|` and Shift+letter gives the capital.
 
-- `kernel/fs/fat16.c` (Phase 17-B): `fat16_write_file()` again refuses
+- `kernel/fs/fat16.c`: `fat16_write_file()` again refuses
   a directory entry (`ATTR_DIRECTORY`) — the Phase 15 switch to the
   shared `dir_lookup()` had dropped the old loop's directory skip — and
   no longer re-reads the dirent sector `dir_lookup()` just left in
   `dir_buf`. (The "duplicated dirent lookup" tech-debt item was already
   resolved by Phase 15; only these two leftovers remained.)
 - `kernel/process.c`, `kernel/scheduler.c/h`, `kernel/process.h`
-  (Phase 17-B): `process_spawn_user()` now reserves its slot atomically
+ : `process_spawn_user()` now reserves its slot atomically
   (interrupts off via saved EFLAGS, slot marked `PROCESS_BLOCKED`, pid
   and `waiting_for_pid` reset in the same section), fills in every
   field, and only then publishes `PROCESS_READY` (or leaves it
@@ -204,6 +187,9 @@ at the time.
 
 ### Removed
 
+- `tools/run_qemu.sh`: it booted the ISO without attaching `disk.img` and had
+  no users besides one hint in `tools/setup_env.sh` (now points at `make
+  run`); its mentions in `docs/setup.md` and `docs/filesystem.md` are gone.
 - `process_spawn()`, `scheduler_spawn()` and the now-unused
   `scheduler_task_bootstrap()`: dead code (no callers anywhere, no
   future roadmap phase depends on them).

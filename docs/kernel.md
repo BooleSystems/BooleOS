@@ -28,6 +28,20 @@
 - **Build wiring** (`user/Makefile`): `lib/nullos.c` compiles once to `$(BUILD)/lib/nullos.o`; every program's link line now includes that object alongside its own `.c` file (`link.ld`'s section rules are glob-based, so linking a second object needs no linker-script change).
 - Adding a syscall wrapper for a *new* syscall means adding one function to `nullos.c`/`nullos.h` — no changes to any program that doesn't need the new syscall.
 
+- **String/memory helpers** (`user/lib/nullos.c/h`): `memcpy`/`memset`/`memmove`/`memcmp`/`strlen`/`strcmp`/`strncmp` with the standard libc names and signatures on purpose, because GCC may itself emit calls to `memcpy`/`memset`/`memmove` (struct copies, loop-idiom recognition) and those calls must resolve; `memcpy`/`memset`/`memmove` use `rep movsb`/`rep stosb` rather than C loops so GCC can't turn the implementation into a call to itself. `nos_uitoa(value, buf, size)` formats an unsigned number. The per-program copies of `strlen`/`uitoa`/`strcmp` were removed.
+- `nos_getcwd`, `nos_reboot`, `nos_shutdown`, `nos_pci_find` are the wrappers for `SYS_GETCWD` (30), `SYS_REBOOT` (31), `SYS_SHUTDOWN` (32), `SYS_PCI_FIND` (33).
+
+## Power: reboot and shutdown (`kernel/power.c/h`)
+
+- `power_reboot()`: waits (bounded) for the 8042 input buffer to empty, then writes `0xFE` to port `0x64` (pulses the CPU reset line). If the machine is still running afterwards it prints "reboot failed: keyboard-controller reset had no effect" and returns -1.
+- `power_shutdown()`: finds the PIIX4 power-management function (8086:7113) with `pci_find_device()`, reads the PM I/O base from PCI config offset 0x40 (mask `0xFFC0`) and writes `0x2000` (SLP_EN, SLP_TYP 0 = S5 on QEMU) to `PM1a_CNT` (base + 4). Prints "shutdown not supported on this hardware" when the PIIX4 isn't in the PCI table.
+- **Testing under QEMU:** `make run` passes `-no-reboot` and `-no-shutdown` (post-mortem state on a triple fault). `-no-reboot` turns a guest reset into a shutdown, so under `make run` `reboot` looks like `shutdown` (window "Stopped"). Use `make run-reboot-test` (no `-no-reboot`) to see a real reboot.
+
+## Keyboard and console details (Phase 17)
+
+- `SYS_READ_RAW` values carry a Shift bit (bit 9, next to Ctrl's bit 8), because the kernel consumes the Shift make/break scancodes itself; `user/edit.c` picks its own `sc_map_shift[]` table from it (deliberately a second copy of the kernel's shifted table — kernel and userland only share macros-only headers).
+- Serial mirror of an erasing backspace: `vga_putchar('\b')` blanks the cell on screen, so its serial mirror sends `\b \b` (nothing if VGA erased nothing); a raw `\b` only moves a terminal's cursor left. `sys_read()` no longer echoes a backspace on an empty line, which used to blank the shell's own `> ` prompt.
+
 ## Using the ramfs
 
 `tools/make_ramfs.py` (fully implemented, not a stub) builds the ramfs

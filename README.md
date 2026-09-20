@@ -9,7 +9,7 @@
  | |\  | |_| | | | |_| |___) |
  |_| \_|\__,_|_|_|\___/|____/ 
 
- NullOS v0.16.0 - Phase 16: Pipes and real waitpid
+ NullOS v0.17.0 - Phase 17: Cleanup A
 ```
 
 ## Overview
@@ -39,6 +39,7 @@ See [CHANGELOG.md](CHANGELOG.md) for version history and [ROADMAP.md](ROADMAP.md
 | **14** | Kernel memory-safety hardening: userland pointer validation closing 4 confirmed ring 3 → ring 0 arbitrary memory read/write bugs, a `kmalloc()` integer-overflow bug, and the same gap in `sys_open`/`sys_create`/`sys_exec`/`sys_getarg`; version string centralized in `kernel/version.h` | ✅ Done |
 | **15** | FAT16 subdirectories: `mkdir`/`cd`, path-aware `touch`/`edit`/`ls`; shared `dir_lookup()`/`dir_insert()`/`resolve_path()` core (resolves the Phase 10 duplicated-lookup tech debt); `SYS_CHDIR`/`SYS_MKDIR`; `exec()` (`run`/`edit`) now inherits the caller's `cwd_cluster` instead of always starting at the root | ✅ Done |
 | **16** | Inter-process pipes (`kernel/pipe.c`, fixed pool, `SYS_PIPE`/`SYS_EXEC_PIPE`) and a real blocking `waitpid()` (`process_t.waiting_for_pid`, woken by `process_exit()`); shell gains `cmd1 \| cmd2` (`user/cat.c` as a minimal pipe sink) | ✅ Done |
+| **17** | Cleanup A: audit fixes (`pmm_init` overflow, checked `vmm_map_page` returns, atomic pid/slot allocation, `fat16_init` validation), edit.c Shift and `process_spawn_user` race fixes, libnos string helpers, stream FAT16 writes (`fat16_write_at`), shell `>`/`<` redirection, `cat <file>`, `pwd`/`SYS_GETCWD`, `reboot`/`shutdown`, selftest expanded to 18 tests (`SYS_PCI_FIND`), `make inject` / `make run-reboot-test` | ✅ Done |
 
 For planned Phases 17–31, see **[ROADMAP.md](ROADMAP.md)**.
 
@@ -76,6 +77,9 @@ kernel/
   pic.c               8259 PIC
   timer.c             PIT 100 Hz
   keyboard.c          PS/2 keyboard
+  serial.c/h          Serial driver (mirrors VGA output)
+  power.c/h           power_reboot() / power_shutdown()
+  pipe.c/h            Inter-process pipes (fixed pool)
   tss.c               Task State Segment
   process.c/h         Process table + process_fork()
   scheduler.c/h       Cooperative round-robin
@@ -101,14 +105,15 @@ user/
   lib/nullos.c/h      Syscall wrapper library (libnos, "nos_*") — one thin wrapper per syscall, see docs/kernel.md
   init.c              simple user process: nos_write + nos_exit
   spintest.c          process without yield: validates IRQ0 preemption
-  shell.c             interactive shell: help/uname/fetch/ps/mem/ls/touch/mkdir/cd/echo/kill/run/edit/clear/exit
+  shell.c             interactive shell: help/uname/fetch/ps/mem/ls/touch/mkdir/cd/pwd/echo/kill/run/edit/cat/redirects/reboot/shutdown/clear/exit
   edit.c              text editor: opens/creates/saves files on FAT16
+  cat.c               prints a file, or copies stdin to stdout (pipe sink)
   forktest.c          calls fork(), prints the parent/child paths and PIDs
   selftest.c          automated regression suite ("run selftest") — see docs/testing.md
   link.ld             user linker script (entry @ 0x01000000)
-  Makefile            builds lib/nullos.o and links init.elf, spintest.elf, shell.elf, edit.elf, forktest.elf, and selftest.elf against it
+  Makefile            builds lib/nullos.o and links init.elf, spintest.elf, shell.elf, edit.elf, forktest.elf, selftest.elf, and cat.elf against it
 tools/
-  Makefile            Build system (i686-elf-gcc + NASM + grub2-mkrescue), `disk` target
+  Makefile            Build system (i686-elf-gcc + NASM + grub2-mkrescue), `disk`, `run`, `run-reboot-test`, `inject` targets
   grub.cfg.in         GRUB configuration template (version substituted at build time from kernel/version.h → build/grub.cfg)
   make_disk.sh        generates build/disk.img (FAT16, 32 MB) if it doesn't already exist
 build/                Build artifacts (git-ignored) — includes disk.img (persists across builds)

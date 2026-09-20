@@ -13,9 +13,8 @@ Do not duplicate README/docs content here. `README.md` is a lean index
 
 ## Current status
 
-Current version: **0.17.0-nightly** (stays until all of Phase 17 closes).
-Last closed phase: **Phase 16** (pipes + blocking `waitpid`), released as
-`0.16.0`.
+Current version: **0.17.0** (released; `main` tagged `v0.17.0`).
+Last closed phase: **Phase 17** (Cleanup A).
 
 ### Closed phases (one line each; detail in CHANGELOG.md / README.md)
 
@@ -24,32 +23,16 @@ Last closed phase: **Phase 16** (pipes + blocking `waitpid`), released as
 - Phase 15 — FAT16 subdirectories, `cwd_cluster` — `0.15.0`
   (`0.15.1` PATCH: libnos syscall wrapper library).
 - Phase 16 — inter-process pipes, real blocking `waitpid` — `0.16.0`.
-- Phase 17-A — mechanical audit fixes — done (nightly).
-- Phase 17-C — libnos string helpers, stream FAT16 writes, `>`/`<`, `pwd`,
-  `reboot`/`shutdown` — done (nightly).
-- Phase 17-B — known technical debt fixes (edit.c Shift, `fat16_write_file`
-  guard, atomic `process_spawn_user` slot claim) — implemented, built
-  clean.
+- Phase 17 — Cleanup A (audit fixes, technical debt, libnos/shell tools +
+  reboot/shutdown, test/build infrastructure) — `0.17.0`.
 
-### Current work: Phase 17-C (closed; version stays 0.17.0-nightly)
+### Next: Phase 18 — HAL + Safe Mode
 
-Phase 17 = "Cleanup A" (see ROADMAP.md). 17-C added: libnos string
-helpers, `fat16_write_at` + stream `vfs_write` (`vfs_write_all` kept for
-whole-file replace), `>`/`<` redirect, `cat <file>`, `pwd`/`SYS_GETCWD`,
-`reboot`/`shutdown` (`SYS_REBOOT`/`SYS_SHUTDOWN`, `kernel/power.c/h`).
-Two pre-existing bugs found and fixed while testing it: bare `edit`
-(trailing `\n` never stripped in the shell) and serial backspace echo.
-Details: CHANGELOG `[Unreleased]`.
-
-**Resolved in 17-C:** `reboot` "looking like" `shutdown` was only QEMU's
-`-no-reboot` (use `make run-reboot-test`); bare `run` fixed (shared
-`cmd_run()`). See `docs/TODO.md` → "Resolved / clarified".
-
-**Manual QEMU test confirmed:** `reboot` restarts for real under
-`make run-reboot-test`; bare `run` prints its usage. **Next: 17-D.** Known
-17-C scope cuts (builtins not redirectable, redirect not combinable with
-`|`, `SYS_WRITE` 128-byte chunking, `sector_buf` shared across blocking
-writes) are tracked in `docs/TODO.md`, not bugs.
+See ROADMAP.md (18-A HAL, 18-B Safe Mode; 18-B depends on 18-A and must
+not rely on `process_spawn_user`/fork/exec/scheduler — see CLAUDE.md).
+Deferred from Phase 17, not blocking: test `docs/setup.md` on Windows (no
+machine available). The selftest's Intel 440FX check breaks by design in
+Phase 24 (q35) — noted in ROADMAP Phase 24.
 
 ### Future roadmap
 
@@ -139,6 +122,16 @@ package manager phase was deliberately decided against — don't add one.
   first `map_page_early()` creating a NEW page table would overwrite the
   0–4 MB identity map. Harmless today (heap 4–8 MB is inside the present
   PDE 1). Fix: init `pt_next` to `PAGE_TABLE_START + 2 * PAGE_SIZE`.
+- **No exit-code syscall:** `SYS_EXIT` ignores its code and `SYS_WAIT`
+  returns nothing but 0 (the selftest passes child results through pipes).
+- **`dir_buf`/`sector_buf` in `fat16.c` are global buffers held across
+  blocking ATA writes** — a concurrent FAT16 call from another process can
+  clobber them. Fix = whole-operation FAT16 lock, Phase 28
+  (`docs/filesystem.md`).
+- **Shell redirection limits:** builtins can't be redirected; `>`/`<`
+  can't combine with `|` and pass no arguments (`docs/shell.md`).
+- **`SYS_WRITE` chunks at 128 bytes**, each chunk doing its own dirent
+  lookup (slow for large redirected output).
 - **`process_exit()` never frees `cr3` or mapped pages** (accepted leak;
   slots stay reusable). Needs refcounting from Phase 20 (COW fork); the
   actual fix is Phase 22.

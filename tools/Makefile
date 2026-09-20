@@ -90,7 +90,7 @@ QEMU_FLAGS = -boot d \
 # `run-reboot-test` to test a real reboot.
 QEMU_FLAGS_RUN = $(QEMU_FLAGS) -no-reboot
 
-.PHONY: all clean run run-reboot-test debug dirs user disk
+.PHONY: all clean run run-reboot-test debug dirs user disk inject
 
 all: dirs user $(KERNEL_ISO) $(DISK_IMG)
 	@echo ""
@@ -151,6 +151,22 @@ $(DISK_IMG):
 	bash $(ROOT)/tools/make_disk.sh $@
 
 disk: $(DISK_IMG)
+
+# make inject FILE=path/to/algo.elf [NAME=algo.elf]
+# Copies an arbitrary file into the root of build/disk.img with mcopy
+# (mtools, the same host tool make_disk.sh uses), without rebuilding the
+# ISO. HOST-SIDE INFRASTRUCTURE ONLY: it does NOT mean the kernel can
+# exec() programs from FAT16 (that arrives with Phase 19; today exec()
+# only loads from the ramfs). Its use for now is faster disk-related
+# testing, e.g. dropping a test file on the disk without touch/edit inside
+# QEMU. Notes: FILE is resolved from tools/ (where make runs) unless
+# absolute; the kernel only understands 8.3 names, so keep NAME short
+# (8 chars + 3-char extension); do not inject while QEMU has the image open.
+inject: $(DISK_IMG)
+	@test -n "$(FILE)" || { echo "usage: make inject FILE=path/to/file [NAME=name.ext]"; exit 1; }
+	@test -f "$(FILE)" || { echo "inject: no such file: $(FILE)"; exit 1; }
+	mcopy -o -i $(DISK_IMG) "$(FILE)" "::/$(if $(NAME),$(NAME),$(notdir $(FILE)))"
+	@echo "  INJECT $(FILE) -> $(DISK_IMG)::/$(if $(NAME),$(NAME),$(notdir $(FILE)))"
 
 run: $(KERNEL_ISO) $(DISK_IMG)
 	qemu-system-x86_64 $(QEMU_FLAGS_RUN)
