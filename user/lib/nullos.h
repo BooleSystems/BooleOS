@@ -110,8 +110,8 @@ char *nos_uitoa(uint32_t v, char *buf, unsigned bufsz);
 
 /* ── printf family (user/lib/nosstdio.c, object LIBSTDIO) ─────────
    Minimal, with the standard libc names. Supports %d %i %u %x %X %c %s %p
-   %%, flags '-' '0' '+' ' ', width, precision, and h/hh/l (ignored); NO
-   floating point and NO 64-bit (%lld). Link with lib/nosstdio.o only when
+   %%, flags '-' '0' '+' ' ', width, precision, and h/hh/l; NO floating
+   point, NO 64-bit (%lld) and NO '#' flag. Link with lib/nosstdio.o only when
    you use them. printf() writes to fd 1. snprintf() never writes more than
    `size` bytes (including the NUL) and returns the length the full output
    would have had; sprintf() is unbounded, prefer snprintf(). */
