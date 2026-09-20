@@ -104,7 +104,7 @@ QEMU_FLAGS = -boot d \
 # `run-reboot-test` to test a real reboot.
 QEMU_FLAGS_RUN = $(QEMU_FLAGS) -no-reboot
 
-.PHONY: all clean run run-reboot-test debug dirs user disk inject snapshot
+.PHONY: all clean run run-reboot-test debug dirs user disk inject snapshot test-elf
 
 all: dirs user $(KERNEL_ISO) $(DISK_IMG)
 	@echo ""
@@ -180,6 +180,17 @@ $(DISK_IMG):
 	bash $(ROOT)/tools/make_disk.sh $@
 
 disk: $(DISK_IMG)
+
+# make test-elf
+# Host-side test of the kernel's ELF loader: builds the real kernel/elf.c
+# against stand-in page allocator/mapper functions (tools/test_elf_load.c) and
+# runs it on every built user program, plus truncation, header fuzzing and
+# crafted hostile headers. Needs the host gcc (Linux). Run it after changing
+# elf.c, the linker script or the size of a user program.
+test-elf: user
+	gcc -std=gnu99 -O1 -Wall -Wextra -Wno-int-to-pointer-cast -I$(ROOT)/kernel \
+	    -o $(BUILD)/test_elf_load $(ROOT)/tools/test_elf_load.c $(ROOT)/kernel/elf.c
+	$(BUILD)/test_elf_load $(wildcard $(BUILD)/user/*.elf)
 
 # make snapshot
 # Records the CURRENT build as the "previous release" for the GRUB menu:

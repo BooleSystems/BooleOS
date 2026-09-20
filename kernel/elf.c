@@ -53,7 +53,11 @@ int elf_load(uint32_t cr3, const void *elf_data, uint32_t size, uint32_t *entry_
             continue;
 
         if (ph->p_filesz > ph->p_memsz)                          return -1;
-        if ((uint64_t)ph->p_offset + ph->p_filesz > size)        return -1;
+        /* p_offset only means something when there is file data: a pure .bss
+           segment (filesz == 0) commonly has an offset AT or PAST the end of
+           the file, and is perfectly valid. */
+        if (ph->p_filesz != 0 &&
+            (uint64_t)ph->p_offset + ph->p_filesz > size)        return -1;
         if (ph->p_vaddr < 0x00800000u)                           return -1;
         if ((uint64_t)ph->p_vaddr + ph->p_memsz > ELF_USER_LIMIT) return -1;
     }
