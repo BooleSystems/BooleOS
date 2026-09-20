@@ -137,6 +137,17 @@ $(KERNEL_ELF): $(ALL_OBJS)
 	@echo "  LD   $@"
 	$(LD) $(LDFLAGS) -o $@ $(ALL_OBJS)
 
+# The user programs are built by the `user` target (a recursive make in user/).
+# Without a rule for the .elf files, a target that needs them but is not
+# preceded by `user` in the command line (`make clean && make run`) fails with
+# "No rule to make target ../build/user/init.elf". `user` is an ORDER-ONLY
+# prerequisite (after the |) on purpose: it always runs first, but being phony it
+# does not make the .elf files look "changed" — what triggers a ramfs/ISO rebuild
+# is still an .elf that user/ actually rewrote.
+USER_ELFS = $(INIT_ELF) $(SPINTEST_ELF) $(SHELL_ELF) $(EDIT_ELF) $(FORKTEST_ELF) $(SELFTEST_ELF) $(CAT_ELF)
+$(USER_ELFS): | user
+	@true
+
 $(RAMFS_IMG): $(INIT_ELF) $(SPINTEST_ELF) $(SHELL_ELF) $(EDIT_ELF) $(FORKTEST_ELF) $(SELFTEST_ELF) $(CAT_ELF)
 	@echo "  RAMFS $@"
 	python3 $(ROOT)/tools/make_ramfs.py $@ init=$(INIT_ELF) spintest=$(SPINTEST_ELF) shell=$(SHELL_ELF) edit=$(EDIT_ELF) forktest=$(FORKTEST_ELF) selftest=$(SELFTEST_ELF) cat=$(CAT_ELF)
