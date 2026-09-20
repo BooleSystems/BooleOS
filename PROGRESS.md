@@ -66,9 +66,13 @@ a `make debug` target) — see CHANGELOG.md `[0.14.1]`/`[0.14.2]` and
 checked call sites, `virt < 0x800000` rejection, `pci.c` BARs per
 header type) — see CHANGELOG.md `[Unreleased]` → Fixed. Confirmed
 manually: build, boot, `selftest` 13/13, `[PCI]` output unchanged.
-**Next: 17-B** (known technical debt: `edit.c` Shift, `fat16_write_file`
-dirent-lookup duplication, `process_spawn`/`process_spawn_user` slot
-race — see ROADMAP.md). The version stays `0.17.0-nightly` until all of
+**17-B: all 3 items implemented** (known technical debt, see
+ROADMAP.md; built clean, awaiting manual QEMU test): `edit.c` Shift
+(raw scancode Shift bit), `fat16_write_file` (directory guard restored,
+redundant sector re-read removed — the "duplicated lookup" itself had
+already been unified in Phase 15), and `process_spawn_user()` slot
+claim made atomic (dead `process_spawn()`/`scheduler_spawn()` deleted).
+**Next: 17-C.** The version stays `0.17.0-nightly` until all of
 Phase 17 closes.
 
 Future roadmap: see `ROADMAP.md` for the full per-phase breakdown and
@@ -93,15 +97,14 @@ manager phase was deliberately decided against — don't add one.
   (`0x2A`/`0x36` press, `0xAA`/`0xB6` release) and adding a second,
   index-matched `scancode_map_shift` table (standard US QWERTY). See
   `docs/kernel.md`.
-  **Left deliberately unfixed, found during the same investigation:**
-  the RAW-scancode path (`SYS_READ_RAW`/`keyboard_raw_nowait()`, used
-  only by `user/edit.c`'s own separate `sc_map` table) has the exact
-  same gap — the raw value packs only `ctrl_pressed` into bit 8, never
-  a Shift bit, and `edit.c`'s `sc_map` is itself a single unshifted
-  table. Typing an uppercase letter or a shifted symbol (`%`, `|`,
-  etc.) inside the editor is still broken. Out of scope for this fix
-  (which was about unblocking the shell's pipe-typing specifically),
-  tracked below.
+  **The RAW-scancode path (`SYS_READ_RAW`/`keyboard_raw_nowait()`, used
+  only by `user/edit.c`) had the same gap and was fixed in 17-B:** the
+  kernel swallows the Shift make/break scancodes itself, so `edit.c`
+  can't track Shift on its own; `keyboard.c` now packs a Shift bit
+  (bit 9, next to Ctrl's bit 8) into the raw value, and `edit.c` picks
+  its own `sc_map_shift[]` table from it (deliberately a second copy of
+  the kernel's table — the two sides only share data through macros-only
+  headers like `version.h`).
 
 - **Launching a pipeline stage (`SYS_EXEC_PIPE`, Phase 16) threads the
   redirect through `exec()`'s own parameter chain — it does NOT
@@ -345,35 +348,15 @@ manager phase was deliberately decided against — don't add one.
   17-A's scope); fix by initializing `pt_next` to `PAGE_TABLE_START +
   2 * PAGE_SIZE`.
 
-- **`user/edit.c`'s raw-scancode input has no Shift support** — typing
-  an uppercase letter or a shifted symbol (`%`, `|`, `!`, etc.) while
-  inside the editor produces the unshifted character instead (or
-  nothing sensible). Found alongside the shell's Shift bug (see
-  "Architecture decisions" above) but deliberately not fixed at the
-  same time — it needs its own fix in two places: `keyboard.c` would
-  need to pack a Shift bit into the raw scancode value returned by
-  `SYS_READ_RAW`/`keyboard_raw_nowait()` (today only `ctrl_pressed` is
-  packed, in bit 8), and `edit.c`'s own `sc_map` table would need the
-  same shifted-table treatment `scancode_map_shift` just got.
-
 - **`process_exit()` never frees `process->cr3` or its mapped pages**
   (`kernel/process.c`, comment above `process_exit`). A process's entire
   address space (and, for a forked child, its independent copy of every
   page) is abandoned, not reclaimed, on exit. Documented as an accepted
-  leak: slots stay safely reusable because `process_spawn()`/
-  `process_fork()` always allocate a fresh `cr3` for whatever runs next in
+  leak: slots stay safely reusable because `process_spawn_user()`/
+  `process_fork()` always get a fresh `cr3` for whatever runs next in
   that slot, but physical memory is never returned to the PMM. Relevant
   to Phase 20 (copy-on-write fork), which will need real refcounting
   before this can be fixed properly; the fix itself is Phase 22.
-
-- **`process_spawn()`/`process_spawn_user()` scan for a free slot without
-  `cli`/`sti` protection** (`kernel/process.c`, comment above
-  `process_spawn`). Explicitly flagged as out-of-scope when `fork()`
-  (Phase 13) was implemented — `process_fork()` itself does the
-  equivalent slot search race-safely, but the two original spawn paths
-  still don't. Two processes spawning concurrently (e.g. from two
-  different IRQ-resumed contexts) could theoretically race on the same
-  `PROCESS_UNUSED` slot.
 
 - **No unlink/delete syscall exists yet** (surfaced by `user/selftest.c`,
   see `docs/testing.md`). Any file created for testing (or by a user)

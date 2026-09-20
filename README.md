@@ -40,7 +40,7 @@ See [CHANGELOG.md](CHANGELOG.md) for version history and [ROADMAP.md](ROADMAP.md
 | **15** | FAT16 subdirectories: `mkdir`/`cd`, path-aware `touch`/`edit`/`ls`; shared `dir_lookup()`/`dir_insert()`/`resolve_path()` core (resolves the Phase 10 duplicated-lookup tech debt); `SYS_CHDIR`/`SYS_MKDIR`; `exec()` (`run`/`edit`) now inherits the caller's `cwd_cluster` instead of always starting at the root | ✅ Done |
 | **16** | Inter-process pipes (`kernel/pipe.c`, fixed pool, `SYS_PIPE`/`SYS_EXEC_PIPE`) and a real blocking `waitpid()` (`process_t.waiting_for_pid`, woken by `process_exit()`); shell gains `cmd1 \| cmd2` (`user/cat.c` as a minimal pipe sink) | ✅ Done |
 
-For planned Phases 17–22, see **[ROADMAP.md](ROADMAP.md)**.
+For planned Phases 17–31, see **[ROADMAP.md](ROADMAP.md)**.
 
 ## Documentation
 

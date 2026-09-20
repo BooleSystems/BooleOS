@@ -103,7 +103,7 @@
   processos a mais e nunca propagado os redirecionamentos, porque
   exec() aqui não substitui processo nenhum).
 - Qualquer código que rode como parte do Safe Mode (ver seção
-  dedicada abaixo) NUNCA pode depender de process_spawn/fork/exec ou
+  dedicada abaixo) NUNCA pode depender de process_spawn_user/fork/exec ou
   de qualquer coisa que passe pelo scheduler — o propósito do Safe
   Mode é sobreviver a bug justamente nesses subsistemas.
 
@@ -505,7 +505,7 @@
   ponto que precisa reimplementação por arquitetura no futuro, ex:
   argumento `bootargs` de Device Tree no ARM) decide se desvia pro
   loop de monitor do Safe Mode. Safe Mode roda inteiro em ring 0,
-  ANTES de scheduler, `process_spawn`, troca pra modo usuário, ou
+  ANTES de scheduler, `process_spawn_user`, troca pra modo usuário, ou
   `syscall.c`/`int 0x80` serem inicializados — nunca depois. Isso é
   deliberado: o propósito do Safe Mode é sobreviver a bug justamente
   nesses subsistemas, então ele não pode depender deles. Essa
@@ -526,7 +526,7 @@
   reparar" (fsck) também vira submenu, nunca decisão implícita.
 - **Shell restrito:** comandos EMBUTIDOS apenas — cada um chama
   direto a função de baixo nível (FAT16, VGA, PS/2) como chamada de
-  função C comum, NUNCA via `process_spawn`/`exec`. Isso vale mesmo
+  função C comum, NUNCA via `process_spawn_user`/`exec`. Isso vale mesmo
   pra comando com nome igual a um programa userland existente (ex:
   `cat`) — se `cat` normal é um binário separado lançado via `exec`,
   o `cat` do Safe Mode é uma reimplementação mínima própria, não uma

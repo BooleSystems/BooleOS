@@ -11,18 +11,27 @@ static uint8_t process_stacks[PROCESS_MAX][PROCESS_STACK_SIZE] __attribute__((al
 static process_t *current_process = 0;
 static uint32_t next_pid = 1;
 
-/* Atomic "return the next pid and increment". The increment is a
-   read-modify-write, so a timer tick landing in the middle of it could
-   hand the same pid to two processes.
-   Saves EFLAGS and restores it instead of doing a bare cli/sti:
-   process_fork() calls this from inside its own cli...sti slot-claim
-   section, and an unconditional sti here would re-enable interrupts in
-   the middle of that section. */
-static uint32_t alloc_pid(void) {
+/* Save EFLAGS and disable interrupts / restore the saved EFLAGS.
+   Used instead of a bare cli/sti so a critical section entered with
+   interrupts already off (e.g. inside process_fork()'s own cli section)
+   doesn't turn them back on when it ends. */
+static inline uint32_t irq_save(void) {
     uint32_t flags;
     __asm__ volatile ("pushf; pop %0; cli" : "=r"(flags) : : "memory");
-    uint32_t pid = next_pid++;
+    return flags;
+}
+
+static inline void irq_restore(uint32_t flags) {
     __asm__ volatile ("push %0; popf" : : "r"(flags) : "memory", "cc");
+}
+
+/* Atomic "return the next pid and increment". The increment is a
+   read-modify-write, so a timer tick landing in the middle of it could
+   hand the same pid to two processes. */
+static uint32_t alloc_pid(void) {
+    uint32_t flags = irq_save();
+    uint32_t pid = next_pid++;
+    irq_restore(flags);
     return pid;
 }
 
@@ -80,84 +89,64 @@ void process_init(void) {
     next_pid = 1;
 }
 
-/* KNOWN RACE / TECH DEBT (out of scope for Phase 13): process_spawn()
-   and process_spawn_user() below scan for a PROCESS_UNUSED slot and
-   claim it WITHOUT any cli/sti protection, unlike process_fork()
-   further down in this file. If the preemptive timer interrupts this
-   scan and a different process also ends up in one of these
-   functions (e.g. two exec() calls racing), both could pick the same
-   slot before either marks it used, corrupting the process table.
-   This hasn't been observed in practice — the scan itself is a
-   handful of instructions, far under one timer slice — and fixing it
-   was explicitly left out of scope here; only process_fork()'s own
-   slot claim was required to be atomic. If this is ever tightened up,
-   do both functions together for consistency. */
-process_t *process_spawn(const char *name, process_entry_t entry, void *arg, void (*bootstrap)(void)) {
-    if (!entry || !bootstrap)
-        return 0;
-
-    for (uint32_t i = 0; i < PROCESS_MAX; i++) {
-        process_t *process = &process_table[i];
-        if (process->state == PROCESS_UNUSED) {
-            process->pid = alloc_pid();
-            copy_name(process->name, name);
-
-            process->state = PROCESS_READY;
-            process->entry = entry;
-            process->arg = arg;
-            process->stack = process_stacks[i];
-            process->stack_size = PROCESS_STACK_SIZE;
-            process->esp = build_initial_stack(process->stack, process->stack_size, bootstrap);
-            process->wake_tick = 0;
-            process->ticks_run = 0;
-            process->runs = 0;
-            process->cwd_cluster = 0;   /* new processes start at the root */
-            process->stdin_redirect = -1;
-            process->stdout_redirect = -1;
-            process->waiting_for_pid = 0;
-            process->cr3 = vmm_create_directory();
-            if (!process->cr3)
-                process->cr3 = vmm_get_kernel_directory();
-            return process;
-        }
-    }
-
-    return 0;
-}
-
 process_t *process_spawn_user(const char *name, uint32_t user_entry,
                               uint32_t user_esp, uint32_t cr3,
                               uint32_t cwd_cluster, int start_blocked,
                               void (*bootstrap)(void)) {
     if (!bootstrap) return 0;
 
+    /* ── 1. atomically reserve a free slot ────────────────────────
+       Same discipline as process_fork(): the scan and the claim happen
+       inside one interrupt-off section, so two spawns interleaved by
+       the preemptive timer can't both pick the same PROCESS_UNUSED
+       slot, and the slot leaves PROCESS_UNUSED already marked
+       PROCESS_BLOCKED ("reserved, not runnable"). pid and
+       waiting_for_pid are also set here, while interrupts are still
+       off: a reserved-but-unfilled slot still carries the previous
+       occupant's stale values, and a stale pid would make sys_wait()'s
+       liveness scan think a long-dead pid is alive, while a stale
+       waiting_for_pid could let process_exit() wake this half-built
+       slot to READY. */
+    int slot = -1;
+    uint32_t flags = irq_save();
     for (uint32_t i = 0; i < PROCESS_MAX; i++) {
-        process_t *p = &process_table[i];
-        if (p->state != PROCESS_UNUSED) continue;
-
-        p->pid        = alloc_pid();
-        copy_name(p->name, name);
-        /* PROCESS_BLOCKED here means "reserved but not runnable yet" —
-           see the start_blocked parameter doc in process.h. */
-        p->state      = start_blocked ? PROCESS_BLOCKED : PROCESS_READY;
-        p->entry      = 0;                   /* unused: entry is ring 3 */
-        p->arg        = (void *)user_entry;  /* user process's EIP */
-        p->stack      = process_stacks[i];
-        p->stack_size = PROCESS_STACK_SIZE;
-        p->esp        = build_initial_stack(p->stack, p->stack_size, bootstrap);
-        p->cr3        = cr3;
-        p->user_esp   = user_esp;
-        p->user_stack = 0;
-        p->wake_tick  = 0;
-        p->ticks_run  = 0;
-        p->runs       = 0;
-        p->cwd_cluster = cwd_cluster;
-        p->stdin_redirect  = -1;
-        p->stdout_redirect = -1;
-        p->waiting_for_pid = 0;
-        return p;
+        if (process_table[i].state == PROCESS_UNUSED) {
+            slot = (int)i;
+            process_table[i].state = PROCESS_BLOCKED;
+            process_table[i].pid = alloc_pid();
+            process_table[i].waiting_for_pid = 0;
+            break;
+        }
     }
-    return 0;
+    irq_restore(flags);
+    if (slot < 0) return 0;
+
+    /* ── 2. fill in every field while the slot is unschedulable ─── */
+    process_t *p = &process_table[slot];
+    copy_name(p->name, name);
+    p->entry      = 0;                   /* unused: entry is ring 3 */
+    p->arg        = (void *)user_entry;  /* user process's EIP */
+    p->stack      = process_stacks[slot];
+    p->stack_size = PROCESS_STACK_SIZE;
+    p->esp        = build_initial_stack(p->stack, p->stack_size, bootstrap);
+    p->cr3        = cr3;
+    p->user_esp   = user_esp;
+    p->user_stack = 0;
+    p->wake_tick  = 0;
+    p->ticks_run  = 0;
+    p->runs       = 0;
+    p->cwd_cluster = cwd_cluster;
+    p->stdin_redirect  = -1;
+    p->stdout_redirect = -1;
+
+    /* ── 3. only now publish the real state ───────────────────────
+       PROCESS_BLOCKED here (start_blocked=1) means "reserved but not
+       runnable yet" — see the start_blocked parameter doc in
+       process.h. Setting it last is what keeps the scheduler from
+       ever switching to a slot whose esp/cr3 aren't built yet. */
+    if (!start_blocked)
+        p->state = PROCESS_READY;
+    return p;
 }
 
 void process_make_ready(process_t *p) {
@@ -198,9 +187,8 @@ process_t *process_fork(process_t *parent, const uint32_t *saved_frame) {
 
     /* ── 1. atomically claim a free process slot ──────────────────
        Protected by cli/sti so two fork()s interleaved by the
-       preemptive timer can't both pick the same slot — see the
-       comment above process_spawn() for the equivalent, currently
-       unprotected race in that function and process_spawn_user(). */
+       preemptive timer can't both pick the same slot —
+       process_spawn_user() claims its slot the same way. */
     int slot = -1;
     __asm__ volatile ("cli");
     for (uint32_t i = 0; i < PROCESS_MAX; i++) {
@@ -344,8 +332,8 @@ void process_exit(process_t *process) {
        process->cr3 or any of the physical pages mapped under it —
        the process's whole address space (and, for a forked child,
        its independent copy of every page) is simply abandoned. Slots
-       are still safely reusable since process_spawn()/process_fork()
-       always allocate a fresh cr3 for whatever they build next. */
+       are still safely reusable since process_spawn_user()/process_fork()
+       always get a fresh cr3 for whatever they build next. */
     uint32_t exited_pid = process->pid;
 
     process->state = PROCESS_UNUSED;

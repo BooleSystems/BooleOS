@@ -670,13 +670,20 @@ int fat16_write_file(uint32_t parent_cluster, const char *name, const char *buf,
     int found = dir_lookup(parent_cluster, name83, &existing, &lba, &index);
     if (found != 1) return -1;
 
-    /* re-read the dir entry's sector (it may have changed since
-       dir_lookup read it) — dir_lookup has already returned by this
-       point, so reusing dir_buf here doesn't clobber anything it still
-       needs. This sector's content (entry) must stay valid across the
-       whole cluster-allocation loop below, which is why that loop uses
-       the separate sector_buf for the actual file payload instead. */
-    if (ata_read_sector(lba, dir_buf) < 0) return -1;
+    /* dir_lookup() matches files AND directories (see its comment); a
+       plain-file write must never free a directory's cluster chain and
+       overwrite its entry as if it were a file. */
+    if (existing.attr & ATTR_DIRECTORY) return -1;
+
+    /* dir_lookup() returned right after reading the matching sector
+       into dir_buf, with no other disk access in between, so dir_buf
+       already holds that sector — no re-read needed. Its content (entry)
+       must stay valid across the whole cluster-allocation loop below,
+       which is why that loop uses the separate sector_buf for the
+       actual file payload instead. (dir_buf is a single global buffer
+       shared by every FAT16 caller, so another process's FAT16 call
+       during that loop's blocking disk writes could still clobber it —
+       known, tracked as Phase 28's whole-operation FAT16 lock.) */
     fat16_dirent_t *entry = (fat16_dirent_t *)dir_buf + index;
 
     /* free the old chain */

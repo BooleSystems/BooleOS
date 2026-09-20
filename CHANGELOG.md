@@ -70,8 +70,47 @@ and the `[PCI]` boot output identical to before the change.
   `failed` path. The three `vmm_map_user_page` sites also free the
   just-allocated physical page instead of leaking it.
 
+- `kernel/keyboard.c`, `user/edit.c` (Phase 17-B): Shift in the editor.
+  The raw scancode path (`SYS_READ_RAW`) now carries a Shift bit
+  (bit 9, next to Ctrl's bit 8), because the kernel consumes the Shift
+  make/break scancodes itself and `edit.c` could never see them; the
+  editor selects a new `sc_map_shift[]` table from it, so Shift+5 gives
+  `%`, Shift+\ gives `|` and Shift+letter gives the capital.
+
+- `kernel/fs/fat16.c` (Phase 17-B): `fat16_write_file()` again refuses
+  a directory entry (`ATTR_DIRECTORY`) — the Phase 15 switch to the
+  shared `dir_lookup()` had dropped the old loop's directory skip — and
+  no longer re-reads the dirent sector `dir_lookup()` just left in
+  `dir_buf`. (The "duplicated dirent lookup" tech-debt item was already
+  resolved by Phase 15; only these two leftovers remained.)
+- `kernel/process.c`, `kernel/scheduler.c/h`, `kernel/process.h`
+  (Phase 17-B): `process_spawn_user()` now reserves its slot atomically
+  (interrupts off via saved EFLAGS, slot marked `PROCESS_BLOCKED`, pid
+  and `waiting_for_pid` reset in the same section), fills in every
+  field, and only then publishes `PROCESS_READY` (or leaves it
+  `PROCESS_BLOCKED` for `start_blocked`). This closes two races: two
+  spawns picking the same free slot, and the scheduler running a slot
+  whose `esp`/`cr3` weren't built yet. New `irq_save()`/`irq_restore()`
+  helpers, also used by `alloc_pid()`.
+
+### Removed
+
+- `process_spawn()`, `scheduler_spawn()` and the now-unused
+  `scheduler_task_bootstrap()`: dead code (no callers anywhere, no
+  future roadmap phase depends on them).
+
 ### Changed
 
+- `CLAUDE.md`: Safe Mode rules now name `process_spawn_user` instead of the
+  deleted `process_spawn` (same rule, function name updated).
+- Documentation consistency pass after 17-A: `README.md` said "planned
+  Phases 17–22" (now 17–31; no other numeric phase count exists in its
+  prose). Sub-phase notation for the NEW phases (17 onward) normalized
+  to `X-A` (hyphen, uppercase) everywhere — 22-c, 23-a..c, 25-a..d and
+  31-a..d were lowercase — and `ROADMAP.md` gained a note explaining
+  that historical phases (2b, 3a, 3b) keep their original notation.
+- `docs/TODO.md`: stubs added for the 17-A code changes whose write-up
+  in `docs/*.md` is still owed.
 - `ROADMAP.md`: the granular table's phase "2" is now a parent row with
   only "2b" as its child (no "2a" row — that never existed historically).
 - `README.md`: "Completed phases" table now shows only whole phases —
@@ -80,8 +119,8 @@ and the `[PCI]` boot output identical to before the change.
   switch/exceptions). No phase count appears in the README's prose, so
   nothing else needed correcting.
 - `ROADMAP.md`: granular table uses the parent-row + child-rows style
-  for old lettered phases too: new parent rows "2" and "3", children
-  "2a"/"2b" and "3a"/"3b".
+  for old lettered phases too: parent rows "2" and "3", children "2b"
+  and "3a"/"3b".
 - `CLAUDE.md`: new sections/rules for the `nightly`/`main` branch
   strategy, `-nightly` version suffix, sub-phases, HAL, centralized
   `msg()` text output, key=value system config file, and Safe Mode;

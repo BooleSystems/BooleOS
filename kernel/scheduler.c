@@ -13,16 +13,6 @@ static uint32_t scheduler_ready = 0;
 static uint32_t current_index = PROCESS_MAX - 1;
 static uint32_t scheduler_esp = 0;
 
-static void scheduler_task_bootstrap(void) {
-    process_t *process = process_current();
-    if (process && process->entry)
-        process->entry(process->arg);
-    process_exit(process);
-    scheduler_yield();
-    for (;;)
-        __asm__ volatile ("hlt");
-}
-
 static void switch_back_to_scheduler(process_t *process) {
     if (!process)
         return;
@@ -34,12 +24,6 @@ void scheduler_init(void) {
     scheduler_ready = 1;
     current_index = PROCESS_MAX - 1;
     scheduler_esp = 0;
-}
-
-process_t *scheduler_spawn(const char *name, process_entry_t entry, void *arg) {
-    if (!scheduler_ready)
-        return 0;
-    return process_spawn(name, entry, arg, scheduler_task_bootstrap);
 }
 
 /* Bootstrap for user processes: updates the TSS and jumps to ring 3.

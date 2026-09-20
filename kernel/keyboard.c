@@ -53,7 +53,7 @@ static char    kb_buffer[KB_BUFFER_SIZE];
 static uint8_t kb_head = 0;
 static uint8_t kb_tail = 0;
 
-/* raw scancode buffer: bit8=ctrl, bits0-7=scancode */
+/* raw scancode buffer: bit9=shift, bit8=ctrl, bits0-7=scancode */
 static uint16_t kb_raw_buf[KB_BUFFER_SIZE];
 static uint8_t  kb_raw_head = 0;
 static uint8_t  kb_raw_tail = 0;
@@ -90,7 +90,8 @@ static void keyboard_callback(uint32_t int_no) {
     }
 
     /* raw: always pushed (keys with and without an ASCII mapping) */
-    uint16_t raw = (uint16_t)(scancode | (ctrl_pressed ? 0x100 : 0));
+    uint16_t raw = (uint16_t)(scancode | (ctrl_pressed ? 0x100 : 0)
+                                       | (shift_pressed ? 0x200 : 0));
     uint8_t rnext = (kb_raw_head + 1) % KB_BUFFER_SIZE;
     if (rnext != kb_raw_tail) {
         kb_raw_buf[kb_raw_head] = raw;
@@ -133,7 +134,7 @@ int keyboard_haschar(void) {
     return kb_head != kb_tail;
 }
 
-/* returns raw scancode (bit8=ctrl) or -1 if the buffer is empty */
+/* returns raw scancode (bit8=ctrl, bit9=shift) or -1 if the buffer is empty */
 int keyboard_raw_nowait(void) {
     if (kb_raw_head == kb_raw_tail) return -1;
     uint16_t raw = kb_raw_buf[kb_raw_tail];

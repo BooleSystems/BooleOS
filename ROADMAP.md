@@ -8,6 +8,13 @@ sub-phases become completed rows as they land.
 
 There is deliberately no package-manager phase anywhere in this roadmap — it was considered and decided against.
 
+**Sub-phase notation:** historical phases (0–16) keep the notation they
+actually used in the original commits and CHANGELOG — a lowercase letter
+with no hyphen (`2b`, `3a`, `3b`). New phases (17 onward, defined in the
+restructuring after Phase 16) use a hyphen and an uppercase letter
+(`17-A`, `18-B`). The difference is deliberate, not an inconsistency to
+"fix".
+
 | Phase | Description | Status | Details |
 |------|-----------|--------|---------|
 | **0** | Bootloader (Multiboot2) + VGA text output | ✅ Done | CHANGELOG `[0.0.1]`, `docs/kernel.md` |
@@ -42,29 +49,29 @@ There is deliberately no package-manager phase anywhere in this roadmap — it w
 | **20** | Copy-on-write `fork()` | 🔜 Planned | below |
 | **21** | `unlink()`/`rmdir()` | 🔜 Planned | below |
 | **22** | Memory/CR3 release in `process_exit()` | 🔜 Planned | below |
-| **22-a** | Free the process's physical data pages | 🔜 Planned | below |
-| **22-b** | Free the page directory (CR3) and page tables | 🔜 Planned | below |
-| **22-c** | Page sharing via fork/COW (needs PMM refcount) | 🔜 Planned | below |
+| **22-A** | Free the process's physical data pages | 🔜 Planned | below |
+| **22-B** | Free the page directory (CR3) and page tables | 🔜 Planned | below |
+| **22-C** | Page sharing via fork/COW (needs PMM refcount) | 🔜 Planned | below |
 | **23** | `e1000` driver + minimal TCP/IP (ping) | 🔜 Planned | below |
-| **23-a** | Raw driver: BAR mapping, RX/TX rings, one Ethernet frame | 🔜 Planned | below |
-| **23-b** | ARP | 🔜 Planned | below |
-| **23-c** | IP + ICMP (answer ping) | 🔜 Planned | below |
+| **23-A** | Raw driver: BAR mapping, RX/TX rings, one Ethernet frame | 🔜 Planned | below |
+| **23-B** | ARP | 🔜 Planned | below |
+| **23-C** | IP + ICMP (answer ping) | 🔜 Planned | below |
 | **24** | AHCI driver | 🔜 Planned | below |
 | **25** | USB HID via xHCI | 🔜 Planned | below |
-| **25-a** | Enumerate the xHCI controller | 🔜 Planned | below |
-| **25-b** | Port reset | 🔜 Planned | below |
-| **25-c** | Enumerate the connected device | 🔜 Planned | below |
-| **25-d** | Parse HID reports | 🔜 Planned | below |
+| **25-A** | Enumerate the xHCI controller | 🔜 Planned | below |
+| **25-B** | Port reset | 🔜 Planned | below |
+| **25-C** | Enumerate the connected device | 🔜 Planned | below |
+| **25-D** | Parse HID reports | 🔜 Planned | below |
 | **26** | Linear framebuffer + simple GUI | 🔜 Planned | below |
 | **27** | Syscall deprecation/compatibility strategy | 🔜 Planned | below |
 | **28** | Second pass of audit fixes | 🔜 Planned | below |
 | **29** | General polish | 🔜 Planned | below |
 | **30** | Technical prerequisites for DOOM (`lseek`, userland `malloc`/`free`) | 🔜 Planned | below |
 | **31** | DOOM engine port (v1.0.0 milestone) | 🔜 Planned | below |
-| **31-a** | Portability layer (`i_video`/`i_system`/`i_input`) | 🔜 Planned | below |
-| **31-b** | `lseek`/`malloc` integration for WAD and memory | 🔜 Planned | below |
-| **31-c** | Full engine build/link, first menu screen | 🔜 Planned | below |
-| **31-d** | Playable without crashing (no audio) | 🔜 Planned | below |
+| **31-A** | Portability layer (`i_video`/`i_system`/`i_input`) | 🔜 Planned | below |
+| **31-B** | `lseek`/`malloc` integration for WAD and memory | 🔜 Planned | below |
+| **31-C** | Full engine build/link, first menu screen | 🔜 Planned | below |
+| **31-D** | Playable without crashing (no audio) | 🔜 Planned | below |
 
 ## Detailed planning (Phases 17–31)
 
@@ -116,9 +123,9 @@ Mechanical work on code that already exists, no new feature.
 - **18-B — Safe Mode** (depends on 18-A):
   - `key=value` config file, a single disk sector (write atomicity for free thanks to the small size), starting with only `boot_fail_count`
   - Boot-failure counter + automatic entry into Safe Mode after N consecutive failures
-  - Runs in ring 0, a branch very early in `kernel_main()`, before the scheduler/`process_spawn`/`exec`/`syscall.c` are initialized — never as a user process or a separate kernel
+  - Runs in ring 0, a branch very early in `kernel_main()`, before the scheduler/`process_spawn_user`/`exec`/`syscall.c` are initialized — never as a user process or a separate kernel
   - TUI with a numbered menu + submenus: erase with a separate confirmation screen, disk check with a verify-only vs. verify-and-repair submenu, reboot with a submenu (normal/GUI debug/text mode)
-  - Restricted shell: built-in commands only, calling low-level functions directly (never `process_spawn`/`exec`, even if a userland program with the same name exists), no `run` command, static `help`
+  - Restricted shell: built-in commands only, calling low-level functions directly (never `process_spawn_user`/`exec`, even if a userland program with the same name exists), no `run` command, static `help`
   - GRUB menu with 4 entries: Default (GUI) / GUI debug (GUI + auto-opened system terminal, mirrors serial, only exists in nightly builds) / Text mode / Safe Mode
   - Dependency note: the "GUI debug" and "reboot into GUI" entries only become truly functional once Phase 26 (GUI) exists — until then they sit in the menu with no real implementation behind them
   - The kernel binary of the latest `main` version is kept as an extra, permanent GRUB entry, updated on every release/merge
@@ -153,11 +160,11 @@ Mechanical work on code that already exists, no new feature.
 
 - **Goal:** stop leaking real physical memory every time a process terminates (technical debt since Phase 13).
 - **Main risk:** the most dangerous phase in the roadmap — a real risk of double-free or of freeing a page another process still references.
-- **Depends on:** Phase 20 (COW fork) changes how memory is shared between processes, so 22-c depends on Phase 20 being closed.
+- **Depends on:** Phase 20 (COW fork) changes how memory is shared between processes, so 22-C depends on Phase 20 being closed.
 
-- 22-a: free the process's physical data pages (heap, stack) in `process_exit()`
-- 22-b: free the page directory (CR3) and its associated page tables
-- 22-c: handle page sharing via fork/COW (Phase 20) — needs a per-physical-page refcount in the PMM before really freeing
+- 22-A: free the process's physical data pages (heap, stack) in `process_exit()`
+- 22-B: free the page directory (CR3) and its associated page tables
+- 22-C: handle page sharing via fork/COW (Phase 20) — needs a per-physical-page refcount in the PMM before really freeing
 
 ### Phase 23 — `e1000` driver + minimal TCP/IP
 
@@ -166,9 +173,9 @@ Mechanical work on code that already exists, no new feature.
 - **Main risk:** the largest scope in the roadmap — split into sub-phases rather than attempting it all at once.
 - **Depends on:** Phase 11 (PCI) — already done. Independent of Phases 17–22.
 
-- 23-a: raw driver — map the memory BAR via the VMM, initialize the RX/TX descriptor rings, send/receive one Ethernet frame
-- 23-b: ARP (resolve MAC from IP)
-- 23-c: minimal IP + ICMP (answer ping)
+- 23-A: raw driver — map the memory BAR via the VMM, initialize the RX/TX descriptor rings, send/receive one Ethernet frame
+- 23-B: ARP (resolve MAC from IP)
+- 23-C: minimal IP + ICMP (answer ping)
 
 ### Phase 24 — AHCI driver (modern SATA)
 
@@ -184,10 +191,10 @@ Mechanical work on code that already exists, no new feature.
 - **Main risk:** by far the largest scope/complexity jump in the entire roadmap — treated as its own sub-roadmap rather than one monolithic phase.
 - **Depends on:** Phase 11 (PCI). Technically independent of Phases 22–24, but recommended to come last among the driver phases since it's the largest complexity jump.
 
-- 25-a: enumerate the xHCI controller
-- 25-b: port reset
-- 25-c: enumerate the connected device
-- 25-d: parse HID reports (a real keyboard/mouse)
+- 25-A: enumerate the xHCI controller
+- 25-B: port reset
+- 25-C: enumerate the connected device
+- 25-D: parse HID reports (a real keyboard/mouse)
 
 ### Phase 26 — Linear framebuffer + simple GUI
 
@@ -243,10 +250,10 @@ Mechanical work on code that already exists, no new feature.
 - **Licensing:** the engine (GPL since 1997) can go in the repo; the WAD NEVER goes in the repo — the user injects `doom1.wad` (shareware) or Freedoom on their own.
 - **Depends on:** Phase 26 (framebuffer/GUI), Phase 30 (`lseek` + `malloc`).
 
-- 31-a: portability layer (`i_video`/`i_system`/`i_input` in the original code) using NullOS's framebuffer, input and timer — reuse 100% of the original game logic (physics, AI, software rendering) untouched
-- 31-b: integration with `lseek`/`malloc` for WAD reading and the engine's memory allocation
-- 31-c: build/link of the full engine running on NullOS, first menu screen appearing
-- 31-d: actually playing without crashing (functional level, no audio)
+- 31-A: portability layer (`i_video`/`i_system`/`i_input` in the original code) using NullOS's framebuffer, input and timer — reuse 100% of the original game logic (physics, AI, software rendering) untouched
+- 31-B: integration with `lseek`/`malloc` for WAD reading and the engine's memory allocation
+- 31-C: build/link of the full engine running on NullOS, first menu screen appearing
+- 31-D: actually playing without crashing (functional level, no audio)
 
 **v1.0.0** closes right after Phase 31.
 
@@ -258,7 +265,7 @@ Dependency notes:
 
 - Phase 18 depends on Phase 17 being closed.
 - Phase 19 depends on Phase 17 (libnos consolidated).
-- Phase 22-c depends on Phase 20 (COW fork) being closed.
+- Phase 22-C depends on Phase 20 (COW fork) being closed.
 - Phase 28 depends on Phase 18 (HAL).
 - Phases 30 and 31 depend on Phase 26 (framebuffer); Phase 31 also depends on Phase 30.
 

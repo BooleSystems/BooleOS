@@ -55,7 +55,6 @@ typedef struct process {
 } process_t;
 
 void process_init(void);
-process_t *process_spawn(const char *name, process_entry_t entry, void *arg, void (*bootstrap)(void));
 /* cwd_cluster is the new process's starting current directory (0 =
    root). Callers that exec() on behalf of another process (see
    exec()/SYS_EXEC in syscall.c) pass that process's own cwd_cluster,

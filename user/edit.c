@@ -23,6 +23,24 @@ static const char sc_map[128] = {
     0,    0,
 };
 
+/* Same layout as sc_map, index-for-index, with Shift held (US QWERTY).
+   Duplicates kernel/keyboard.c's scancode_map_shift on purpose: the
+   kernel swallows the Shift make/break scancodes itself, so edit.c can
+   never track Shift on its own — it reads the Shift state from bit 9 of
+   the raw value (SYS_READ_RAW) and picks the table here. */
+static const char sc_map_shift[128] = {
+    0,    27,  '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_',  '+',
+    '\b', '\t','Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{',  '}',
+    '\n', 0,   'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"',  '~',
+    0,    '|', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '<', '>', '?', 0,    '*',
+    0,    ' ', 0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,    0,
+    0,    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,    0,
+    0,    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,    0,
+    0,    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,    0,
+    0,    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,    0,
+    0,    0,
+};
+
 /* ── string helpers ──────────────────────────────────────────── */
 static unsigned ed_strlen(const char *s) {
     unsigned n = 0; while (s[n]) n++; return n;
@@ -217,6 +235,7 @@ void _start(void) {
         unsigned raw  = nos_read_raw();
         unsigned sc   = raw & 0xFF;
         int      ctrl = (raw & 0x100) != 0;
+        int      shift = (raw & 0x200) != 0;
 
         status[0] = '\0';
 
@@ -249,7 +268,7 @@ void _start(void) {
             case 0x0E: delete_before(); break;  /* backspace   */
             case 0x1C: insert_char('\n'); break; /* enter      */
             default: {
-                char c = (sc < 128) ? sc_map[sc] : 0;
+                char c = (sc < 128) ? (shift ? sc_map_shift[sc] : sc_map[sc]) : 0;
                 if (c >= 0x20 && (unsigned char)c < 0x7F)
                     insert_char(c);
                 break;
