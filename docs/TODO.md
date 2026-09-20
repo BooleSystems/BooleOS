@@ -112,7 +112,7 @@ Phase 17-C (syscall table in `docs/syscalls.md` is already updated for
 
 ### Pre-existing debt (not a 17-C item): intermittent ATA `probe()` "no disk"
 
-- First seen on a 17-B boot (CHANGELOG, before any `power.c`/`syscall.c`
+- First seen on a 17-B boot (before any `power.c`/`syscall.c`
   change). Briefly suspected to be tied to `reboot` (one boot after a real
   reboot printed `no disk` / `no FAT16 disk`), but 9 boot/reboot cycles
   (5 with real reboot in `make run-reboot-test`, 4 plain `make run`) with

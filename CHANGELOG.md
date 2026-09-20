@@ -33,145 +33,25 @@ at the time.
 - `docs/TODO.md`: header-only file for minimal "WIP: document X"
   stubs left during `nightly` development, resolved at each version's
   final polish (per the new CLAUDE.md documentation rule).
-
-### Changed
-
-- `PROGRESS.md`: consolidated from 411 to ~162 lines. Closed phases
-  are now one line each, architecture decisions tightened to their
-  essential point with links to `docs/`, and 17-C keeps full detail
-  including its open bugs at the time.
-
-### Fixed
-
-- Bare `run` printed `[EXEC] not found:` (empty name). `cmd_run()` in
-  `user/shell.c` now trims and validates the name and returns the pid;
-  the `_start()` foreground path reuses it instead of a duplicated copy.
-- `reboot` "looking like" `shutdown` was not a kernel bug: `-no-reboot`
-  turns a guest reset into a shutdown. Added `make run-reboot-test`
-  (`tools/Makefile`, no `-no-reboot`); `run`/`debug` keep the flag.
-
-Phase 17-A (mechanical fixes from the old audit) — all 6 items done.
-Confirmed via manual QEMU testing: clean build, boot, `selftest` 13/13,
-and the `[PCI]` boot output identical to before the change.
-
-- `kernel/memory/pmm.c`: `pmm_init()` computed the page count as
-  `(1024 + mem_upper) * 1024 / PAGE_SIZE`, which overflows `uint32_t`
-  for a huge `mem_upper` and wraps to a tiny `total_pages`, underflowing
-  `total_pages - 256`. Now `256 + mem_upper / 4` (same value, no
-  overflow), and freeing high memory is skipped with a warning when
-  `total_pages <= 256`.
-- `kernel/fs/fat16.c`: `fat16_init()` now rejects a BPB with
-  `sectors_per_cluster == 0` (printing the reason) before it is used as
-  a divisor, instead of dividing by zero.
-- `kernel/process.c`: `next_pid++` (three places) now goes through
-  `alloc_pid()`, which saves/restores EFLAGS around the increment
-  instead of a bare cli/sti, since `process_fork()` calls it from
-  inside its own cli section.
-- `kernel/drivers/pci.c`/`pci.h`: only the BARs a header type really
-  has are read and printed (type 0: 6, type 1 PCI-PCI bridge: 2,
-  type 2 CardBus: 1), with the multi-function bit (0x80) masked off
-  first; the rest of `bar[]` stays 0.
-
-- `kernel/memory/vmm.c`/`vmm.h`: `vmm_map_page()` and
-  `vmm_map_user_page()` now return `int` (0 = success, `VMM_ERR_RANGE`
-  / `VMM_ERR_NOMEM` on failure) instead of failing silently as `void`;
-  `map_page_early()` reports an exhausted page-table pool.
-  `vmm_map_user_page()` also rejects `virt < 0x800000` (the kernel's
-  shared identity map) and frees a page-table page it can't use.
-  Every call site checks the result: `heap_expand()` frees the page and
-  returns 0; `exec()`'s user-stack loop prints an error and returns 0;
-  `elf_load()` returns -1; `process_fork()` unwinds via its existing
-  `failed` path. The three `vmm_map_user_page` sites also free the
-  just-allocated physical page instead of leaking it.
-
-Phase 17-B (known technical debt) — all 3 items done. Confirmed via
-manual QEMU testing. The first boot printed `[ATA] Detecting disk... no
-disk` (attributed to the known intermittent ATA race from Phase 15;
-`ata.c` was not touched in 17-A or 17-B, and no cause was investigated
-further). On the next boot: `selftest` 13/13, `forktest | cat` working
-normally (no regression from the `process_spawn_user()` slot-reservation
-change), and the editor's Shift handling tested by hand (Shift+letter
-gives the capital, Shift+1 gives `!`, Shift+\ gives `|`).
-
-- `kernel/keyboard.c`, `user/edit.c` (Phase 17-B): Shift in the editor.
-  The raw scancode path (`SYS_READ_RAW`) now carries a Shift bit
-  (bit 9, next to Ctrl's bit 8), because the kernel consumes the Shift
-  make/break scancodes itself and `edit.c` could never see them; the
-  editor selects a new `sc_map_shift[]` table from it, so Shift+5 gives
-  `%`, Shift+\ gives `|` and Shift+letter gives the capital.
-
-- `kernel/fs/fat16.c` (Phase 17-B): `fat16_write_file()` again refuses
-  a directory entry (`ATTR_DIRECTORY`) — the Phase 15 switch to the
-  shared `dir_lookup()` had dropped the old loop's directory skip — and
-  no longer re-reads the dirent sector `dir_lookup()` just left in
-  `dir_buf`. (The "duplicated dirent lookup" tech-debt item was already
-  resolved by Phase 15; only these two leftovers remained.)
-- `kernel/process.c`, `kernel/scheduler.c/h`, `kernel/process.h`
-  (Phase 17-B): `process_spawn_user()` now reserves its slot atomically
-  (interrupts off via saved EFLAGS, slot marked `PROCESS_BLOCKED`, pid
-  and `waiting_for_pid` reset in the same section), fills in every
-  field, and only then publishes `PROCESS_READY` (or leaves it
-  `PROCESS_BLOCKED` for `start_blocked`). This closes two races: two
-  spawns picking the same free slot, and the scheduler running a slot
-  whose `esp`/`cr3` weren't built yet. New `irq_save()`/`irq_restore()`
-  helpers, also used by `alloc_pid()`.
-
-Phase 17-C (libnos consolidation + shell tools) — functionally complete
-and closed after manual QEMU testing (the two issues found in the final
-test, `reboot` looking like `shutdown` and bare `run`, are resolved; see
-Fixed above).
-
 - `user/lib/nullos.c/h`, `user/shell.c`, `forktest.c`, `selftest.c`,
   `edit.c`: libnos gained `memcpy`/`memset`/`memmove`/`memcmp`/`strlen`/
   `strcmp`/`strncmp` (standard libc names and signatures, so a call GCC
   emits by itself resolves) and `nos_uitoa`; the four per-program copies
   of `strlen`/`uitoa`, shell's `strcmp`/`strncmp`, selftest's `st_bufeq`
   and the inline zero/shift/copy loops in selftest and edit now call them.
-- `kernel/fs/fat16.c`, `fat16.h`, `vfs.c`, `vfs.h`, `kernel/syscall.c`:
-  **`SYS_WRITE` on a FAT16 fd no longer loses data.** `sys_write()` staged
-  writes in 128-byte chunks and each `vfs_write()` replaced the WHOLE file,
-  so only the last chunk survived a write over 128 bytes. New
-  `fat16_write_at()` (positional write: grows the chain, updates the dirent,
-  data -> FAT -> dirent order) backs a new stream `vfs_write()` that writes
-  at `fd->pos` and advances it. The whole-file replace `SYS_WRITE_FILE`
-  needs moved to `vfs_write_all()`, so the editor's save is unchanged.
-- `kernel/syscall.c` (`sys_exec_pipe`): clears the global `exec_arg`. Before,
-  a piped/redirected program's `SYS_GETARG` returned the argument left by the
-  last plain `exec()` — harmless while nothing read it on that path, wrong for
-  `cat` (which now reads it).
-
-- `user/shell.c`: a bare `edit` (no argument) printed `command not found:
-  edit`. `nos_read()` returns the line with its trailing `\n`, and the
-  `edit`/`run`/`cat` branches only match "name followed by a space or the
-  end of the string", so with the `\n` attached a bare command matched
-  nothing and fell through. Pre-existing (the condition is identical in
-  v0.16.0; only `edit <file>` was ever exercised), not caused by 17-C. The
-  shell now strips the trailing `\n`/`\r` right after reading the line.
-  Same fix makes a bare `run` and a bare `cat` (usage message) work.
-- Line editing echo (pre-existing): erasing a typed character did not
-  erase it on the serial console. `vga_putchar('\b')` blanks the cell on
-  screen, but its serial mirror sent a raw `\b`, which only moves a
-  terminal's cursor left — retyping `shutdown` as `reboot` showed
-  `rebootdows`. `kernel/drivers/vga.c` now mirrors an erasing backspace as
-  `\b \b` (nothing if VGA erased nothing). Also `sys_read()` no longer
-  echoes a backspace on an empty line, which used to blank the shell's own
-  `> ` prompt. The typed buffer itself was always right (a backspace just
-  decrements the count).
-
-### Added (17-C)
-
 - `user/selftest.c`: new test "SYS_WRITE >128 bytes accumulates in a FAT16
   file" — writes 2100 bytes as two `nos_write()` calls (crossing the first
   2048-byte cluster) and reads them all back; the regression test for the
   chunked-write data loss. Suite is now 14 tests (`st_big.txt` is left on
   disk like the other test files).
-
 - `pwd` / `SYS_GETCWD` (30): `fat16_get_path()` rebuilds a cwd path from the
   cwd's cluster by walking up through `..` (names in 8.3 uppercase).
   `nos_getcwd()`, shell `pwd`.
 - `cat <file>`: `user/cat.c` opens the file named by its argument and prints
   it; with no argument it still copies stdin (pipe sink). The shell's `cat
-  <file>` launches it and waits.
+  <file>` launches it and waits. `sys_exec_pipe()` clears the global
+  `exec_arg` so a piped/redirected `cat` never reads the argument left by an
+  earlier plain `exec()`.
 - `cmd < file` and `cmd > file` in the shell (`run_redirected()`): file fds
   through the existing `SYS_EXEC_PIPE`; `>` creates + truncates. External
   programs only, launched by name without arguments, not combinable with `|`.
@@ -181,15 +61,18 @@ Fixed above).
   isn't in the PCI table). `pci_find_device()`. Syscalls `SYS_REBOOT` (31) and
   `SYS_SHUTDOWN` (32), `nos_reboot()`/`nos_shutdown()`, shell `reboot`/
   `shutdown`.
-
-### Removed
-
-- `process_spawn()`, `scheduler_spawn()` and the now-unused
-  `scheduler_task_bootstrap()`: dead code (no callers anywhere, no
-  future roadmap phase depends on them).
+- `tools/Makefile`: `make run-reboot-test` runs QEMU without `-no-reboot`, so
+  `reboot` really restarts the guest. `run` and `debug` keep `-no-reboot` on
+  purpose (post-mortem state on a triple fault; it also turns a guest reset
+  into a shutdown).
 
 ### Changed
 
+- `PROGRESS.md`: consolidated from 411 to ~170 lines. Closed phases are now
+  one line each and architecture decisions are tightened to their essential
+  point with links to `docs/`.
+- `user/shell.c`: `run` has a single implementation, `cmd_run()`, shared by
+  the foreground path and `run_command()`; it trims and validates the name.
 - `CLAUDE.md`: Safe Mode rules now name `process_spawn_user` instead of the
   deleted `process_spawn` (same rule, function name updated).
 - `ROADMAP.md`: the two Safe Mode references (Phase 18-B) to
@@ -241,6 +124,89 @@ Fixed above).
   sub-phase progress (17-A and 17-B closed, next 17-C); roadmap range
   updated to 17–31; the `process_exit()` leak note now references
   Phases 20/22.
+
+### Fixed
+
+- `kernel/memory/pmm.c`: `pmm_init()` computed the page count as
+  `(1024 + mem_upper) * 1024 / PAGE_SIZE`, which overflows `uint32_t`
+  for a huge `mem_upper` and wraps to a tiny `total_pages`, underflowing
+  `total_pages - 256`. Now `256 + mem_upper / 4` (same value, no
+  overflow), and freeing high memory is skipped with a warning when
+  `total_pages <= 256`.
+- `kernel/fs/fat16.c`: `fat16_init()` now rejects a BPB with
+  `sectors_per_cluster == 0` (printing the reason) before it is used as
+  a divisor, instead of dividing by zero.
+- `kernel/process.c`: `next_pid++` (three places) now goes through
+  `alloc_pid()`, which saves/restores EFLAGS around the increment
+  instead of a bare cli/sti, since `process_fork()` calls it from
+  inside its own cli section.
+- `kernel/drivers/pci.c`/`pci.h`: only the BARs a header type really
+  has are read and printed (type 0: 6, type 1 PCI-PCI bridge: 2,
+  type 2 CardBus: 1), with the multi-function bit (0x80) masked off
+  first; the rest of `bar[]` stays 0.
+
+- `kernel/memory/vmm.c`/`vmm.h`: `vmm_map_page()` and
+  `vmm_map_user_page()` now return `int` (0 = success, `VMM_ERR_RANGE`
+  / `VMM_ERR_NOMEM` on failure) instead of failing silently as `void`;
+  `map_page_early()` reports an exhausted page-table pool.
+  `vmm_map_user_page()` also rejects `virt < 0x800000` (the kernel's
+  shared identity map) and frees a page-table page it can't use.
+  Every call site checks the result: `heap_expand()` frees the page and
+  returns 0; `exec()`'s user-stack loop prints an error and returns 0;
+  `elf_load()` returns -1; `process_fork()` unwinds via its existing
+  `failed` path. The three `vmm_map_user_page` sites also free the
+  just-allocated physical page instead of leaking it.
+
+- `kernel/keyboard.c`, `user/edit.c` (Phase 17-B): Shift in the editor.
+  The raw scancode path (`SYS_READ_RAW`) now carries a Shift bit
+  (bit 9, next to Ctrl's bit 8), because the kernel consumes the Shift
+  make/break scancodes itself and `edit.c` could never see them; the
+  editor selects a new `sc_map_shift[]` table from it, so Shift+5 gives
+  `%`, Shift+\ gives `|` and Shift+letter gives the capital.
+
+- `kernel/fs/fat16.c` (Phase 17-B): `fat16_write_file()` again refuses
+  a directory entry (`ATTR_DIRECTORY`) — the Phase 15 switch to the
+  shared `dir_lookup()` had dropped the old loop's directory skip — and
+  no longer re-reads the dirent sector `dir_lookup()` just left in
+  `dir_buf`. (The "duplicated dirent lookup" tech-debt item was already
+  resolved by Phase 15; only these two leftovers remained.)
+- `kernel/process.c`, `kernel/scheduler.c/h`, `kernel/process.h`
+  (Phase 17-B): `process_spawn_user()` now reserves its slot atomically
+  (interrupts off via saved EFLAGS, slot marked `PROCESS_BLOCKED`, pid
+  and `waiting_for_pid` reset in the same section), fills in every
+  field, and only then publishes `PROCESS_READY` (or leaves it
+  `PROCESS_BLOCKED` for `start_blocked`). This closes two races: two
+  spawns picking the same free slot, and the scheduler running a slot
+  whose `esp`/`cr3` weren't built yet. New `irq_save()`/`irq_restore()`
+  helpers, also used by `alloc_pid()`.
+
+- `kernel/fs/fat16.c`, `fat16.h`, `vfs.c`, `vfs.h`, `kernel/syscall.c`:
+  `SYS_WRITE` on a FAT16 fd lost data. `sys_write()` staged writes in
+  128-byte chunks and each `vfs_write()` replaced the WHOLE file, so only
+  the last chunk survived a write over 128 bytes. New `fat16_write_at()`
+  (positional write: grows the chain, updates the dirent, data -> FAT ->
+  dirent order) backs a stream `vfs_write()` that writes at `fd->pos` and
+  advances it; the whole-file replace `SYS_WRITE_FILE` needs moved to
+  `vfs_write_all()`, so the editor's save is unchanged.
+- `user/shell.c`: a bare `edit` or `cat` (no argument) printed `command not
+  found`. `nos_read()` returns the line with its trailing newline, and the
+  branches only match "name followed by a space or end of string". The
+  shell now strips the trailing `\n`/`\r` right after reading the line.
+- Line editing echo (pre-existing): erasing a typed character did not
+  erase it on the serial console. `vga_putchar('\b')` blanks the cell on
+  screen, but its serial mirror sent a raw `\b`, which only moves a
+  terminal's cursor left — retyping `shutdown` as `reboot` showed
+  `rebootdows`. `kernel/drivers/vga.c` now mirrors an erasing backspace as
+  `\b \b` (nothing if VGA erased nothing). Also `sys_read()` no longer
+  echoes a backspace on an empty line, which used to blank the shell's own
+  `> ` prompt. The typed buffer itself was always right (a backspace just
+  decrements the count).
+
+### Removed
+
+- `process_spawn()`, `scheduler_spawn()` and the now-unused
+  `scheduler_task_bootstrap()`: dead code (no callers anywhere, no
+  future roadmap phase depends on them).
 
 ## [0.16.0] - Phase 16: pipes and real waitpid
 

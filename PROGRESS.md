@@ -29,7 +29,7 @@ Last closed phase: **Phase 16** (pipes + blocking `waitpid`), released as
   `reboot`/`shutdown` — done (nightly).
 - Phase 17-B — known technical debt fixes (edit.c Shift, `fat16_write_file`
   guard, atomic `process_spawn_user` slot claim) — implemented, built
-  clean; manual QEMU test status recorded in CHANGELOG `[Unreleased]`.
+  clean.
 
 ### Current work: Phase 17-C (closed; version stays 0.17.0-nightly)
 
