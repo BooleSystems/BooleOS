@@ -25,9 +25,14 @@ Phase 18-B (Safe Mode) — pass 1 of 5 done (infrastructure), see `docs/safemode
   reboot submenu, disk info, sector hexdump), static buffers only. Things to
   exercise: every menu key, ESC/0 in the submenu, hexdump with empty / letters /
   a huge number / an LBA past the end of the disk, and the two hexdump pages.
-- Pass 4: tier 2 restricted shell (PMM/VMM/heap/FAT16 on demand; `ls`, `cat`,
-  `pwd`, `cd`, `mkdir`, simple edit, static `help`). No delete until Phase 21;
-  the fsck-like verify/repair is its own later sub-phase.
+- Pass 4 (done, awaiting the QEMU check): tier-2 restricted shell (menu item 5;
+  PMM/VMM/heap/FAT16 on demand once per session; `help`, `ls`, `cat`, `pwd`,
+  `cd`, `back`; read-only). To exercise: item 5 twice (must not re-init), `ls`/
+  `cd`/`pwd`/`cat` on the files the selftest leaves (`st_root.txt`, `st_d1/...`),
+  a missing file/dir, ESC in a long `cat`, `back` then reboot from the menu.
+  Not done, by design: writes/edit, delete (Phase 21), fsck-like verify/repair
+  (its own later sub-phase). Also `kmain` still has its own copy of the PMM
+  reservations (module + boot info); it could use the new HAL accessors.
 - Pass 5: GRUB entries (Safe Mode, previous release), `tools/prev/`,
   `make snapshot` and the release-checklist step; document the
   "anterior kernel does not know the counter" behavior.

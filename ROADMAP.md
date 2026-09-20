@@ -44,7 +44,7 @@ restructuring after Phase 16) use a hyphen and an uppercase letter
 | **17-D** | Test/build infrastructure | ✅ Done | CHANGELOG `[0.17.0]` |
 | **18** | Safety/portability foundation (HAL + Safe Mode) | 🔜 Planned | below |
 | **18-A** | HAL (hardware abstraction layer) | ✅ Done (HAL, `msg(ID)`, real memory map in the PMM) | `docs/hal.md`, `docs/memory.md` |
-| **18-B** | Safe Mode | 🔧 In progress (pass 3 of 5: tier-1 Safe Mode TUI) | `docs/safemode.md` |
+| **18-B** | Safe Mode | 🔧 In progress (pass 4 of 5: tier-2 restricted shell) | `docs/safemode.md` |
 | **19** | SDK / app-development experience | 🔜 Planned | below |
 | **20** | Copy-on-write `fork()` | 🔜 Planned | below |
 | **21** | `unlink()`/`rmdir()` | 🔜 Planned | below |

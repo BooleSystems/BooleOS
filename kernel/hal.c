@@ -50,6 +50,18 @@ int hal_boot_init(uint32_t boot_magic, uintptr_t boot_info) {
     return 0;
 }
 
+int boot_get_module(uint32_t *start, uint32_t *end) {
+    if (!g_boot_info || !start || !end) return 0;
+    return multiboot2_find_module((void *)g_boot_info, start, end);
+}
+
+int boot_get_info_region(uint32_t *addr, uint32_t *size) {
+    if (!g_boot_info || !addr || !size) return 0;
+    *addr = (uint32_t)g_boot_info;
+    *size = ((const mb2_header_t *)g_boot_info)->total_size;
+    return 1;
+}
+
 int boot_get_cmdline(char *out, int max) {
     if (!g_boot_info || !out || max <= 0) return -1;
 

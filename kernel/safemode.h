@@ -2,12 +2,14 @@
 //
 // A recovery environment inside the same kernel binary, entered very early in
 // kmain(), before the PMM, VMM, heap, scheduler, syscall layer and exec are
-// initialized: it must survive bugs in exactly those. It uses only the HAL
-// (console, input, block I/O, power) and the boot config sector, and only
-// static buffers — no kmalloc.
+// initialized: it must survive bugs in exactly those.
 //
-// Pass 3: the tier-1 text UI (numbered menu, reboot submenu, disk info, sector
-// hexdump). The restricted shell with file access (tier 2) is pass 4 — see
+// Tier 1 (menu, reboot submenu, disk info, sector hexdump) uses only the HAL
+// (console, input, block I/O, power), the boot config sector and static
+// buffers — no kmalloc. Tier 2 (menu item 5, the restricted shell in
+// safeshell.c) initializes the PMM, VMM, heap and FAT16 on demand, only when
+// the user chooses it; if that crashes, the failure counter is still at or
+// above the limit and the next boot lands in Safe Mode again. See
 // docs/safemode.md. Safe Mode never resumes the normal boot in place: you
 // leave it only by rebooting.
 

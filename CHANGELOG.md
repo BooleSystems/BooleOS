@@ -76,6 +76,16 @@ at the time.
   heap. Safe Mode is left only by rebooting. The temporary `[BOOTCFG]` serial
   dump in `kmain` was removed.
 
+- Safe Mode, pass 4 (`docs/safemode.md`): tier 2 — main menu item "5.
+  Restricted shell (initializes disk access)", which initializes the PMM, VMM,
+  heap and FAT16 on demand (once per session, reporting a failed step and
+  returning to the menu) and opens a `safe> ` shell with built-ins only
+  (`help`, `ls [dir]`, `cat <file>`, `pwd`, `cd [dir]`, `back`) that call the
+  FAT16 functions directly — no processes, no `exec`, read/navigation only
+  (`kernel/safeshell.h/.c`). New HAL accessors `boot_get_module()` and
+  `boot_get_info_region()` let it reserve the ramfs module and the boot-info
+  block in the PMM by their real addresses.
+
 ### Changed
 
 - `ata_init()` now runs right after interrupts are enabled, before the PMM, so

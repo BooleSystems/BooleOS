@@ -2,7 +2,23 @@
 
 Safe Mode is a recovery environment inside the **same kernel binary**, entered very early in `kmain()` when the previous boots kept failing (or when GRUB asks for it). It exists to survive bugs in exactly the subsystems it must not depend on, so it runs in ring 0 before the scheduler, `process_spawn_user`, `exec` and the syscall layer are initialized. This document holds the design as approved and what is implemented so far.
 
-**Status: pass 3 of 5.** The failure counter, the entry condition and the tier-1 text UI work. The restricted shell with file access (tier 2) and the previous-release GRUB entry are not done yet.
+**Status: pass 4 of 5.** The failure counter, the entry condition, the tier-1 text UI and the tier-2 restricted shell are implemented. Only the previous-release GRUB entry and release tooling (pass 5) are left.
+
+## Implemented in pass 4: tier 2, the restricted shell (`kernel/safemode.c`, `kernel/safeshell.c`)
+
+Main menu item **5. Restricted shell (initializes disk access)**. Tier 1 never touches the PMM/VMM/heap; this item is the only place in Safe Mode that does, and only when chosen.
+
+- **On-demand initialization**, in the normal boot's order: PMM (`boot_get_memory_map()` -> `pmm_init()`, then the ramfs module and the boot-info block reserved by their real addresses — two HAL accessors, `boot_get_module()` and `boot_get_info_region()`, were added for this), VMM (`vmm_init()`, paging), heap (`heap_init()`), FAT16 (`fat16_init()`). The scheduler is deliberately skipped: there are no processes. Failures that can be detected are reported and return to the menu without hanging: no usable memory (`pmm_free_pages() == 0`), an empty heap (`heap_init()` returns `void`, so `heap_free_bytes() == 0` is the check), no usable FAT16 (`fat16_init() == 0`). `vmm_init()` has no return value (it works or the machine faults).
+- **Runs at most once per session.** Progress is tracked per step (`g_t2_stage`, `g_t2_fat_ready`): choosing the item again does not re-initialize anything, and a step that failed part way is retried from the step that did not finish (a second `vmm_init()` under a running kernel would rebuild the page tables). If the initialization crashes the machine, the counter is still at or above the limit, so the next boot is Safe Mode again.
+- **The shell** (`safe> ` prompt, 128-byte static line buffer, backspace editing only, no history). Built-ins call the FAT16 functions directly in ring 0 — never `process_spawn_user`/`exec`, and it does not run ramfs programs even if one has the same name:
+  - `help` — the command list;
+  - `ls [dir]` — entries of the current directory or a path (`fat16_resolve_dir()` + `fat16_readdir()`), sizes in bytes, `<DIR>` for directories; ramfs is not listed;
+  - `cat <file>` — prints a file (`fat16_find()` + `fat16_read_at()`, 512-byte chunks; non-printable bytes as `.`; ESC or Ctrl+C stops a long file);
+  - `pwd` — `fat16_get_path()`;
+  - `cd [dir]` — no argument = root;
+  - `back` — returns to the menu; nothing is torn down, and the current directory is kept for the next visit.
+  Unknown command: an error and the prompt continues.
+- **Deliberately not here:** file writes/editing, delete (no `unlink` until Phase 21), an fsck-like check, and the Tier-1 screens (reboot, disk info, hexdump stay in the main menu). It is a read/navigation-only recovery aid so it cannot corrupt more.
 
 ## Implemented in pass 3: the tier-1 TUI (`kernel/safemode.c`)
 
@@ -40,13 +56,14 @@ A tiny `key=value` store in **one raw sector, LBA 1**, outside the filesystem, a
 
 The kernel used to ignore the Multiboot2 command line (the `debug` word of the "serial debug mode" GRUB entry was never read). Now `multiboot2_find_cmdline()` parses tag type 1, and the HAL gained:
 
+- `boot_get_module()` / `boot_get_info_region()` (pass 4) — the ramfs module range and the boot-info block, so tier 2 can reserve them in the PMM;
 - `boot_get_cmdline(out, max)` — the text after the kernel path in the GRUB entry (length, or -1 if none);
 - `boot_has_flag("safemode")` — true if the word is one of the whitespace-separated words (exact match).
 
 ## Design for the remaining passes (approved)
 
 - **Counter** (implemented in pass 2, see above). `boot_fail_count` in the config sector. Incremented right after the disk is up, before anything that can fail (i.e. `ata_init()` moves to just after `sti`, before the PMM; today it is called exactly once, in `kmain`, so this is a relocation, not a second call). If the count is already >= N (N = 3) at boot, or the `safemode` flag is present, `kmain` branches to Safe Mode **without incrementing further**. Reset to 0 when the system is considered up: the first `SYS_READ` on fd 0 by any process (an interactive read only happens after the prompt is printed; with the GUI in Phase 26 the criterion becomes "compositor ready"). Safe Mode's "reboot normally" zeroes the counter first. Failures before the disk is initialized (GDT/IDT/PIC/PIT/keyboard) cannot be counted.
-- **Two tiers.** The decision is taken before the PMM, so:
+- **Two tiers** (both implemented). The decision is taken before the PMM, so:
   - *Tier 1* uses only what is ready: console, keyboard, block HAL, power, PCI — menu, counter reset, reboot submenu, disk info, sector hexdump. No heap.
   - *Tier 2* (restricted shell with files) initializes the PMM, VMM, heap and FAT16 **on demand** from a menu entry (`fat16_init()` calls `kmalloc` for the FAT cache). If that crashes, the counter is still >= N, so the next boot lands in Safe Mode again.
 - **TUI.** Numbered menu with submenus; destructive actions always go through their own confirmation screen; fsck-like operations split into verify-only vs verify-and-repair. Restricted shell: built-ins only, calling FAT16/HAL functions directly (no processes, no `run`), static `help` text.
@@ -56,7 +73,8 @@ The kernel used to ignore the Multiboot2 command line (the `debug` word of the "
 
 ```
 kernel/bootcfg.h/.c     config sector (LBA 1), BOOTCFG_FAIL_THRESHOLD
-kernel/safemode.h/.c    Safe Mode (tier-1 TUI, pass 3)
+kernel/safemode.h/.c    Safe Mode (tier-1 TUI; menu item 5 initializes tier 2 on demand)
+kernel/safeshell.h/.c   Safe Mode restricted shell (tier 2)
 kernel/hal.h/.c         boot_get_cmdline(), boot_has_flag()
 kernel/multiboot2.h     cmdline tag (type 1) parser
 tools/make_disk.sh      mkfs.vfat -R 8

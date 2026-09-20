@@ -1,8 +1,10 @@
 // nullos/kernel/safemode.c — Safe Mode, tier 1 (see safemode.h).
 //
-// Runs with nothing but the HAL and bootcfg: NO kmalloc, PMM, VMM, scheduler
-// or anything that depends on them — it is entered before they exist. Every
-// buffer is static or a fixed-size local. All text goes through msg().
+// Tier 1 runs with nothing but the HAL and bootcfg: NO kmalloc, PMM, VMM,
+// scheduler or anything that depends on them — it is entered before they
+// exist. Every buffer is static or a fixed-size local. Tier 2 (menu item 5)
+// initializes the PMM/VMM/heap/FAT16 on demand, once, when chosen. All text
+// goes through msg().
 //
 // Screens: main menu (redrawn every time you come back to it), Reboot submenu,
 // Disk info, Sector hexdump. There is deliberately no "continue booting":
@@ -13,10 +15,16 @@
 #include "hal.h"
 #include "bootcfg.h"
 #include "messages.h"
+#include "safeshell.h"
+#include "memory/pmm.h"
+#include "memory/vmm.h"
+#include "memory/heap.h"
+#include "fs/fat16.h"
 
 #define KEY_ESC 27
 
 static uint8_t  g_sector[512];   // scratch for raw sector reads (disk info, hexdump)
+static boot_mem_region_t g_regions[64];   // memory map, for the tier-2 PMM init
 static uint32_t g_entry_fail_count;
 static safemode_reason_t g_reason;
 
@@ -268,6 +276,74 @@ static void screen_hexdump(void) {
     }
 }
 
+// ── tier 2: restricted shell ─────────────────────────────────────────
+
+// Initialization progress. Each step runs at most once per Safe Mode session:
+// the PMM/VMM/heap must not be initialized twice (a second vmm_init() would
+// rebuild the page tables under a running kernel), so a step that failed part
+// way is retried from the step that did not finish, never from the start.
+enum { T2_NONE = 0, T2_PMM, T2_VMM, T2_HEAP };
+static int g_t2_stage = T2_NONE;
+static int g_t2_fat_ready = 0;
+
+// Brings up what FAT16 needs, in the same order as the normal boot: PMM, VMM
+// (paging), heap, then FAT16. (The scheduler is deliberately skipped — Safe
+// Mode has no processes.) Returns 1 when everything is ready, 0 after printing
+// which step failed.
+static int tier2_init(void) {
+    if (g_t2_stage < T2_PMM) {
+        int n = boot_get_memory_map(g_regions, (int)(sizeof(g_regions) / sizeof(g_regions[0])));
+        pmm_init(g_regions, n);
+
+        // Keep the PMM from handing out what the bootloader put in RAM (same
+        // reservations kmain makes).
+        uint32_t a, b;
+        if (boot_get_module(&a, &b))      pmm_mark_used(a, b - a);
+        if (boot_get_info_region(&a, &b)) pmm_mark_used(a, b);
+
+        if (pmm_free_pages() == 0) {
+            console_puts(msg(MSG_SAFE_T2_PMM_FAILED));
+            return 0;
+        }
+        g_t2_stage = T2_PMM;
+    }
+    if (g_t2_stage < T2_VMM) {
+        vmm_init();                    // no return value: it works or the machine faults
+        g_t2_stage = T2_VMM;
+    }
+    if (g_t2_stage < T2_HEAP) {
+        heap_init();                   // returns void; an empty heap means it failed
+        if (heap_free_bytes() == 0) {
+            console_puts(msg(MSG_SAFE_T2_HEAP_FAILED));
+            return 0;
+        }
+        g_t2_stage = T2_HEAP;
+    }
+    if (!g_t2_fat_ready) {
+        if (!fat16_init()) {
+            console_puts(msg(MSG_SAFE_T2_FAT_FAILED));
+            return 0;
+        }
+        g_t2_fat_ready = 1;
+    }
+    return 1;
+}
+
+static void screen_shell(void) {
+    put_title(MSG_SAFE_T2_TITLE);
+
+    if (!(g_t2_stage == T2_HEAP && g_t2_fat_ready)) {
+        console_puts(msg(MSG_SAFE_T2_INIT));
+        if (!tier2_init()) {           // clear message printed: back to the menu
+            wait_any_key();
+            return;
+        }
+        console_puts(msg(MSG_SAFE_T2_READY));
+    }
+
+    safeshell_run();                   // returns on "back"
+}
+
 // ── main menu ────────────────────────────────────────────────────────
 
 static void draw_main_menu(void) {
@@ -293,6 +369,7 @@ static void draw_main_menu(void) {
     console_puts(msg(MSG_SAFE_MENU_2));
     console_puts(msg(MSG_SAFE_MENU_3));
     console_puts(msg(MSG_SAFE_MENU_4));
+    console_puts(msg(MSG_SAFE_MENU_5));
     console_puts(msg(MSG_SAFE_MENU_PROMPT));
 }
 
@@ -308,6 +385,7 @@ void safemode_enter(safemode_reason_t reason, uint32_t fail_count) {
             case '2': screen_reboot();   break;
             case '3': screen_disk_info(); break;
             case '4': screen_hexdump();  break;
+            case '5': screen_shell();    break;
             default: break;                       // invalid key: ignored, menu redrawn
         }
     }

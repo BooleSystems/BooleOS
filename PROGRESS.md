@@ -26,20 +26,23 @@ Last closed phase: **Phase 17** (Cleanup A).
 - Phase 17 — Cleanup A (audit fixes, technical debt, libnos/shell tools +
   reboot/shutdown, test/build infrastructure) — `0.17.0`.
 
-### Current work: Phase 18-B (Safe Mode) — pass 3 of 5 done (awaiting QEMU check)
+### Current work: Phase 18-B (Safe Mode) — pass 4 of 5 done (awaiting QEMU check)
 
 18-A is closed. 18-B is split in 5 passes (`docs/safemode.md`, `docs/TODO.md`):
 1. **done, uncommitted:** config sector `kernel/bootcfg.*` (LBA 1) +
    `boot_get_cmdline()`/`boot_has_flag()` + `make_disk.sh -R 8`; verified on the
    host (bootcfg logic tested with a fake block device) and by a temporary
    serial `[BOOTCFG]` dump in kmain awaiting the user's QEMU check;
-2. **done, uncommitted:** `ata_init()` moved after `sti`; `boot_fail_count`
+2. done, committed `f5e1414`: `ata_init()` moved after `sti`; `boot_fail_count`
    incremented at boot, reset on the first keyboard `SYS_READ`; at count >= 3 or the
-   `safemode` flag `kmain` calls the stub `safemode_enter()` (`kernel/safemode.*`);
-   (validated, committed `f5e1414`; temp dump removed in pass 3); 3. **done, uncommitted:** tier-1 TUI in
-   `kernel/safemode.c` (main menu, Reboot submenu, Disk info from the raw BPB,
-   2-page sector hexdump), static buffers only;
-4. restricted shell tier 2; 5. GRUB entries + `tools/prev/` + `make snapshot`.
+   `safemode` flag `kmain` enters Safe Mode;
+3. done, committed `f9fe2dc`: tier-1 TUI in `kernel/safemode.c` (main menu, Reboot
+   submenu, Disk info from the raw BPB, 2-page sector hexdump), static buffers only;
+4. **done, uncommitted:** tier 2 — menu item 5 initializes PMM/VMM/heap/FAT16 on
+   demand (once) and opens the read-only `safe> ` shell (`kernel/safeshell.*`:
+   help/ls/cat/pwd/cd/back), new HAL `boot_get_module()`/`boot_get_info_region()`;
+5. GRUB previous-release entry + `tools/prev/` + `make snapshot` (the "Safe Mode"
+   GRUB entry already exists).
 Design decisions (LBA 1, two tiers, success = first fd-0 read, N = 3, GUI
 entries deferred to Phase 26) are in `docs/safemode.md`.
 

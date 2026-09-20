@@ -102,6 +102,16 @@ int hal_boot_init(uint32_t boot_magic, uintptr_t boot_info);
 // where GRUB puts it).
 int boot_get_memory_map(boot_mem_region_t *out, int max);
 
+// The module the bootloader loaded next to the kernel (x86: the ramfs image
+// GRUB passes with module2). Returns 1 and fills [*start, *end) (physical
+// addresses) if there is one, 0 otherwise.
+int boot_get_module(uint32_t *start, uint32_t *end);
+
+// Where the bootloader's own information structure lives (x86: the Multiboot2
+// info block). Returns 1 and fills *addr / *size, 0 if not initialized. A
+// caller that hands out physical memory must keep this region reserved.
+int boot_get_info_region(uint32_t *addr, uint32_t *size);
+
 // Copies the boot command line (x86: the text after the kernel path in the
 // GRUB entry) into out, NUL-terminated and truncated to max. Returns its
 // length, or -1 if there is none (or boot info is not initialized).

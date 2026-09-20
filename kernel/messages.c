@@ -201,7 +201,7 @@ static const char *const g_msgs[] = {
     [MSG_SAFE_MENU_2] = "  2. Reboot...\n",
     [MSG_SAFE_MENU_3] = "  3. Disk info\n",
     [MSG_SAFE_MENU_4] = "  4. Sector hexdump\n",
-    [MSG_SAFE_MENU_PROMPT] = "\nSelect an option (1-4): ",
+    [MSG_SAFE_MENU_PROMPT] = "\nSelect an option (1-5): ",
     [MSG_SAFE_REBOOT_TITLE] = "Reboot\n\n",
     [MSG_SAFE_REBOOT_1] = "  1. Normal (reset boot failure counter)\n",
     [MSG_SAFE_REBOOT_2] = "  2. Safe Mode (keep boot failure counter)\n",
@@ -236,6 +236,33 @@ static const char *const g_msgs[] = {
     [MSG_SAFE_HEX_BYTES] = "  -  bytes ",
     [MSG_SAFE_ANY_KEY] = "\nPress any key to continue.",
 
+
+    // Safe Mode tier 2: restricted shell (safemode.c, safeshell.c)
+    [MSG_SAFE_MENU_5] = "  5. Restricted shell (initializes disk access)\n",
+    [MSG_SAFE_T2_TITLE] = "Restricted shell\n\n",
+    [MSG_SAFE_T2_INIT] = "Initializing memory and disk access...\n\n",
+    [MSG_SAFE_T2_PMM_FAILED] = "\nERROR: the physical memory manager found no usable memory.\n",
+    [MSG_SAFE_T2_HEAP_FAILED] = "\nERROR: the kernel heap could not be initialized.\n",
+    [MSG_SAFE_T2_FAT_FAILED] = "\nERROR: no usable FAT16 disk (see the messages above).\n",
+    [MSG_SAFE_T2_READY] = "\nReady. Type 'help' for the commands, 'back' to return to the menu.\n\n",
+    [MSG_SAFESH_PROMPT] = "safe> ",
+    [MSG_SAFESH_HELP] = "commands:\n  help          this message\n  ls [dir]      list files (current directory, or a path)\n  cat <file>    print a file (ESC stops it)\n  pwd           print the current directory\n  cd [dir]      change directory (no argument = root)\n  back          return to the Safe Mode menu\n",
+    [MSG_SAFESH_UNKNOWN] = "unknown command: ",
+    [MSG_SAFESH_CAT_USAGE] = "usage: cat <file>\n",
+    [MSG_SAFESH_CAT_NOT_FOUND] = "cat: no such file: ",
+    [MSG_SAFESH_CAT_IO] = "cat: I/O error looking up: ",
+    [MSG_SAFESH_CAT_READ_ERROR] = "\ncat: read error\n",
+    [MSG_SAFESH_STOPPED] = "\n(stopped)\n",
+    [MSG_SAFESH_LS_NO_DIR] = "ls: no such directory: ",
+    [MSG_SAFESH_LS_NOT_DIR] = "ls: not a directory: ",
+    [MSG_SAFESH_LS_IO] = "ls: I/O error\n",
+    [MSG_SAFESH_LS_EMPTY] = "(no files)\n",
+    [MSG_SAFESH_DIR_ENTRY] = "<DIR>\n",
+    [MSG_SAFESH_BYTES_NL] = " B\n",
+    [MSG_SAFESH_CD_NO_DIR] = "cd: no such directory: ",
+    [MSG_SAFESH_CD_NOT_DIR] = "cd: not a directory: ",
+    [MSG_SAFESH_CD_IO] = "cd: I/O error\n",
+    [MSG_SAFESH_PWD_ERR] = "pwd: cannot determine the current directory\n",
 };
 
 // Compile-time check: the table must reach exactly MSG_COUNT entries (its
