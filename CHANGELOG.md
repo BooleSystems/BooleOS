@@ -70,6 +70,15 @@ and the `[PCI]` boot output identical to before the change.
   `failed` path. The three `vmm_map_user_page` sites also free the
   just-allocated physical page instead of leaking it.
 
+Phase 17-B (known technical debt) — all 3 items done. Confirmed via
+manual QEMU testing. The first boot printed `[ATA] Detecting disk... no
+disk` (attributed to the known intermittent ATA race from Phase 15;
+`ata.c` was not touched in 17-A or 17-B, and no cause was investigated
+further). On the next boot: `selftest` 13/13, `forktest | cat` working
+normally (no regression from the `process_spawn_user()` slot-reservation
+change), and the editor's Shift handling tested by hand (Shift+letter
+gives the capital, Shift+1 gives `!`, Shift+\ gives `|`).
+
 - `kernel/keyboard.c`, `user/edit.c` (Phase 17-B): Shift in the editor.
   The raw scancode path (`SYS_READ_RAW`) now carries a Shift bit
   (bit 9, next to Ctrl's bit 8), because the kernel consumes the Shift
@@ -103,6 +112,18 @@ and the `[PCI]` boot output identical to before the change.
 
 - `CLAUDE.md`: Safe Mode rules now name `process_spawn_user` instead of the
   deleted `process_spawn` (same rule, function name updated).
+- `ROADMAP.md`: the two Safe Mode references (Phase 18-B) to
+  `process_spawn` now name `process_spawn_user`, matching the removal
+  of `process_spawn()`.
+- `docs/scheduler.md`: removed the two stale statements about
+  `process_spawn()` (the kernel-task path, and the "still claims a free
+  slot without cli/sti" limitation) now that the function is gone and
+  `process_spawn_user()` reserves its slot atomically.
+- `PROGRESS.md`: removed the "`process_spawn()`/`process_spawn_user()`
+  scan for a free slot without cli/sti" bullet from Known technical debt
+  (resolved in 17-B), and the resolved `edit.c` raw-scancode Shift
+  bullet; reworded the `process_exit()` leak note to name
+  `process_spawn_user()`.
 - Documentation consistency pass after 17-A: `README.md` said "planned
   Phases 17–22" (now 17–31; no other numeric phase count exists in its
   prose). Sub-phase notation for the NEW phases (17 onward) normalized
@@ -136,9 +157,10 @@ and the `[PCI]` boot output identical to before the change.
   DOOM prerequisites, DOOM port / v1.0.0). Old Phases 17–22 renumbered
   to 20, 23, 24, 25, 26, 27. Priority order rewritten with dependency
   notes. No package-manager phase, by decision.
-- `PROGRESS.md`: "Current status" now points at Phase 17 (Cleanup A),
-  sub-phase 17-A, as the next planned work; roadmap range updated to
-  17–31; the `process_exit()` leak note now references Phases 20/22.
+- `PROGRESS.md`: "Current status" now tracks Phase 17 (Cleanup A)
+  sub-phase progress (17-A and 17-B closed, next 17-C); roadmap range
+  updated to 17–31; the `process_exit()` leak note now references
+  Phases 20/22.
 
 ## [0.16.0] - Phase 16: pipes and real waitpid
 
