@@ -9,7 +9,7 @@
  | |\  | |_| | | | |_| |___) |
  |_| \_|\__,_|_|_|\___/|____/ 
 
- NullOS v0.17.0 - Phase 17: Cleanup A
+ NullOS v0.18.0 - Phase 18: Safety/portability foundation
 ```
 
 ## Overview
@@ -40,8 +40,9 @@ See [CHANGELOG.md](CHANGELOG.md) for version history and [ROADMAP.md](ROADMAP.md
 | **15** | FAT16 subdirectories: `mkdir`/`cd`, path-aware `touch`/`edit`/`ls`; shared `dir_lookup()`/`dir_insert()`/`resolve_path()` core (resolves the Phase 10 duplicated-lookup tech debt); `SYS_CHDIR`/`SYS_MKDIR`; `exec()` (`run`/`edit`) now inherits the caller's `cwd_cluster` instead of always starting at the root | ✅ Done |
 | **16** | Inter-process pipes (`kernel/pipe.c`, fixed pool, `SYS_PIPE`/`SYS_EXEC_PIPE`) and a real blocking `waitpid()` (`process_t.waiting_for_pid`, woken by `process_exit()`); shell gains `cmd1 \| cmd2` (`user/cat.c` as a minimal pipe sink) | ✅ Done |
 | **17** | Cleanup A: audit fixes (`pmm_init` overflow, checked `vmm_map_page` returns, atomic pid/slot allocation, `fat16_init` validation), edit.c Shift and `process_spawn_user` race fixes, libnos string helpers, stream FAT16 writes (`fat16_write_at`), shell `>`/`<` redirection, `cat <file>`, `pwd`/`SYS_GETCWD`, `reboot`/`shutdown`, selftest expanded to 18 tests (`SYS_PCI_FIND`), `make inject` / `make run-reboot-test` | ✅ Done |
+| **18** | Safety/portability foundation: a hardware abstraction layer (`kernel/hal.*`: console, input, block I/O, power, boot info — [docs/hal.md](docs/hal.md)); `msg(ID)` centralized output text for the kernel and the userland; the exception handler and all disk access through the HAL; `pmm_init()` on the bootloader's real memory map (8 MB allocatable ceiling); and **Safe Mode** ([docs/safemode.md](docs/safemode.md)): boot failure counter in a raw config sector, automatic entry after 3 failed boots or from the GRUB menu, a text UI (reboot, disk info, sector hexdump) and a restricted read-only shell, plus a "previous release" GRUB entry (`tools/prev/`, `make snapshot`) | ✅ Done |
 
-For planned Phases 17–30, see **[ROADMAP.md](ROADMAP.md)**.
+For planned Phases 19–30, see **[ROADMAP.md](ROADMAP.md)**.
 
 ## Documentation
 
@@ -54,7 +55,7 @@ Detailed, per-system documentation lives under `docs/`:
 - [docs/filesystem.md](docs/filesystem.md) — ATA PIO driver, FAT16, VFS
 - [docs/pipes.md](docs/pipes.md) — in-kernel pipes, `SYS_EXEC_PIPE`, the shell's `cmd1 | cmd2`
 - [docs/hal.md](docs/hal.md) — hardware abstraction layer (console, input, block I/O, power, boot memory map)
-- [docs/safemode.md](docs/safemode.md) — Safe Mode design and the boot configuration sector (in progress)
+- [docs/safemode.md](docs/safemode.md) — Safe Mode: boot failure counter, config sector, text UI, restricted shell, previous-release entry
 - [docs/security.md](docs/security.md) — userland pointer validation, Phase 14 bug history
 - [docs/pci.md](docs/pci.md) — PCI bus enumeration
 - [docs/shell.md](docs/shell.md) — interactive shell and commands

@@ -13,8 +13,8 @@ Do not duplicate README/docs content here. `README.md` is a lean index
 
 ## Current status
 
-Current version: **0.18.0-nightly** (last release: `v0.17.1` on `main`).
-Last closed phase: **Phase 17** (Cleanup A).
+Current version: **0.18.0** (Phase 18 closed, merged to `main`; no tag yet).
+Last closed phase: **Phase 18** (Safety/portability foundation).
 
 ### Closed phases (one line each; detail in CHANGELOG.md / README.md)
 
@@ -24,31 +24,18 @@ Last closed phase: **Phase 17** (Cleanup A).
   (`0.15.1` PATCH: libnos syscall wrapper library).
 - Phase 16 — inter-process pipes, real blocking `waitpid` — `0.16.0`.
 - Phase 17 — Cleanup A (audit fixes, technical debt, libnos/shell tools +
-  reboot/shutdown, test/build infrastructure) — `0.17.0`.
+  reboot/shutdown, test/build infrastructure) — `0.17.0` (`0.17.1` PATCH: docs).
+- Phase 18 — Safety/portability foundation: HAL, `msg(ID)`, PMM on the real
+  memory map, Safe Mode (counter, TUI, restricted shell, previous-release GRUB
+  entry) — `0.18.0`.
 
-### Current work: Phase 18 code complete (18-A + 18-B); closing checklist pending
+### Next: Phase 19 — SDK / app-development experience
 
-18-A (HAL, `msg(ID)`, PMM on the real memory map) is done and committed. 18-B
-(Safe Mode, `docs/safemode.md`) is done in 5 passes: 1 config sector + cmdline
-flags, 2 failure counter + entry + stub, 3 tier-1 TUI, 4 tier-2 restricted
-shell (committed through `b02d25b`), 5 **done, uncommitted, awaiting the QEMU
-check:** "previous release" GRUB entry, `tools/prev/` (tracked), `make snapshot`.
-
-**Before releasing 0.18.0:** (a) replace `tools/prev/` with a build of the
-v0.17.1 tag (today it holds the 0.18.0-nightly build, taken as the first
-snapshot); (b) the Phase 18 closing checklist (version.h 0.18.0 / phase 18,
-README table + banner, CHANGELOG `[0.18.0]` single entry, docs, syscall grep,
-merge to `main`, tag); (c) then, on the tag, `make snapshot` and commit
-`tools/prev/` for the next release.
-
-**Real pre-existing debt (Phase 22):** the kernel accesses physical pages
-through the 0–8 MB identity map (elf.c:54, process.c:262-265); the 8 MB PMM cap
-is only a mitigation. See `docs/TODO.md`. `process_exit()` never frees, so ~10
-pages leak per process (1024 free at boot).
-
-Version is `0.18.0-nightly`; `NULLOS_PHASE`/`DESC` stay 17 / "Cleanup A" until
-Phase 18 closes. Deferred, not blocking: test `docs/setup.md` on Windows
-(Phase 29).
+See ROADMAP.md. Release routine reminder: after tagging a release, on the
+tagged tree run `make clean && make && make snapshot` and commit `tools/prev/`
+(the next release's "previous release" GRUB entry; kernel + ramfs together).
+Right now `tools/prev/` holds the v0.17.1 build, which is correct for 0.18.0.
+Deferred, not blocking: test `docs/setup.md` on Windows (Phase 29).
 
 ### Future roadmap
 
@@ -87,7 +74,7 @@ package manager phase was deliberately decided against — don't add one.
   own completion. Never move the reset. See `docs/filesystem.md`.
 - **`ata_write_sector` returns 0 if only the CACHE FLUSH times out** — the
   WRITE was already confirmed, so it must not be reported as "nothing
-  written". Don't "fix" it into a failure. (Doc stub in `docs/TODO.md`.)
+  written". Don't "fix" it into a failure.
 - **`fork()` resumes the child via `isr128_resume` + `g_syscall_frame`**
   (copies the 13-word trap block, `eax` forced to 0). See
   `docs/scheduler.md`.
@@ -140,16 +127,42 @@ package manager phase was deliberately decided against — don't add one.
 
 ## Known technical debt
 
+- **The kernel writes to physical pages through the 0–8 MB identity map
+  without checking (pre-existing, real; Phase 22).** The PMM can hand out
+  frames above 8 MB while only 0–8 MB is identity-mapped, yet `elf.c:54`
+  (`memzero8((uint8_t *)phys, ...)`) and `process.c:262-265` (`process_fork()`
+  copying via `parent_phys`/`child_phys`) access a frame by its physical
+  address with no range check; only the page-table allocations are guarded
+  (`vmm.c:126`, `:146`). Once the low region is used up that is a kernel page
+  fault. **Mitigation (18-A):** the PMM ceiling is 8 MB (`PMM_LIMIT_ADDR`), so
+  exhaustion is now a failed allocation, at the cost of ~4 MB of free pages
+  (1024 at boot; with `process_exit()` leaking ~10 pages per process, roughly a
+  dozen selftest runs per boot). Real fix: stop touching frames by physical
+  address (a temporary-mapping mechanism, or a kernel direct map at a high
+  address) and then lift the cap. The widening is not trivial: user code lives
+  at 16 MB and `vmm_map_user_page()` rejects `virt < 0x800000`.
+- **`edit` with no file name cannot save.** `user/edit.c` only calls
+  `load_file()` when a name was given, so `file_fd` stays -1 and Ctrl+S takes
+  its `else` branch, reporting the misleading "saved (no disk)" — a message
+  that covers two cases ("no disk", "no file name"). Expected: ask for a name
+  (save as). Pre-existing since the editor got file saving.
+- **Safe Mode gaps:** no erase action (needs `unlink`, Phase 21), no fsck-like
+  verify/repair submenu (its own future sub-phase), no GUI-debug/Text-mode
+  entries (Phase 26). `kmain` keeps its own copy of the module/boot-info PMM
+  reservations that could use `boot_get_module()`/`boot_get_info_region()`.
+- **The selftest's Intel 440FX check (`8086:1237`) breaks by design in Phase 24**
+  (QEMU `-machine q35`): update the IDs then (noted in ROADMAP Phase 24).
+
 - **ATA `probe()` intermittently reports `no disk`** (first seen in 17-B,
   before any power.c change). 9 boot/reboot cycles with tracing in 17-C did
   not reproduce it and showed no evidence that `reboot` causes or worsens
   it; every traced probe took the success path (status 0x50 after select,
-  0x58 after IDENTIFY). Pre-existing; not chased further. (`docs/TODO.md`)
+  0x58 after IDENTIFY). Pre-existing; not chased further. 
 
 - **`exec_arg` (`kernel/syscall.c`) is one global shared by all
   processes**; `SYS_GETARG` can read an arg clobbered by another exec.
   `sys_exec_pipe()` clears it (17-C). Needs per-process argument storage;
-  `SYS_EXEC_PIPE` also has no argument register left. (`docs/TODO.md`)
+  `SYS_EXEC_PIPE` also has no argument register left. 
 - **`pt_next` in `kernel/memory/vmm.c` starts at `PAGE_TABLE_START`, but
   `vmm_init()` writes two page tables there without advancing it.** The
   first `map_page_early()` creating a NEW page table would overwrite the

@@ -11,7 +11,7 @@
 // kernel reaches a page by its physical address (elf_load() zeroes user pages,
 // process_fork() copies them) and only 0-8MB is identity-mapped, so nothing
 // above PMM_LIMIT_ADDR may be handed out. This is a MITIGATION of a
-// pre-existing bug (see docs/TODO.md, "TECHNICAL DEBT ... identity map"): an
+// pre-existing bug (see PROGRESS.md, "Known technical debt": identity map): an
 // exhausted PMM now fails an allocation instead of faulting in the kernel.
 // The real fix (Phase 22) is to stop accessing frames by physical address.
 #define PMM_LIMIT_ADDR  0x800000u

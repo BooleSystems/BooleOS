@@ -208,7 +208,7 @@ void _start(void) {
        # a different chip (Intel 82G33, 8086:29c0), so 8086:1237 is no   #
        # longer enumerated. That is NOT a kernel bug: whoever does       #
        # Phase 24 must update the vendor/device IDs below (see also      #
-       # docs/TODO.md). The generic ">= 1 device" test above stays valid.#
+       # ROADMAP.md, Phase 24). The generic ">= 1 device" test above stays valid.#
        ################################################################### */
     {
         if (nos_pci_find(0x8086, 0x1237))

@@ -22,109 +22,90 @@ called out inline rather than silently "corrected", and `[0.11.0]`–
 Phase 10), not a version string that ever actually appeared in the repo
 at the time.
 
-## [Unreleased]
+## [0.18.0] - Phase 18: Safety/portability foundation (HAL, msg(ID), Safe Mode)
 
 ### Added
 
-- Hardware abstraction layer, first pass (`kernel/hal.h`, `kernel/hal.c`,
-  `docs/hal.md`): an arch-neutral interface over the existing drivers, as
-  thin forwarding wrappers (the drivers were not rewritten).
+- **Hardware abstraction layer** (`kernel/hal.h`, `kernel/hal.c`,
+  `docs/hal.md`): an arch-neutral interface over the existing drivers, as thin
+  forwarding wrappers (the drivers were not rewritten).
   - Console: `console_putc`, `console_puts`, `console_put_hex`,
     `console_put_dec`, `console_set_color`, `console_clear`,
     `console_set_cursor`, `console_color_t` (`CONSOLE_*`).
   - Input: `input_poll_key`, `input_poll_raw`, `input_flush`.
   - Block device: `block_read_sector`, `block_write_sector`.
   - Power: `power_reboot`, `power_shutdown` (reachable through `hal.h`).
-  - Boot info: `hal_boot_init`, `boot_get_memory_map` (new Multiboot2
-    memory-map tag parser in `kernel/multiboot2.h`), `boot_mem_region_t`.
-
-- `msg(ID)`, pass 1 (kernel): `kernel/messages.h` (`msg_id_t`, `msg()`) and
-  `kernel/messages.c` (the table, ~157 fragments). All user-visible kernel
-  text — boot log, errors, dumps, exception names, `ps` states — is fetched
-  by ID; text and output are unchanged. Not a translation system: one
-  English column. `msg()` never returns NULL (`"(?)"` for a bad ID) and
-  works from the exception handler. See `docs/hal.md`.
-
-- `msg(ID)`, pass 2 (userland): `user/lib/messages.h/.c` (`umsg_id_t`,
-  `UMSG_*` IDs, its own `msg()` with the same never-NULL/`"(?)"` behavior)
-  and the shell (including the `fetch` logo and `help` text), the editor and
-  `cat` now fetch their output text from it; text is unchanged. Linked only
-  into `shell`, `edit` and `cat`. `selftest`/`forktest` (diagnostic output)
-  and `init`/`spintest` (one demo line each) are not migrated.
-
-- Safe Mode infrastructure, pass 1 (no behavior change; `docs/safemode.md`):
-  `kernel/bootcfg.h/.c`, a `key=value` config store in one raw sector (LBA 1,
-  inside FAT16's reserved region, read/written only through the HAL block
-  I/O, magic line `# nullos-config v1`, empty defaults when the sector is
-  invalid, guarded by the boot sector's `reserved_sectors`); the Multiboot2
-  command-line tag parser with `boot_get_cmdline()` / `boot_has_flag()` in the
-  HAL. Nothing uses them yet.
-
-- Safe Mode, pass 2 (`docs/safemode.md`): a boot failure counter
-  (`boot_fail_count` in the config sector, incremented right after the disk is
-  up and reset on the first keyboard read), automatic entry into Safe Mode when
-  it reaches `BOOTCFG_FAIL_THRESHOLD` (3) or when `safemode` is on the boot
-  command line, and `kernel/safemode.h/.c`: a minimal Safe Mode screen (why it
-  was entered, the counter, and "R - reboot normally" which resets the counter)
-  that uses only the HAL and the config sector. The full menu is later work.
-
-- Safe Mode, pass 3 (`docs/safemode.md`): the stub is replaced by the tier-1
-  text UI in `kernel/safemode.c` — numbered main menu (reboot normally with
-  counter reset; a Reboot submenu with Normal / Safe Mode-keep-counter; Disk
-  info from the raw boot sector plus the config sector state; a sector hexdump
-  with decimal LBA entry and a hex + ASCII view), static buffers only, no
-  heap. Safe Mode is left only by rebooting. The temporary `[BOOTCFG]` serial
-  dump in `kmain` was removed.
-
-- Safe Mode, pass 4 (`docs/safemode.md`): tier 2 — main menu item "5.
-  Restricted shell (initializes disk access)", which initializes the PMM, VMM,
-  heap and FAT16 on demand (once per session, reporting a failed step and
-  returning to the menu) and opens a `safe> ` shell with built-ins only
-  (`help`, `ls [dir]`, `cat <file>`, `pwd`, `cd [dir]`, `back`) that call the
-  FAT16 functions directly — no processes, no `exec`, read/navigation only
-  (`kernel/safeshell.h/.c`). New HAL accessors `boot_get_module()` and
-  `boot_get_info_region()` let it reserve the ramfs module and the boot-info
-  block in the PMM by their real addresses.
-
-- Safe Mode, pass 5 (`docs/safemode.md`): a permanent "NullOS v<version>
-  (previous release)" GRUB entry that boots the last release's kernel, with the
-  release tooling: `tools/prev/` (tracked: `nullos.elf`, `ramfs.img`, `VERSION`
-  — kernel and ramfs together, the syscall ABI must match) and `make snapshot`
-  (copies the current build there; run by hand after tagging a release, never
-  automatically). The ISO gains `/boot/prev-nullos.elf` and
-  `/boot/prev-ramfs.img`; when `tools/prev/` is absent the entry and the files
-  are simply left out. Safe Mode (Phase 18-B) is now complete.
+  - Boot info: `hal_boot_init`, `boot_get_memory_map`, `boot_get_module`,
+    `boot_get_info_region`, `boot_get_cmdline`, `boot_has_flag`, backed by new
+    Multiboot2 parsers (memory map, command line) in `kernel/multiboot2.h`.
+    The kernel used to ignore the command line entirely (the `debug` word of the
+    "serial debug mode" GRUB entry was never read).
+- **`msg(ID)`**, a central table for all user-visible text (one English
+  column; not a translation system): `kernel/messages.h/.c` for the kernel
+  (boot log, errors, dumps, exception names, `ps` states) and
+  `user/lib/messages.h/.c` for the shell, editor and `cat` (`umsg_id_t`,
+  `UMSG_*`, linked only into those programs). `msg()` never returns NULL
+  (`"(?)"` for a bad ID) and works from the exception handler. Output is
+  unchanged. `selftest`/`forktest` and `init`/`spintest` are not migrated.
+- **Safe Mode** (`docs/safemode.md`), a recovery environment inside the same
+  kernel binary that runs in ring 0 before the PMM, VMM, heap, scheduler,
+  `exec` and syscalls exist:
+  - a boot configuration store in one raw sector (LBA 1, inside FAT16's
+    reserved region, read and written only through the HAL block I/O, magic
+    line `# nullos-config v1`, empty defaults when the sector is invalid,
+    guarded by the boot sector's `reserved_sectors`) — `kernel/bootcfg.h/.c`;
+  - a boot failure counter (`boot_fail_count`): incremented right after the
+    disk is up, reset on the first keyboard read; at
+    `BOOTCFG_FAIL_THRESHOLD` (3) failed boots in a row, or with `safemode` on
+    the boot command line, the kernel enters Safe Mode instead of booting;
+  - a text UI (`kernel/safemode.c`, static buffers, no heap): reboot normally
+    (resets the counter), a reboot submenu, disk info from the raw boot
+    sector, and a sector hexdump; Safe Mode is left only by rebooting;
+  - a restricted read-only shell (menu item 5, `kernel/safeshell.c`) that
+    initializes the PMM, VMM, heap and FAT16 on demand, once per session, and
+    offers `help`, `ls`, `cat`, `pwd`, `cd`, `back` calling FAT16 directly —
+    no processes, no `exec`;
+  - GRUB entries "NullOS (Safe Mode)" (`safemode` flag) and "NullOS
+    v<version> (previous release)", which boots the last release's kernel and
+    ramfs kept together in the tracked `tools/prev/`; `make snapshot` records
+    the current build there (run by hand after tagging a release, never
+    automatically). `tools/prev/` holds the v0.17.1 build.
 
 ### Changed
 
-- `ata_init()` now runs right after interrupts are enabled, before the PMM, so
-  the boot log shows `[ATA]` before `[PMM]`; it is still called once. If the
-  config sector is unavailable the failure counter is skipped and boot is
-  unchanged.
+- Everything outside the drivers goes through the HAL: `kmain`, `syscall.c`,
+  `process.c`, `scheduler.c`, `exec.c`, `power.c`, `memory/{pmm,vmm,heap}.c`,
+  `drivers/pci.c`, all disk access in `fs/fat16.c`, and `idt.c`'s exception
+  handler and progress lines (the HAL console holds no state of its own, so
+  this adds no risk there). Driver bring-up calls stay direct. `kmain`'s
+  Multiboot magic check goes through `hal_boot_init()`.
+- `ata_init()` runs right after interrupts are enabled, before the PMM (it is
+  still called once), so the boot log shows `[ATA]` before `[PMM]`.
+- `pmm_init()` consumes the bootloader's real memory map instead of one fixed
+  contiguous block: only usable regions are freed (rounded inward to pages,
+  fragmented maps supported), the first 1 MB and 1–4 MB stay reserved, and
+  `kmain` marks the ramfs module and the Multiboot2 info block used by their
+  real addresses. The allocation ceiling is an explicit 8 MB (`PMM_LIMIT_ADDR`,
+  2048 pages): the kernel touches physical pages through its 0–8 MB identity
+  map, so nothing above it is handed out. This is a mitigation of a
+  pre-existing bug recorded in `PROGRESS.md` (fix: Phase 22); `[PMM] Total`
+  in the boot log now shows the allocatable 8192 KB (it used to show the old
+  compile-time 32768 KB cap).
 - `tools/make_disk.sh` passes `-R 8` to `mkfs.vfat` so sector 1 is explicitly
   outside FAT16 (existing disks already have it: 4 reserved sectors).
-- `pmm_init()` now consumes the bootloader's real memory map
-  (`boot_get_memory_map()`): it frees only the usable regions (rounded
-  inward to pages, fragmented maps supported) instead of one fixed
-  contiguous block, keeps the first 1 MB and 1–4 MB reserved, and `kmain`
-  marks the ramfs module and the Multiboot2 info structure used by their
-  real addresses. The allocation ceiling is now an explicit 8 MB
-  (`PMM_LIMIT_ADDR`, 2048 pages): the kernel can only touch physical pages
-  through its 0–8 MB identity map, so pages above it are no longer handed
-  out (mitigation of a pre-existing bug, recorded in `docs/TODO.md`; the
-  fix is Phase 22). `[PMM] Total` in the boot log now shows the allocatable
-  8192 KB instead of the old compile-time 32768 KB cap.
-- Everything outside the drivers now goes through the HAL: `kmain`,
-  `syscall.c`, `process.c`, `scheduler.c`, `exec.c`, `power.c`,
-  `memory/{pmm,vmm,heap}.c`, `drivers/pci.c` and all disk access in
-  `fs/fat16.c` (no change in behavior). `kmain`'s Multiboot magic check now
-  goes through `hal_boot_init()`. The exception handler in `idt.c` and the
-  driver bring-up calls are intentionally left direct (see `docs/hal.md`).
-- `docs/TODO.md` tracks a pre-existing editor gap found while testing: `edit` with no file name cannot save (Ctrl+S reports the misleading "saved (no disk)").
-- `pmm_free_pages()` over-reported by the total page count: `pmm_used` started at 0 while the bitmap started all-used, so releasing a region drove it negative (the old boot log showed `Free: 61440KB` for `Total: 32768KB`). It now starts at the total. Boot free is now 1024 pages (4096 KB), the real figure.
-- `idt.c` (exception handler and the `idt_init` progress lines) now prints through the HAL (`console_*`); the HAL console holds no state of its own, so this adds no risk. Removed a dead `#include` of the VGA header from `keyboard.c`.
-- `docs/TODO.md` records a pre-existing debt: the kernel accesses physical pages through the 0-8 MB identity map (`elf.c`, `process.c`) although the PMM can hand out pages up to 32 MB (Phase 22).
-- `kernel/version.h`: `0.18.0-nightly`.
+- `PROGRESS.md` records two pre-existing problems found during this phase:
+  the kernel writes to physical pages through the identity map without
+  checking (`elf.c`, `process.c`; Phase 22), and `edit` with no file name
+  cannot save (Ctrl+S reports the misleading "saved (no disk)").
+- `kernel/version.h`: `0.18.0`, phase `18`, "Safety/portability foundation".
+
+### Fixed
+
+- `pmm_free_pages()` over-reported by the total page count since Phase 2:
+  `pmm_used` started at 0 while the bitmap started all-used, so releasing a
+  region drove it negative (the old boot log showed `Free: 61440KB` for
+  `Total: 32768KB`). It now starts at the total; boot free is 1024 pages
+  (4096 KB), the real figure.
 
 ## [0.17.1] - Documentation patch: v0.17.0 closing gaps + ROADMAP restructuring
 

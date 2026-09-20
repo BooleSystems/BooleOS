@@ -1,4 +1,4 @@
-# Hardware abstraction layer (HAL) — Phase 18-A, first pass
+# Hardware abstraction layer (HAL) and `msg(ID)` — Phase 18-A
 
 `kernel/hal.h` declares the interface, `kernel/hal.c` is the x86 implementation. Everything the rest of the kernel needs from the machine — text output, key input, block I/O, power control, the boot memory map — is reached through these functions instead of calling `vga.c`/`keyboard.c`/`ata.c`/Multiboot2 code directly.
 

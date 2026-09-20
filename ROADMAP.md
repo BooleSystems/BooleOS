@@ -2,7 +2,7 @@
 
 The table below is the granular phase table: one row per phase AND per
 sub-phase, for both completed work (Phases 0–16, detailed in `README.md`,
-`CHANGELOG.md` and `docs/`) and planned work (Phases 17–30, ending at the
+`CHANGELOG.md` and `docs/`) and planned work (Phases 19–30, ending at the
 v1.0.0 milestone, detailed in the section further down). Planned
 sub-phases become completed rows as they land.
 
@@ -42,9 +42,9 @@ restructuring after Phase 16) use a hyphen and an uppercase letter
 | **17-B** | Known technical debt | ✅ Done | CHANGELOG `[0.17.0]` |
 | **17-C** | libnos consolidation + shell tools | ✅ Done | CHANGELOG `[0.17.0]` |
 | **17-D** | Test/build infrastructure | ✅ Done | CHANGELOG `[0.17.0]` |
-| **18** | Safety/portability foundation (HAL + Safe Mode) | 🔜 Planned | below |
-| **18-A** | HAL (hardware abstraction layer) | ✅ Done (HAL, `msg(ID)`, real memory map in the PMM) | `docs/hal.md`, `docs/memory.md` |
-| **18-B** | Safe Mode | ✅ Done | `docs/safemode.md` |
+| **18** | Safety/portability foundation (HAL + Safe Mode) | ✅ Done | CHANGELOG `[0.18.0]`, `docs/hal.md`, `docs/safemode.md` |
+| **18-A** | HAL (hardware abstraction layer), `msg(ID)`, real memory map in the PMM | ✅ Done | CHANGELOG `[0.18.0]`, `docs/hal.md`, `docs/memory.md` |
+| **18-B** | Safe Mode (failure counter, text UI, restricted shell, previous-release GRUB entry) | ✅ Done | CHANGELOG `[0.18.0]`, `docs/safemode.md` |
 | **19** | SDK / app-development experience | 🔜 Planned | below |
 | **20** | Copy-on-write `fork()` | 🔜 Planned | below |
 | **21** | `unlink()`/`rmdir()` | 🔜 Planned | below |
@@ -72,7 +72,7 @@ restructuring after Phase 16) use a hyphen and an uppercase letter
 | **30-C** | Full engine build/link, first menu screen | 🔜 Planned | below |
 | **30-D** | Playable without crashing (no audio) | 🔜 Planned | below |
 
-## Detailed planning (Phases 17–30)
+## Detailed planning (Phases 19–30)
 
 The table above gives the one-line summary of each planned phase. This section expands each one with its goal, intended approach, main risk, and dependencies on other phases, as of the current planning pass. No code has changed as part of this — this is a documentation-only update.
 
@@ -82,23 +82,12 @@ History of the numbering: the phases that used to be listed here as 17–22 (cop
 
 Done; see the table above and CHANGELOG `[0.17.0]`. One item carried over, not blocking: **test `docs/setup.md` end-to-end on Windows** (no machine available; macOS is out of scope). Do it whenever a Windows environment is available, or in Phase 29 (polish).
 
-### Phase 18 — Safety/portability foundation (HAL + Safe Mode)
+### Phase 18 — Safety/portability foundation (closed in 0.18.0)
 
-- **Goal:** an abstract hardware base plus a safety net against bugs in subsystems that initialize after basic boot.
-- **Depends on:** 18-B depends on 18-A being done.
+Done; see the table above, CHANGELOG `[0.18.0]`, `docs/hal.md` and `docs/safemode.md`. Items from the original plan that were deliberately **not** done in this phase, carried over:
 
-- **18-A — HAL (hardware abstraction layer):** `console_putc()`, `input_poll_key()`, `block_read_sector()`/`block_write_sector()`, `power_reboot()`/`power_shutdown()`, `boot_get_memory_map()`, and `msg(ID)` (centralized text output — English-only table, no translation column and no language selector; this is repositioning text that already exists today, not i18n work).
-
-- **18-B — Safe Mode** (depends on 18-A):
-  - GRUB menu entries (4: default GUI, GUI debug, text mode, Safe Mode) **plus the permanent "NullOS vX.Y.Z (anterior)" entry** that CLAUDE.md requires at every merge into `main` — the previous release's kernel binary must be preserved at build time. Never implemented for v0.16.0/v0.17.0 (`tools/grub.cfg.in` has no such entry); carried over here
-  - `key=value` config file, a single disk sector (write atomicity for free thanks to the small size), starting with only `boot_fail_count`
-  - Boot-failure counter + automatic entry into Safe Mode after N consecutive failures
-  - Runs in ring 0, a branch very early in `kernel_main()`, before the scheduler/`process_spawn_user`/`exec`/`syscall.c` are initialized — never as a user process or a separate kernel
-  - TUI with a numbered menu + submenus: erase with a separate confirmation screen, disk check with a verify-only vs. verify-and-repair submenu, reboot with a submenu (normal/GUI debug/text mode)
-  - Restricted shell: built-in commands only, calling low-level functions directly (never `process_spawn_user`/`exec`, even if a userland program with the same name exists), no `run` command, static `help`
-  - GRUB menu with 4 entries: Default (GUI) / GUI debug (GUI + auto-opened system terminal, mirrors serial, only exists in nightly builds) / Text mode / Safe Mode
-  - Dependency note: the "GUI debug" and "reboot into GUI" entries only become truly functional once Phase 26 (GUI) exists — until then they sit in the menu with no real implementation behind them
-  - The kernel binary of the latest `main` version is kept as an extra, permanent GRUB entry, updated on every release/merge
+- Safe Mode's GRUB entries **GUI debug** and **Text mode**, and "reboot into GUI debug" in its reboot submenu — they need the GUI (Phase 26); for now the menu has Default, serial debug mode, Safe Mode and the previous release.
+- Safe Mode's **erase** action (needs `unlink`, Phase 21) and the **disk check with verify-only vs. verify-and-repair** submenu (an fsck-like feature; its own sub-phase, not scheduled yet). The restricted shell is read-only for now.
 
 ### Phase 19 — SDK / app-development experience
 
@@ -222,11 +211,10 @@ Done; see the table above and CHANGELOG `[0.17.0]`. One item carried over, not b
 
 ## Recommended priority order
 
-**Phase 17 → 18 → 19 → 20 → 21 → 22 → 23 → 24 → 25 → 26 → 27 → 28 → 29 → 30 → v1.0.0.**
+**Phase 19 → 20 → 21 → 22 → 23 → 24 → 25 → 26 → 27 → 28 → 29 → 30 → v1.0.0.**
 
 Dependency notes:
 
-- Phase 18 depends on Phase 17 being closed.
 - Phase 19 depends on Phase 17 (libnos consolidated).
 - Phase 22-C depends on Phase 20 (COW fork) being closed.
 - Phase 28 depends on Phase 18 (HAL).
