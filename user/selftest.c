@@ -788,7 +788,51 @@ void _start(void) {
         else     st_pass(tname);
     }
 
-    /* 21. Cleanup — not counted as PASS/FAIL, just a note: there is no
+    /* 21. The printf family in libnos (Phase 19): snprintf/sprintf with the
+       required conversions, run on the real i386 target (the same code was
+       also compared with a host libc over ~9000 formats). Covers %d %u %x %X
+       %s %c %%, width/zero-pad/left-justify, precision, negative numbers and
+       INT_MIN, a NULL string, bounded truncation with the C99 return value,
+       and sprintf. */
+    {
+        const char *tname = "printf family: %d %u %x %s %c %% and snprintf truncation";
+        const char *why = 0;
+        static char b[64];
+
+        snprintf(b, sizeof(b), "%d|%u|%x|%X|%c|%s|%%", -42, 42u, 255u, 255u, 'Z', "str");
+        if (strcmp(b, "-42|42|ff|FF|Z|str|%") != 0) why = "basic conversions wrong";
+
+        if (!why) {
+            snprintf(b, sizeof(b), "[%5d][%-5d][%05d][%+d][%.3d]", 42, 42, 42, 42, 7);
+            if (strcmp(b, "[   42][42   ][00042][+42][007]") != 0) why = "width/flags/precision wrong";
+        }
+        if (!why) {
+            snprintf(b, sizeof(b), "%d %d %u %x", 0, -2147483647 - 1, 4294967295u, 0xDEADBEEFu);
+            if (strcmp(b, "0 -2147483648 4294967295 deadbeef") != 0) why = "extreme values wrong";
+        }
+        if (!why) {
+            snprintf(b, sizeof(b), "[%s][%.2s][%6s][%-6s]", "abc", "abc", "abc", "abc");
+            if (strcmp(b, "[abc][ab][   abc][abc   ]") != 0) why = "%s width/precision wrong";
+        }
+        if (!why) {
+            snprintf(b, sizeof(b), "%s", (const char *)0);
+            if (strcmp(b, "(null)") != 0) why = "NULL %s wrong";
+        }
+        if (!why) {
+            char small[8];
+            int r = snprintf(small, sizeof(small), "%s", "0123456789");
+            if (r != 10 || strcmp(small, "0123456") != 0) why = "snprintf truncation/return value wrong";
+        }
+        if (!why) {
+            int r = sprintf(b, "%d-%s", 7, "x");
+            if (r != 3 || strcmp(b, "7-x") != 0) why = "sprintf wrong";
+        }
+
+        if (why) st_fail(tname, why);
+        else     st_pass(tname);
+    }
+
+    /* 22. Cleanup — not counted as PASS/FAIL, just a note: there is no
        delete/unlink/rmdir syscall yet, so st_root.txt, st_big.txt,
        selftest_dir/ (and the two files inside it) and st_d1/st_d2/st_d3/ (with st_deep.txt) are left on disk. Harmless: the
        next run just re-creates/overwrites everything by the same names. */

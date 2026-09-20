@@ -19,14 +19,20 @@ LIBNOS = $(BUILD)/lib/nullos.o
 # msg() table: linked only into the programs that print user-facing text
 # through it (shell, edit, cat) — every program that links it carries the whole table.
 LIBMSG = $(BUILD)/lib/messages.o
+# printf family: linked only into the programs that use it (selftest, the SDK samples)
+LIBSTDIO = $(BUILD)/lib/nosstdio.o
 
 .PHONY: all clean
 
-all: $(BUILD)/init.elf $(BUILD)/spintest.elf $(BUILD)/shell.elf $(BUILD)/edit.elf $(BUILD)/forktest.elf $(BUILD)/selftest.elf $(BUILD)/cat.elf
+all: $(BUILD)/init.elf $(BUILD)/spintest.elf $(BUILD)/shell.elf $(BUILD)/edit.elf $(BUILD)/forktest.elf $(BUILD)/selftest.elf $(BUILD)/cat.elf $(LIBSTDIO)
 
 $(LIBNOS): lib/nullos.c lib/nullos.h
 	@mkdir -p $(BUILD)/lib
 	$(CC) $(CFLAGS) -c -o $@ lib/nullos.c
+
+$(LIBSTDIO): lib/nosstdio.c lib/nullos.h
+	@mkdir -p $(BUILD)/lib
+	$(CC) $(CFLAGS) -c -o $@ lib/nosstdio.c
 
 $(LIBMSG): lib/messages.c lib/messages.h
 	@mkdir -p $(BUILD)/lib
@@ -52,9 +58,9 @@ $(BUILD)/forktest.elf: forktest.c link.ld $(LIBNOS)
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -T link.ld -o $@ forktest.c $(LIBNOS)
 
-$(BUILD)/selftest.elf: selftest.c link.ld $(LIBNOS)
+$(BUILD)/selftest.elf: selftest.c link.ld $(LIBNOS) $(LIBSTDIO)
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -T link.ld -o $@ selftest.c $(LIBNOS)
+	$(CC) $(CFLAGS) -T link.ld -o $@ selftest.c $(LIBNOS) $(LIBSTDIO)
 
 $(BUILD)/cat.elf: cat.c link.ld lib/messages.h $(LIBNOS) $(LIBMSG)
 	@mkdir -p $(BUILD)
