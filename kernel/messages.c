@@ -113,6 +113,7 @@ static const char *const g_msgs[] = {
     [MSG_HEAP_B_NL] = "B\n",
 
     // physical memory manager
+    [MSG_PMM_NO_MEMORY_MAP] = "   pmm: WARNING no memory map from the bootloader, assuming 1MB-8MB is usable\n",
     [MSG_PMM_1_BITMAP_AT] = "   pmm: [1] bitmap at ",
     [MSG_PMM_2_FREEING_HIGH_MEM] = "   pmm: [2] freeing high mem\n",
     [MSG_PMM_WARNING_NO_MEMORY_ABOVE] = "   pmm: WARNING no memory above 1MB to free\n",

@@ -17,16 +17,43 @@ only) whenever a version is closed.
 
 Phase 18-A (HAL, first pass) — see `docs/hal.md`:
 
-- WIP: `idt.c`'s exception handler still calls `vga_*` directly (runs in an
-  unstable state; deliberately not moved behind the HAL). Decide whether it
-  should get a minimal, dependency-free console path of its own. Files:
-  `kernel/idt.c`, `kernel/hal.c`.
-- WIP: `boot_get_memory_map()` has no caller yet; `kmain` still calls
-  `pmm_init(64 * 1024)` with a hardcoded size. Feed the real map into the PMM
-  (behavior change, needs its own test). Files: `kernel/main.c`,
-  `kernel/memory/pmm.c`, `kernel/hal.c`.
-- WIP: `kernel/keyboard.c` still includes `drivers/vga.h` directly (driver
-  internals); revisit when `msg(ID)`/console work touches it.
+(none — Phase 18-A items are all done; see `docs/hal.md`)
+
+## TECHNICAL DEBT (pre-existing, real) — kernel touches physical pages through the 0-8 MB identity map
+
+**Found while investigating Phase 18-A's `boot_get_memory_map()`. NOT
+introduced by the HAL or by any recent change; it has been there since paging
+and `exec()` existed. Belongs to Phase 22 (memory release / CR3).**
+
+The kernel page directory only identity-maps 0-8 MB (`vmm_init()`), but the
+PMM (`pmm_alloc_page()`) hands out physical pages up to `PMM_MAX_PAGES` (32 MB
+today), lowest address first. Several places then write to a freshly
+allocated page **through its physical address as if it were a pointer**:
+
+- `kernel/elf.c:54` — `memzero8((uint8_t *)phys, PAGE_SIZE)` on every user
+  code/data page, no range check.
+- `kernel/process.c:262-265` — `process_fork()` copies each page with
+  `src = (uint32_t *)parent_phys`, `dst = (uint32_t *)child_phys`, no range
+  check.
+- Only the page-table/page-directory allocations are protected:
+  `kernel/memory/vmm.c:126` and `:146` reject `pt_phys/pd_phys >= 0x800000`.
+
+Failure scenario: once the 4-8 MB region is used up (heap growth, page
+tables, user pages — and `process_exit()` never frees, see PROGRESS.md), the
+next `pmm_alloc_page()` returns a page >= 8 MB, and the kernel's write to it
+is a page fault (unmapped) in kernel mode. It has not shown up in testing
+only because usage so far is small. The user code base (`0x01000000`,
+16 MB) and `vmm_map_user_page()`'s `virt < 0x800000` rejection also mean the
+identity map cannot simply be widened.
+
+- **Mitigation applied (Phase 18-A):** the PMM's allocatable range is capped
+  at 8 MB (`PMM_LIMIT_ADDR`, `pmm.c`), so exhaustion is now an allocation
+  failure (`exec`/`fork` report an error) instead of a kernel page fault.
+  This is a mitigation, **not the fix**: usable memory is ~4 MB of free pages
+  (1024 at boot), and `process_exit()` still never frees.
+- **Real fix (Phase 22 or its own phase):** stop touching frames by physical
+  address — a temporary-mapping mechanism (`kmap`) or a kernel direct map at
+  a high virtual address — and then lift the cap.
 
 Pre-existing bug (found while testing the HAL first pass, NOT caused by it):
 

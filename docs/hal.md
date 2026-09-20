@@ -27,16 +27,17 @@ Notes:
 
 ## What is migrated, and what is not
 
-Migrated (they use the HAL): `main.c`, `syscall.c`, `process.c`, `scheduler.c`, `exec.c`, `power.c`, `memory/{pmm,vmm,heap}.c`, `drivers/pci.c`, and every disk access in `fs/fat16.c`.
+Migrated (they use the HAL): `idt.c` (the exception handler and the `idt_init` progress lines — see below), `main.c`, `syscall.c`, `process.c`, `scheduler.c`, `exec.c`, `power.c`, `memory/{pmm,vmm,heap}.c`, `drivers/pci.c`, and every disk access in `fs/fat16.c`.
+
+**The exception handler goes through the HAL on purpose.** The worry with printing from an exception handler is state that may be inconsistent at that instant. The HAL console has none: `hal.c` is a stateless 1:1 forwarder, and all the screen state (`term_col`, `term_row`, `term_color`, and the serial mirror) lives in `vga.c`, exactly where it lived before the HAL existed. Going through `console_*` therefore adds no new risk — only one extra call frame, which is irrelevant even for a stack-overflow #DF (that fails either way). What was already true either way: the handler depends on `vga.c` not being mid-write and on `serial_putchar()` (which polls the transmit-ready bit). `msg()` in the handler is a static table lookup.
 
 Deliberately not migrated:
 
 - **Driver bring-up** — `vga_init()`, `keyboard_init()`, `ata_init()` are called directly from `kmain`. They are hardware initialization, not something a caller consumes.
-- **The exception handler (`idt.c`)** — it runs in an unstable state and must not depend on a layer that could itself be part of what broke. It still calls `vga_*` directly. Tracked in `docs/TODO.md`.
 - **The drivers' internals** — `vga.c`, `keyboard.c`, `ata.c` call their own helpers as before.
 - **Serial debug prints** (`serial_putchar` etc.) — one implementation, no second one planned (see CLAUDE.md's rule against abstracting "in the dark").
 
-Also not done yet: `boot_get_memory_map()` has no caller — `pmm_init()` still receives a hardcoded `64 * 1024` KB from `kmain`. Wiring the real map into the PMM would change behavior, so it is a separate step (`docs/TODO.md`). The centralized text table `msg(ID)` is described below.
+`boot_get_memory_map()` is consumed by `pmm_init()` (see `docs/memory.md`, "Where the map comes from"). The centralized text table `msg(ID)` is described below.
 
 ## Centralized text: `msg(ID)` (kernel, pass 1)
 

@@ -2,7 +2,6 @@
 #include "keyboard.h"
 #include "idt.h"
 #include "pic.h"
-#include "drivers/vga.h"
 #include <stdint.h>
 
 #define KB_DATA_PORT 0x60

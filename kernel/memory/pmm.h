@@ -6,12 +6,18 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include "../hal.h"
 
 #define PAGE_SIZE 4096  // 4KB per page
 
-// Initializes the PMM with the Multiboot2 memory map
-// mem_upper = upper memory in KB (comes from multiboot)
-void pmm_init(uint32_t mem_upper);
+// Initializes the PMM from the bootloader's memory map (boot_get_memory_map()).
+// Only BOOT_MEM_USABLE regions become allocatable, and only the part of them
+// below PMM_LIMIT_ADDR (see pmm.c): the kernel can only touch physical pages
+// through its 0-8MB identity map. nregions <= 0 (no map) falls back to
+// assuming 1MB-8MB is usable, with a warning. The caller still has to reserve
+// what the bootloader placed in RAM (ramfs module, boot info) with
+// pmm_mark_used().
+void pmm_init(const boot_mem_region_t *map, int nregions);
 
 // Allocates a physical page (returns physical address or 0 if out of memory)
 uint32_t pmm_alloc_page(void);

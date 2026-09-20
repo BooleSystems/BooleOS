@@ -12,9 +12,9 @@
 // drivers (vga.c, keyboard.c, ata.c, power.c). See docs/hal.md.
 //
 // Not covered (deliberately, see docs/hal.md): driver bring-up
-// (vga_init/keyboard_init/ata_init are called directly from kmain), the
-// exception handler in idt.c (must not depend on anything that could be
-// the thing that broke), and serial debug output.
+// (vga_init/keyboard_init/ata_init are called directly from kmain) and serial
+// debug output. The exception handler in idt.c does use this layer: the HAL
+// holds no state of its own, so it adds no risk there.
 
 #ifndef HAL_H
 #define HAL_H

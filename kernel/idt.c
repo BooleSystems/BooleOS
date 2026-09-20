@@ -1,6 +1,6 @@
 // nullos/kernel/idt.c
 #include "idt.h"
-#include "drivers/vga.h"
+#include "hal.h"
 #include "messages.h"
 #include <stdint.h>
 
@@ -91,30 +91,30 @@ void exception_handler(uint32_t int_no, uint32_t err_code, uint32_t eip) {
     uint32_t cr2;
     __asm__ volatile ("mov %%cr2, %0" : "=r"(cr2));
 
-    vga_set_color(VGA_WHITE, VGA_RED);
-    vga_puts(msg(MSG_IDT_KERNEL_EXCEPTION));
+    console_set_color(CONSOLE_WHITE, CONSOLE_RED);
+    console_puts(msg(MSG_IDT_KERNEL_EXCEPTION));
 
-    vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
-    vga_puts(msg(MSG_IDT_EXCEPTION));
+    console_set_color(CONSOLE_LIGHT_RED, CONSOLE_BLACK);
+    console_puts(msg(MSG_IDT_EXCEPTION));
     if (int_no < 32)
-        vga_puts(msg(exception_msgs[int_no]));
+        console_puts(msg(exception_msgs[int_no]));
     else
-        vga_puts(msg(MSG_IDT_UNKNOWN));
-    vga_puts("\n");
+        console_puts(msg(MSG_IDT_UNKNOWN));
+    console_puts("\n");
 
-    vga_puts(msg(MSG_IDT_EIP)); vga_puthex(eip);      vga_puts("\n");
-    vga_puts(msg(MSG_IDT_ERR_CODE)); vga_puthex(err_code); vga_puts("\n");
+    console_puts(msg(MSG_IDT_EIP)); console_put_hex(eip);      console_puts("\n");
+    console_puts(msg(MSG_IDT_ERR_CODE)); console_put_hex(err_code); console_puts("\n");
 
     if (int_no == 14) {
-        vga_puts(msg(MSG_IDT_CR2_ADDR)); vga_puthex(cr2); vga_puts("\n");
-        vga_puts(msg(MSG_IDT_PF_FLAGS));
-        vga_puts((err_code & 1) ? msg(MSG_IDT_PROTECTION) : msg(MSG_IDT_NOT_PRESENT));
-        vga_puts((err_code & 2) ? msg(MSG_IDT_WRITE)      : msg(MSG_IDT_READ));
-        vga_puts((err_code & 4) ? msg(MSG_IDT_USER)        : msg(MSG_IDT_KERNEL));
-        vga_puts("\n");
+        console_puts(msg(MSG_IDT_CR2_ADDR)); console_put_hex(cr2); console_puts("\n");
+        console_puts(msg(MSG_IDT_PF_FLAGS));
+        console_puts((err_code & 1) ? msg(MSG_IDT_PROTECTION) : msg(MSG_IDT_NOT_PRESENT));
+        console_puts((err_code & 2) ? msg(MSG_IDT_WRITE)      : msg(MSG_IDT_READ));
+        console_puts((err_code & 4) ? msg(MSG_IDT_USER)        : msg(MSG_IDT_KERNEL));
+        console_puts("\n");
     }
 
-    vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+    console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
     __asm__ volatile ("cli");
     for (;;) __asm__ volatile ("hlt");
 }
@@ -153,7 +153,7 @@ void idt_init(void) {
     int i;
     idt_entry_t *idt = (idt_entry_t *)IDT_ADDRESS;
 
-    vga_puts(msg(MSG_IDT_1_ZEROING_IDT_AT_0X200000));
+    console_puts(msg(MSG_IDT_1_ZEROING_IDT_AT_0X200000));
     for (i = 0; i < IDT_SIZE; i++) {
         idt[i].base_low  = 0;
         idt[i].selector  = 0;
@@ -163,24 +163,24 @@ void idt_init(void) {
         handlers[i]      = 0;
     }
 
-    vga_puts(msg(MSG_IDT_2_EXCEPTION_GATES_0_31));
+    console_puts(msg(MSG_IDT_2_EXCEPTION_GATES_0_31));
     for (i = 0; i < 32; i++)
         idt_set_gate((uint8_t)i, isr_table[i], 0x08, 0x8E);
 
-    vga_puts(msg(MSG_IDT_3_IRQ_GATES_32_33));
+    console_puts(msg(MSG_IDT_3_IRQ_GATES_32_33));
     idt_set_gate(32, irq0, 0x08, 0x8E);
     idt_set_gate(33, irq1, 0x08, 0x8E);
     idt_set_gate(46, irq14, 0x08, 0x8E);   /* ATA primary channel */
     idt_set_gate(47, irq15, 0x08, 0x8E);   /* ATA secondary channel */
 
     /* 0xEF = present | DPL=3 | 32-bit trap gate — preserves IF (no implicit cli) */
-    vga_puts(msg(MSG_IDT_4_SYSCALL_GATE_0X80_DPL));
+    console_puts(msg(MSG_IDT_4_SYSCALL_GATE_0X80_DPL));
     idt_set_gate(128, isr128, 0x08, 0xEF);
 
-    vga_puts(msg(MSG_IDT_5_FLUSH));
+    console_puts(msg(MSG_IDT_5_FLUSH));
     idtp.limit = (uint16_t)(sizeof(idt_entry_t) * IDT_SIZE - 1);
     idtp.base  = IDT_ADDRESS;
     idt_flush((uint32_t)&idtp);
 
-    vga_puts(msg(MSG_IDT_6_OK));
+    console_puts(msg(MSG_IDT_6_OK));
 }

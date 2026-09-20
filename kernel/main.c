@@ -127,7 +127,20 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     // PMM
     print_tag(msg(MSG_TAG_PMM));
     console_puts(msg(MSG_BOOT_PMM_INITIALIZING));
-    pmm_init(64 * 1024);
+    {
+        // The bootloader's real memory map, region by region (see docs/memory.md).
+        boot_mem_region_t regions[64];
+        int nregions = boot_get_memory_map(regions, 64);
+        pmm_init(regions, nregions);
+
+        // Keep the PMM from ever handing out the memory the bootloader put the
+        // ramfs module and the Multiboot2 info structure in — by their real
+        // addresses, not because they happen to sit inside the 1-4MB reservation.
+        if (has_module)
+            pmm_mark_used(mod_start, mod_end - mod_start);
+        pmm_mark_used(multiboot_info_addr,
+                      ((const mb2_header_t *)multiboot_info_addr)->total_size);
+    }
     print_tag("       ");
     print_ok();
     pmm_dump();

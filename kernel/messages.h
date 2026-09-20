@@ -129,6 +129,7 @@ typedef enum {
 
     // physical memory manager
     MSG_PMM_1_BITMAP_AT,
+    MSG_PMM_NO_MEMORY_MAP,
     MSG_PMM_2_FREEING_HIGH_MEM,
     MSG_PMM_WARNING_NO_MEMORY_ABOVE,
     MSG_PMM_3_MARKING_USED_REGIONS,

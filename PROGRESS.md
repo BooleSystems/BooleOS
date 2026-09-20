@@ -26,23 +26,27 @@ Last closed phase: **Phase 17** (Cleanup A).
 - Phase 17 — Cleanup A (audit fixes, technical debt, libnos/shell tools +
   reboot/shutdown, test/build infrastructure) — `0.17.0`.
 
-### Current work: Phase 18-A (HAL + msg(ID)) — HAL and msg passes 1-2 done
+### Current work: Phase 18-A done (uncommitted final step); next Phase 18-B (Safe Mode)
 
-`kernel/hal.h/.c` + `docs/hal.md`: thin wrappers over vga/keyboard/ata/
-power/Multiboot2, call sites outside the drivers migrated (committed, QEMU-tested).
-`msg(ID)` pass 1 (kernel/) committed: `kernel/messages.h/.c`, text verified
-identical via .rodata string-set diff.
-`msg(ID)` pass 2 (userland: shell/edit/cat, own table in
-`user/lib/messages.*`) done (this change, verified by .rodata/call-site diff); selftest/forktest/init/spintest
-not migrated on purpose. Still owed in 18-A: loose ends in `docs/TODO.md` (idt.c exception handler,
-wiring `boot_get_memory_map()` into `pmm_init`). Then 18-B (Safe Mode; must
-not rely on `process_spawn_user`/fork/exec/scheduler — see CLAUDE.md).
-Also owed to 18-B: the permanent "NullOS vX.Y.Z (anterior)" GRUB entry
-CLAUDE.md requires at each merge into `main` (never implemented for
-v0.16.0/v0.17.0; ROADMAP 18-B lists it).
+18-A = HAL (`kernel/hal.h/.c`, `docs/hal.md`) + `msg(ID)` kernel and userland
+tables + `idt.c` through the HAL + `pmm_init()` consuming the real memory map
+(8 MB allocation ceiling, `[PMM] Total` = allocatable 8192 KB). The last step
+(PMM) awaits the user's QEMU check: expect `Total: 8192KB`, `Free: 4096KB`
+(1024 pages), selftest 18/18. Also fixed there: `pmm_free_pages()` used to
+over-report (`pmm_used` started at 0).
+
+**Real pre-existing debt (Phase 22):** the kernel accesses physical pages
+through the 0–8 MB identity map (elf.c:54, process.c:262-265); the 8 MB cap is
+only a mitigation. See `docs/TODO.md`. Also known: `process_exit()` never
+frees, so ~10 pages leak per process and the 1024 free pages last roughly a
+dozen selftest runs per boot before `exec`/`fork` start failing cleanly.
+
+Next: 18-B (Safe Mode; must not rely on `process_spawn_user`/fork/exec/
+scheduler — see CLAUDE.md). Also owed to 18-B: the permanent "NullOS vX.Y.Z
+(anterior)" GRUB entry CLAUDE.md requires at each merge into `main` (never
+implemented for v0.16.0/v0.17.0; ROADMAP 18-B lists it).
 Version is `0.18.0-nightly`; `NULLOS_PHASE`/`DESC` stay 17 / "Cleanup A"
-until Phase 18 closes (CLAUDE.md: MINOR/phase only move on a completed
-phase, no sub-phase letters in version.h).
+until Phase 18 closes.
 
 Deferred, not blocking: test `docs/setup.md` on Windows (Phase 29).
 
@@ -114,6 +118,9 @@ package manager phase was deliberately decided against — don't add one.
 - **`msg(ID)`: fragments, not format strings; only OUTPUT text** (never
   strcmp keys / exec names / file names); kernel and userland get separate
   tables (user programs can't call the kernel). See `docs/hal.md`.
+- **PMM manages only 0–8 MB (`PMM_LIMIT_ADDR`)** because the kernel touches
+  frames by physical address and only 0–8 MB is identity-mapped; a mitigation,
+  not the fix (Phase 22). See `docs/memory.md`.
 - **HAL (`kernel/hal.h`) is a forwarding layer, not a rewrite**: the
   interface is arch-neutral, `hal.c` just calls the existing drivers; the
   exception handler (`idt.c`) and driver bring-up deliberately bypass it.

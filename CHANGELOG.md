@@ -54,6 +54,17 @@ at the time.
 
 ### Changed
 
+- `pmm_init()` now consumes the bootloader's real memory map
+  (`boot_get_memory_map()`): it frees only the usable regions (rounded
+  inward to pages, fragmented maps supported) instead of one fixed
+  contiguous block, keeps the first 1 MB and 1–4 MB reserved, and `kmain`
+  marks the ramfs module and the Multiboot2 info structure used by their
+  real addresses. The allocation ceiling is now an explicit 8 MB
+  (`PMM_LIMIT_ADDR`, 2048 pages): the kernel can only touch physical pages
+  through its 0–8 MB identity map, so pages above it are no longer handed
+  out (mitigation of a pre-existing bug, recorded in `docs/TODO.md`; the
+  fix is Phase 22). `[PMM] Total` in the boot log now shows the allocatable
+  8192 KB instead of the old compile-time 32768 KB cap.
 - Everything outside the drivers now goes through the HAL: `kmain`,
   `syscall.c`, `process.c`, `scheduler.c`, `exec.c`, `power.c`,
   `memory/{pmm,vmm,heap}.c`, `drivers/pci.c` and all disk access in
@@ -61,6 +72,9 @@ at the time.
   goes through `hal_boot_init()`. The exception handler in `idt.c` and the
   driver bring-up calls are intentionally left direct (see `docs/hal.md`).
 - `docs/TODO.md` tracks a pre-existing editor gap found while testing: `edit` with no file name cannot save (Ctrl+S reports the misleading "saved (no disk)").
+- `pmm_free_pages()` over-reported by the total page count: `pmm_used` started at 0 while the bitmap started all-used, so releasing a region drove it negative (the old boot log showed `Free: 61440KB` for `Total: 32768KB`). It now starts at the total. Boot free is now 1024 pages (4096 KB), the real figure.
+- `idt.c` (exception handler and the `idt_init` progress lines) now prints through the HAL (`console_*`); the HAL console holds no state of its own, so this adds no risk. Removed a dead `#include` of the VGA header from `keyboard.c`.
+- `docs/TODO.md` records a pre-existing debt: the kernel accesses physical pages through the 0-8 MB identity map (`elf.c`, `process.c`) although the PMM can hand out pages up to 32 MB (Phase 22).
 - `kernel/version.h`: `0.18.0-nightly`.
 
 ## [0.17.1] - Documentation patch: v0.17.0 closing gaps + ROADMAP restructuring

@@ -6,7 +6,16 @@
 
 // Bitmap at a fixed safe address: 0x202000 (right after the IDT at 0x200000)
 #define PMM_BITMAP_ADDR 0x202000
-#define PMM_MAX_PAGES   8192
+
+// The PMM only manages physical memory the kernel can actually touch. The
+// kernel reaches a page by its physical address (elf_load() zeroes user pages,
+// process_fork() copies them) and only 0-8MB is identity-mapped, so nothing
+// above PMM_LIMIT_ADDR may be handed out. This is a MITIGATION of a
+// pre-existing bug (see docs/TODO.md, "TECHNICAL DEBT ... identity map"): an
+// exhausted PMM now fails an allocation instead of faulting in the kernel.
+// The real fix (Phase 22) is to stop accessing frames by physical address.
+#define PMM_LIMIT_ADDR  0x800000u
+#define PMM_MAX_PAGES   (PMM_LIMIT_ADDR / PAGE_SIZE)   // 2048 pages = 8MB
 #define PMM_BITMAP_SIZE (PMM_MAX_PAGES / 32)
 
 static uint32_t pmm_total = 0;
@@ -69,31 +78,47 @@ void pmm_free_page(uint32_t addr) {
     bitmap_clear(page); pmm_used--;
 }
 
-void pmm_init(uint32_t mem_upper) {
+void pmm_init(const boot_mem_region_t *map, int nregions) {
     uint32_t i;
-    /* mem_upper is KB above the first 1MB, so the total page count is
-       256 (the first 1MB) + mem_upper/4. The old form,
-       (1024 + mem_upper) * 1024 / PAGE_SIZE, overflowed uint32_t for a
-       huge mem_upper and wrapped to a tiny total_pages, which then
-       underflowed the (total_pages - 256) below. */
-    uint32_t total_pages = 256 + mem_upper / (PAGE_SIZE / 1024);
-    if (total_pages > PMM_MAX_PAGES) total_pages = PMM_MAX_PAGES;
-    pmm_total = total_pages;
-    pmm_used  = 0;
+
+    // Every page starts USED (bitmap all ones, counter = every page); only
+    // the usable regions below are then released. The counter used to start
+    // at 0 while the bitmap was all ones, so every release drove it negative
+    // and pmm_free_pages() over-reported by the total page count.
+    pmm_total = PMM_MAX_PAGES;
+    pmm_used  = PMM_MAX_PAGES;
 
     console_puts(msg(MSG_PMM_1_BITMAP_AT)); console_put_hex(PMM_BITMAP_ADDR); console_puts("\n");
     for (i = 0; i < PMM_BITMAP_SIZE; i++) get_bitmap()[i] = 0xFFFFFFFF;
 
     console_puts(msg(MSG_PMM_2_FREEING_HIGH_MEM));
-    if (total_pages > 256)
-        pmm_mark_free(0x100000, (total_pages - 256) * PAGE_SIZE);
-    else
-        console_puts(msg(MSG_PMM_WARNING_NO_MEMORY_ABOVE));
+    if (nregions > 0) {
+        uint64_t highest = 0;   // end of the last usable region, capped at the limit
+        for (int r = 0; r < nregions; r++) {
+            if (map[r].type != BOOT_MEM_USABLE) continue;
+            // Round inward to whole pages; a region can start or end mid-page.
+            uint64_t start = (map[r].base + PAGE_SIZE - 1) & ~(uint64_t)(PAGE_SIZE - 1);
+            uint64_t end   = (map[r].base + map[r].length) & ~(uint64_t)(PAGE_SIZE - 1);
+            if (end > PMM_LIMIT_ADDR) end = PMM_LIMIT_ADDR;
+            if (start >= end) continue;   // empty, or entirely above the limit
+            pmm_mark_free((uint32_t)start, (uint32_t)(end - start));
+            if (end > highest) highest = end;
+        }
+        // On a machine with less than 8MB, the pages past the last usable
+        // byte don't exist; don't count them as managed.
+        if (highest && highest < PMM_LIMIT_ADDR) {
+            uint32_t managed = (uint32_t)(highest / PAGE_SIZE);
+            pmm_used -= (PMM_MAX_PAGES - managed);   // those pages were counted as used
+            pmm_total = managed;
+        }
+    } else {
+        console_puts(msg(MSG_PMM_NO_MEMORY_MAP));
+        pmm_mark_free(0x100000, PMM_LIMIT_ADDR - 0x100000);
+    }
 
     console_puts(msg(MSG_PMM_3_MARKING_USED_REGIONS));
-    pmm_mark_used(0x100000, 0x300000);
-    pmm_mark_used(0x200000, 0x3000);
-    pmm_mark_used(0x0F0000, 0x10000);
+    pmm_mark_used(0x0, 0x100000);       // first MB: real-mode area, BIOS, VGA
+    pmm_mark_used(0x100000, 0x300000);  // 1-4MB: kernel image, ramfs module, IDT, bitmap, page tables
 
     console_puts(msg(MSG_PMM_4_FREE)); console_put_dec(pmm_free_pages()); console_puts(msg(MSG_PMM_PAGES_NL));
 }
