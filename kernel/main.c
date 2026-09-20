@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include "version.h"
 #include "drivers/vga.h"
+#include "hal.h"
 #include "serial.h"
 #include "gdt.h"
 #include "idt.h"
@@ -21,25 +22,24 @@
 #include "fs/fat16.h"
 #include "drivers/pci.h"
 
-#define MULTIBOOT2_MAGIC 0x36d76289
 
 static void print_ok(void) {
-    vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
-    vga_puts("OK\n");
-    vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+    console_set_color(CONSOLE_LIGHT_GREEN, CONSOLE_BLACK);
+    console_puts("OK\n");
+    console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
 }
 
 static void print_tag(const char *tag) {
-    vga_set_color(VGA_WHITE, VGA_BLACK);
-    vga_puts(tag);
-    vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+    console_set_color(CONSOLE_WHITE, CONSOLE_BLACK);
+    console_puts(tag);
+    console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
 }
 
 static void print_separator(void) {
-    vga_set_color(VGA_DARK_GREY, VGA_BLACK);
-    for (int i = 0; i < 60; i++) vga_putchar('-');
-    vga_puts("\n");
-    vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+    console_set_color(CONSOLE_DARK_GREY, CONSOLE_BLACK);
+    for (int i = 0; i < 60; i++) console_putc('-');
+    console_puts("\n");
+    console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
 }
 
 
@@ -48,25 +48,25 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     vga_init();
 
     // Banner
-    vga_set_color(VGA_CYAN, VGA_BLACK);
-    vga_puts("  _   _       _ _  ___  ____  \n");
-    vga_puts(" | \\ | |_   _| | |/ _ \\/ ___| \n");
-    vga_puts(" |  \\| | | | | | | | | \\___ \\ \n");
-    vga_puts(" | |\\  | |_| | | | |_| |___) |\n");
-    vga_puts(" |_| \\_|\\__,_|_|_|\\___/|____/ \n\n");
-    vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
-    vga_puts(" " NULLOS_BANNER "\n\n");
+    console_set_color(CONSOLE_CYAN, CONSOLE_BLACK);
+    console_puts("  _   _       _ _  ___  ____  \n");
+    console_puts(" | \\ | |_   _| | |/ _ \\/ ___| \n");
+    console_puts(" |  \\| | | | | | | | | \\___ \\ \n");
+    console_puts(" | |\\  | |_| | | | |_| |___) |\n");
+    console_puts(" |_| \\_|\\__,_|_|_|\\___/|____/ \n\n");
+    console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
+    console_puts(" " NULLOS_BANNER "\n\n");
 
     print_separator();
 
     // Multiboot
     print_tag("[BOOT] ");
-    if (multiboot_magic != MULTIBOOT2_MAGIC) {
-        vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
-        vga_puts("Invalid Multiboot2 magic!\n");
+    if (hal_boot_init(multiboot_magic, multiboot_info_addr) < 0) {
+        console_set_color(CONSOLE_LIGHT_RED, CONSOLE_BLACK);
+        console_puts("Invalid Multiboot2 magic!\n");
         goto hang;
     }
-    vga_puts("Multiboot2: "); print_ok();
+    console_puts("Multiboot2: "); print_ok();
 
     // ramfs module (optional)
     uint32_t mod_start = 0, mod_end = 0;
@@ -75,47 +75,47 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     {
         print_tag("[BOOT] ");
         if (has_module) {
-            vga_puts("ramfs module: 0x");
-            vga_puthex(mod_start);
-            vga_puts(" - 0x");
-            vga_puthex(mod_end);
-            vga_puts(" (");
-            vga_putdec(mod_end - mod_start);
-            vga_puts(" bytes)\n");
+            console_puts("ramfs module: 0x");
+            console_put_hex(mod_start);
+            console_puts(" - 0x");
+            console_put_hex(mod_end);
+            console_puts(" (");
+            console_put_dec(mod_end - mod_start);
+            console_puts(" bytes)\n");
         } else {
-            vga_puts("no module — running without ramfs\n");
+            console_puts("no module — running without ramfs\n");
         }
     }
 
     // GDT
     print_tag("[GDT]  ");
-    vga_puts("Initializing... ");
+    console_puts("Initializing... ");
     gdt_init();
     print_ok();
 
     // PIC
     print_tag("[PIC]  ");
-    vga_puts("Remapping IRQs... ");
+    console_puts("Remapping IRQs... ");
     pic_init();
     for (int i = 0; i < 16; i++) pic_mask_irq((uint8_t)i);
     print_ok();
 
     // IDT
     print_tag("[IDT]  ");
-    vga_puts("Installing vectors...\n");
+    console_puts("Installing vectors...\n");
     idt_init();
     print_tag("       ");
     print_ok();
 
     // Timer
     print_tag("[TIMER]");
-    vga_puts("PIT @ 100Hz... ");
+    console_puts("PIT @ 100Hz... ");
     timer_init(100);
     print_ok();
 
     // Keyboard
     print_tag("[KB]   ");
-    vga_puts("PS/2 keyboard... ");
+    console_puts("PS/2 keyboard... ");
     keyboard_init();
     print_ok();
 
@@ -125,7 +125,7 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
 
     // PMM
     print_tag("[PMM]  ");
-    vga_puts("Initializing...\n");
+    console_puts("Initializing...\n");
     pmm_init(64 * 1024);
     print_tag("       ");
     print_ok();
@@ -133,7 +133,7 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
 
     // VMM
     print_tag("[VMM]  ");
-    vga_puts("Enabling paging...\n");
+    console_puts("Enabling paging...\n");
     vmm_init();
     print_tag("       ");
     print_ok();
@@ -141,7 +141,7 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
 
     // Heap
     print_tag("[HEAP] ");
-    vga_puts("Initializing kmalloc...\n");
+    console_puts("Initializing kmalloc...\n");
     heap_init();
     print_tag("       ");
     print_ok();
@@ -150,36 +150,36 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
 
     // Scheduler + kernel tasks
     print_tag("[SCHED]");
-    vga_puts("Initializing scheduler... ");
+    console_puts("Initializing scheduler... ");
     scheduler_init();
     print_ok();
 
     // ATA
     print_tag("[ATA]  ");
-    vga_puts("Detecting disk... ");
+    console_puts("Detecting disk... ");
     if (ata_init()) {
         print_ok();
     } else {
-        vga_set_color(VGA_DARK_GREY, VGA_BLACK);
-        vga_puts("no disk\n");
-        vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+        console_set_color(CONSOLE_DARK_GREY, CONSOLE_BLACK);
+        console_puts("no disk\n");
+        console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
     }
 
     // FAT16
     print_tag("[FAT16]");
-    vga_puts(" Initializing... ");
+    console_puts(" Initializing... ");
     if (fat16_init()) {
         print_ok();
     } else {
-        vga_set_color(VGA_DARK_GREY, VGA_BLACK);
-        vga_puts("no FAT16 disk\n");
-        vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+        console_set_color(CONSOLE_DARK_GREY, CONSOLE_BLACK);
+        console_puts("no FAT16 disk\n");
+        console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
     }
 
     // PCI (after ATA/FAT16: bus enumeration is independent hardware
     // discovery for future drivers, not on the disk-mount critical path)
     print_tag("[PCI]  ");
-    vga_puts("Scanning bus... ");
+    console_puts("Scanning bus... ");
     pci_scan_bus();
     print_ok();
     pci_print_list();
@@ -189,26 +189,26 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     // ramfs + exec("init") — only if GRUB passed a module
     if (has_module) {
         print_tag("[RAMFS]");
-        vga_puts("Mounting image...\n");
+        console_puts("Mounting image...\n");
         ramfs_init((void *)mod_start, mod_end - mod_start);
         print_tag("       ");
         print_ok();
 
         print_tag("[EXEC] ");
-        vga_puts("Loading shell...\n");
+        console_puts("Loading shell...\n");
         if (!exec("shell", 0, 0)) {   /* no launcher process at boot — starts at the root */
-            vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
-            vga_puts("ERROR loading shell\n");
-            vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+            console_set_color(CONSOLE_LIGHT_RED, CONSOLE_BLACK);
+            console_puts("ERROR loading shell\n");
+            console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
         }
     }
 
     scheduler_dump();
     print_separator();
 
-    vga_set_color(VGA_YELLOW, VGA_BLACK);
-    vga_puts("\n Shell started!\n");
-    vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+    console_set_color(CONSOLE_YELLOW, CONSOLE_BLACK);
+    console_puts("\n Shell started!\n");
+    console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
 
     for (;;) {
         scheduler_run_once();

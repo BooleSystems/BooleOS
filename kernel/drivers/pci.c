@@ -4,7 +4,7 @@
 // drivers (AHCI, xHCI, ...) will use instead of fixed I/O ports.
 
 #include "pci.h"
-#include "vga.h"
+#include "../hal.h"
 #include <stdint.h>
 
 #define PCI_CONFIG_ADDRESS 0xCF8
@@ -147,37 +147,37 @@ int pci_device_count(void) {
 static void print_hex_padded(uint32_t value, int digits) {
     static const char *hex = "0123456789ABCDEF";
     for (int shift = (digits - 1) * 4; shift >= 0; shift -= 4)
-        vga_putchar(hex[(value >> shift) & 0xF]);
+        console_putc(hex[(value >> shift) & 0xF]);
 }
 
 void pci_print_list(void) {
     if (g_device_count == 0) {
-        vga_puts("  (no PCI devices found)\n");
+        console_puts("  (no PCI devices found)\n");
         return;
     }
 
     for (uint32_t i = 0; i < g_device_count; i++) {
         const pci_device_t *d = &g_devices[i];
 
-        vga_puts("  ");
+        console_puts("  ");
         print_hex_padded(d->bus, 2);
-        vga_putchar(':');
+        console_putc(':');
         print_hex_padded(d->device, 2);
-        vga_putchar('.');
+        console_putc('.');
         print_hex_padded(d->function, 1);
-        vga_puts("  vendor=");
+        console_puts("  vendor=");
         print_hex_padded(d->vendor_id, 4);
-        vga_puts(" device=");
+        console_puts(" device=");
         print_hex_padded(d->device_id, 4);
-        vga_puts(" class=");
+        console_puts(" class=");
         print_hex_padded(d->class_code, 2);
-        vga_putchar('/');
+        console_putc('/');
         print_hex_padded(d->subclass, 2);
-        vga_puts(" progif=");
+        console_puts(" progif=");
         print_hex_padded(d->prog_if, 2);
-        vga_puts(" htype=");
+        console_puts(" htype=");
         print_hex_padded(d->header_type, 2);
-        vga_puts("\n");
+        console_puts("\n");
 
         int nbars = pci_bar_count(d->header_type);
         int any_bar = 0;
@@ -185,15 +185,15 @@ void pci_print_list(void) {
             if (d->bar[b] != 0) { any_bar = 1; break; }
 
         if (any_bar) {
-            vga_puts("        bars:");
+            console_puts("        bars:");
             for (int b = 0; b < nbars; b++) {
                 if (d->bar[b] == 0) continue;
-                vga_puts(" bar");
-                vga_putchar((char)('0' + b));
-                vga_putchar('=');
+                console_puts(" bar");
+                console_putc((char)('0' + b));
+                console_putc('=');
                 print_hex_padded(d->bar[b], 8);
             }
-            vga_puts("\n");
+            console_puts("\n");
         }
     }
 }

@@ -22,6 +22,33 @@ called out inline rather than silently "corrected", and `[0.11.0]`–
 Phase 10), not a version string that ever actually appeared in the repo
 at the time.
 
+## [Unreleased]
+
+### Added
+
+- Hardware abstraction layer, first pass (`kernel/hal.h`, `kernel/hal.c`,
+  `docs/hal.md`): an arch-neutral interface over the existing drivers, as
+  thin forwarding wrappers (the drivers were not rewritten).
+  - Console: `console_putc`, `console_puts`, `console_put_hex`,
+    `console_put_dec`, `console_set_color`, `console_clear`,
+    `console_set_cursor`, `console_color_t` (`CONSOLE_*`).
+  - Input: `input_poll_key`, `input_poll_raw`, `input_flush`.
+  - Block device: `block_read_sector`, `block_write_sector`.
+  - Power: `power_reboot`, `power_shutdown` (reachable through `hal.h`).
+  - Boot info: `hal_boot_init`, `boot_get_memory_map` (new Multiboot2
+    memory-map tag parser in `kernel/multiboot2.h`), `boot_mem_region_t`.
+
+### Changed
+
+- Everything outside the drivers now goes through the HAL: `kmain`,
+  `syscall.c`, `process.c`, `scheduler.c`, `exec.c`, `power.c`,
+  `memory/{pmm,vmm,heap}.c`, `drivers/pci.c` and all disk access in
+  `fs/fat16.c` (no change in behavior). `kmain`'s Multiboot magic check now
+  goes through `hal_boot_init()`. The exception handler in `idt.c` and the
+  driver bring-up calls are intentionally left direct (see `docs/hal.md`).
+- `docs/TODO.md` tracks a pre-existing editor gap found while testing: `edit` with no file name cannot save (Ctrl+S reports the misleading "saved (no disk)").
+- `kernel/version.h`: `0.18.0-nightly`.
+
 ## [0.17.1] - Documentation patch: v0.17.0 closing gaps + ROADMAP restructuring
 
 Documentation only; no behavior change (`kernel/version.h` is 0.17.1, phase

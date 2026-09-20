@@ -1,8 +1,7 @@
 /* nullos/kernel/fs/fat16.c — FAT16 read/write, subdirectories, over ATA PIO */
 #include "fat16.h"
-#include "../drivers/ata.h"
+#include "../hal.h"
 #include "../memory/heap.h"
-#include "../drivers/vga.h"
 #include <stdint.h>
 
 /* ── BPB (BIOS Parameter Block) — fixed on-disk layout ─────── */
@@ -130,7 +129,7 @@ static void to_8_3(const char *name, uint8_t out[11]) {
 int fat16_init(void) {
     g_ready = 0;
 
-    if (ata_read_sector(0, sector_buf) < 0) return 0;
+    if (block_read_sector(0, sector_buf) < 0) return 0;
 
     bpb_t *bpb = (bpb_t *)sector_buf;
 
@@ -142,7 +141,7 @@ int fat16_init(void) {
         /* would divide by zero in the cluster count below and break every
            cluster -> LBA computation afterward; fail before any state is
            set. The caller prints "no FAT16 disk" right after this. */
-        vga_puts("invalid BPB (sectors_per_cluster=0), ");
+        console_puts("invalid BPB (sectors_per_cluster=0), ");
         return 0;
     }
 
@@ -166,7 +165,7 @@ int fat16_init(void) {
 
     uint8_t *dst = (uint8_t *)g_fat;
     for (uint32_t s = 0; s < g_fat_size_sectors; s++) {
-        if (ata_read_sector(g_fat_start_lba + s, dst + s * 512) < 0) {
+        if (block_read_sector(g_fat_start_lba + s, dst + s * 512) < 0) {
             kfree(g_fat); g_fat = 0;
             return 0;
         }
@@ -199,7 +198,7 @@ static int fat16_flush_fat(void) {
     for (uint8_t f = 0; f < g_num_fats; f++) {
         uint32_t base = g_fat_start_lba + (uint32_t)f * g_fat_size_sectors;
         for (uint32_t s = 0; s < g_fat_size_sectors; s++) {
-            if (ata_write_sector(base + s, src + s * 512) < 0) return -1;
+            if (block_write_sector(base + s, src + s * 512) < 0) return -1;
         }
     }
     return 0;
@@ -257,7 +256,7 @@ static int dir_iter_next_sector(dir_iter_t *it, uint8_t *buf, uint32_t *out_lba)
     if (it->dir_cluster == 0) {
         if (it->root_sector >= g_root_sector_count) return 0;
         uint32_t lba = g_root_start_lba + it->root_sector;
-        if (ata_read_sector(lba, buf) < 0) return -1;
+        if (block_read_sector(lba, buf) < 0) return -1;
         if (out_lba) *out_lba = lba;
         it->root_sector++;
         return 1;
@@ -271,7 +270,7 @@ static int dir_iter_next_sector(dir_iter_t *it, uint8_t *buf, uint32_t *out_lba)
         it->cluster_sector = 0;
     }
     uint32_t lba = fat16_cluster_to_lba(it->cluster) + it->cluster_sector;
-    if (ata_read_sector(lba, buf) < 0) return -1;
+    if (block_read_sector(lba, buf) < 0) return -1;
     if (out_lba) *out_lba = lba;
     it->cluster_sector++;
     return 1;
@@ -352,7 +351,7 @@ static int dir_insert(uint32_t dir_cluster, const fat16_dirent_t *entry) {
                    trigger it. */
                 uint8_t *dst = (uint8_t *)e;
                 for (uint32_t b = 0; b < sizeof(fat16_dirent_t); b++) dst[b] = entry_bytes[b];
-                if (ata_write_sector(lba, dir_buf) < 0) return -1;
+                if (block_write_sector(lba, dir_buf) < 0) return -1;
                 return 0;
             }
         }
@@ -371,11 +370,11 @@ static int dir_insert(uint32_t dir_cluster, const fat16_dirent_t *entry) {
     for (int i = 0; i < 512; i++) dir_buf[i] = 0;
     uint32_t new_lba = fat16_cluster_to_lba(new_cluster);
     for (uint32_t s = 0; s < g_sectors_per_cluster; s++) {
-        if (ata_write_sector(new_lba + s, dir_buf) < 0) return -1;
+        if (block_write_sector(new_lba + s, dir_buf) < 0) return -1;
     }
 
     for (uint32_t b = 0; b < sizeof(fat16_dirent_t); b++) dir_buf[b] = entry_bytes[b];
-    if (ata_write_sector(new_lba, dir_buf) < 0) return -1;
+    if (block_write_sector(new_lba, dir_buf) < 0) return -1;
 
     uint32_t last_cluster = it.cluster;   /* last cluster visited above */
     g_fat[last_cluster] = (uint16_t)new_cluster;
@@ -620,7 +619,7 @@ int fat16_mkdir(uint32_t dir_cluster, const char *path) {
     for (int i = 0; i < 512; i++) dir_buf[i] = 0;
     uint32_t new_lba = fat16_cluster_to_lba(new_cluster);
     for (uint32_t s = 0; s < g_sectors_per_cluster; s++) {
-        if (ata_write_sector(new_lba + s, dir_buf) < 0) return -1;
+        if (block_write_sector(new_lba + s, dir_buf) < 0) return -1;
     }
 
     /* "." and ".." occupy the first two entries of the first sector —
@@ -643,7 +642,7 @@ int fat16_mkdir(uint32_t dir_cluster, const char *path) {
     entries[1].first_cluster = (uint16_t)parent;  /* 0 if parent is root */
     entries[1].size = 0;
 
-    if (ata_write_sector(new_lba, dir_buf) < 0) return -1;
+    if (block_write_sector(new_lba, dir_buf) < 0) return -1;
 
     fat16_dirent_t e;
     for (int j = 0; j < 8; j++) e.name[j] = name83[j];
@@ -719,7 +718,7 @@ int fat16_write_file(uint32_t parent_cluster, const char *name, const char *buf,
                 uint32_t pos = written + cluster_written + b;
                 sector_buf[b] = (pos < len) ? (uint8_t)buf[pos] : 0;
             }
-            if (ata_write_sector(clba + sec, sector_buf) < 0) return -1;
+            if (block_write_sector(clba + sec, sector_buf) < 0) return -1;
             cluster_written += 512;
         }
         written += (bpc < (len - written)) ? bpc : (len - written);
@@ -728,7 +727,7 @@ int fat16_write_file(uint32_t parent_cluster, const char *name, const char *buf,
     /* update the dir entry: first_cluster and size */
     entry->first_cluster = (len == 0) ? 0 : (uint16_t)first_new;
     entry->size          = len;
-    if (ata_write_sector(lba, dir_buf) < 0) return -1;
+    if (block_write_sector(lba, dir_buf) < 0) return -1;
 
     /* flush the FAT to disk */
     return fat16_flush_fat();
@@ -918,13 +917,13 @@ int fat16_write_at(uint32_t parent_cluster, const char *name, uint32_t pos,
         if (n < 512) {
             if (fresh) {
                 for (int i = 0; i < 512; i++) sector_buf[i] = 0;
-            } else if (ata_read_sector(lba, sector_buf) < 0) {
+            } else if (block_read_sector(lba, sector_buf) < 0) {
                 break;
             }
         }
         for (uint32_t i = 0; i < n; i++)
             sector_buf[sec_off + i] = (uint8_t)buf[written + i];
-        if (ata_write_sector(lba, sector_buf) < 0) break;
+        if (block_write_sector(lba, sector_buf) < 0) break;
 
         written += n;
         off     += n;
@@ -958,7 +957,7 @@ int fat16_write_at(uint32_t parent_cluster, const char *name, uint32_t pos,
         fat16_dirent_t *entry = (fat16_dirent_t *)dir_buf + dindex;
         entry->first_cluster = (uint16_t)first;
         entry->size          = new_size;
-        if (ata_write_sector(dlba, dir_buf) < 0) return -1;
+        if (block_write_sector(dlba, dir_buf) < 0) return -1;
     }
 
     if (out_first_cluster) *out_first_cluster = first;
@@ -998,7 +997,7 @@ int fat16_read_at(uint32_t first_cluster, uint32_t pos,
         uint32_t sec_off = cluster_off % 512;
 
         while (sec_idx < g_sectors_per_cluster && read < len) {
-            if (ata_read_sector(lba + sec_idx, sector_buf) < 0) {
+            if (block_read_sector(lba + sec_idx, sector_buf) < 0) {
                 return (int)read;
             }
 

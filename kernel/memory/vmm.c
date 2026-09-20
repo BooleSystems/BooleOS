@@ -1,7 +1,7 @@
 // nullos/kernel/memory/vmm.c
 #include "vmm.h"
 #include "pmm.h"
-#include "../drivers/vga.h"
+#include "../hal.h"
 #include <stdint.h>
 
 typedef uint32_t pde_t;
@@ -166,25 +166,25 @@ void vmm_init(void) {
     uint32_t *pt0 = (uint32_t *)PAGE_TABLE_START;
     uint32_t *pt1 = (uint32_t *)(PAGE_TABLE_START + PAGE_SIZE);
 
-    vga_puts("   vmm: [1] zeroing PD and PTs\n");
+    console_puts("   vmm: [1] zeroing PD and PTs\n");
     for (i = 0; i < 1024; i++) {
         pd[i]  = 0;
         pt0[i] = 0;
         pt1[i] = 0;
     }
 
-    vga_puts("   vmm: [2] mapping 0-4MB\n");
+    console_puts("   vmm: [2] mapping 0-4MB\n");
     for (i = 0; i < 1024; i++)
         pt0[i] = (i * PAGE_SIZE) | VMM_KERNEL | VMM_PRESENT;
 
-    vga_puts("   vmm: [3] mapping 4MB-8MB\n");
+    console_puts("   vmm: [3] mapping 4MB-8MB\n");
     for (i = 0; i < 1024; i++)
         pt1[i] = (0x400000 + i * PAGE_SIZE) | VMM_KERNEL | VMM_PRESENT;
 
     pd[0] = PAGE_TABLE_START | VMM_KERNEL | VMM_PRESENT;
     pd[1] = (PAGE_TABLE_START + PAGE_SIZE) | VMM_KERNEL | VMM_PRESENT;
 
-    vga_puts("   vmm: [4] CR3 + CR0.PG\n");
+    console_puts("   vmm: [4] CR3 + CR0.PG\n");
     __asm__ volatile ("mov %0, %%cr3" : : "r"((uint32_t)PAGE_DIR_ADDR) : "memory");
     uint32_t cr0;
     __asm__ volatile ("mov %%cr0, %0" : "=r"(cr0));
@@ -192,14 +192,14 @@ void vmm_init(void) {
     __asm__ volatile ("mov %0, %%cr0" : : "r"(cr0) : "memory");
 
     paging_active = 1;
-    vga_puts("   vmm: [5] ok!\n");
+    console_puts("   vmm: [5] ok!\n");
 }
 
 void vmm_dump(void) {
-    vga_set_color(VGA_CYAN, VGA_BLACK);
-    vga_puts("[VMM] ");
-    vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
-    vga_puts("PTs used: ");
-    vga_putdec((pt_next - PAGE_TABLE_START) / PAGE_SIZE);
-    vga_puts("\n");
+    console_set_color(CONSOLE_CYAN, CONSOLE_BLACK);
+    console_puts("[VMM] ");
+    console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
+    console_puts("PTs used: ");
+    console_put_dec((pt_next - PAGE_TABLE_START) / PAGE_SIZE);
+    console_puts("\n");
 }

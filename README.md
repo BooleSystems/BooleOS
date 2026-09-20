@@ -53,6 +53,7 @@ Detailed, per-system documentation lives under `docs/`:
 - [docs/syscalls.md](docs/syscalls.md) — full syscall table (number, signature, description)
 - [docs/filesystem.md](docs/filesystem.md) — ATA PIO driver, FAT16, VFS
 - [docs/pipes.md](docs/pipes.md) — in-kernel pipes, `SYS_EXEC_PIPE`, the shell's `cmd1 | cmd2`
+- [docs/hal.md](docs/hal.md) — hardware abstraction layer (console, input, block I/O, power, boot memory map)
 - [docs/security.md](docs/security.md) — userland pointer validation, Phase 14 bug history
 - [docs/pci.md](docs/pci.md) — PCI bus enumeration
 - [docs/shell.md](docs/shell.md) — interactive shell and commands
@@ -79,6 +80,7 @@ kernel/
   keyboard.c          PS/2 keyboard
   serial.c/h          Serial driver (mirrors VGA output)
   power.c/h           power_reboot() / power_shutdown()
+  hal.c/h             Hardware abstraction layer (console/input/block/boot info) — see docs/hal.md
   pipe.c/h            Inter-process pipes (fixed pool)
   tss.c               Task State Segment
   process.c/h         Process table + process_fork()

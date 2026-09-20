@@ -2,9 +2,8 @@
 #include "syscall.h"
 #include "process.h"
 #include "scheduler.h"
-#include "keyboard.h"
 #include "timer.h"
-#include "drivers/vga.h"
+#include "hal.h"
 #include "memory/pmm.h"
 #include "memory/heap.h"
 #include "exec.h"
@@ -14,7 +13,6 @@
 #include "ramfs.h"
 #include "drivers/pci.h"
 #include "pipe.h"
-#include "power.h"
 #include <stdint.h>
 
 /* ── file descriptor table ─────────────────────────────────── */
@@ -227,7 +225,7 @@ static uint32_t sys_write(uint32_t fd, const char *buf, uint32_t len) {
        exactly as before pipes existed. */
     for (uint32_t i = 0; i < len; i++) {
         char *kp = user_kptr(cur, (uint32_t)buf + i);
-        vga_putchar(*kp);
+        console_putc(*kp);
     }
     return len;
 }
@@ -312,11 +310,11 @@ static uint32_t sys_read(uint32_t fd, char *buf, uint32_t len) {
     uint32_t n = 0;
     while (n < len) {
         int c;
-        while ((c = keyboard_getchar_nowait()) == -1)
+        while ((c = input_poll_key()) == -1)
             scheduler_sleep_current(1);
 
         if (c == 0x03) {
-            vga_puts("^C\n");
+            console_puts("^C\n");
             char ctrlc = 0x03;
             if (copy_to_user(cur, (uint32_t)buf, &ctrlc, 1) < 0) return (uint32_t)-1;
             return 1;
@@ -325,11 +323,11 @@ static uint32_t sys_read(uint32_t fd, char *buf, uint32_t len) {
         int in_raw = (raw_mode_pid >= 0 &&
                       process_current() &&
                       (int)process_current()->pid == raw_mode_pid);
-        /* echo — except a backspace with nothing to erase: vga_putchar('\b')
+        /* echo — except a backspace with nothing to erase: console_putc('\b')
            would blank the character to the left of the cursor, i.e. eat the
            shell's own "> " prompt. */
         if (!in_raw && !(c == '\b' && n == 0))
-            vga_putchar((char)c);
+            console_putc((char)c);
 
         if (c == '\b') {
             if (n > 0) n--;     /* backspace: discards the last char */
@@ -636,8 +634,8 @@ static uint32_t sys_getarg(char *user_buf, uint32_t len) {
 
 static void puts_padded(const char *s, int width) {
     int n = 0;
-    while (s[n]) { vga_putchar(s[n++]); }
-    while (n++ < width) vga_putchar(' ');
+    while (s[n]) { console_putc(s[n++]); }
+    while (n++ < width) console_putc(' ');
 }
 
 /* user_path may be NULL/empty, meaning "list the caller's cwd". When a
@@ -659,9 +657,9 @@ static uint32_t sys_readdir(const char *user_path) {
             if (!fat16_available()) return (uint32_t)-1;
             int r = fat16_resolve_dir(cur->cwd_cluster, kpath, &list_cluster);
             if (r != 1) {
-                vga_puts("ls: no such directory: ");
-                vga_puts(kpath);
-                vga_puts("\n");
+                console_puts("ls: no such directory: ");
+                console_puts(kpath);
+                console_puts("\n");
                 return (uint32_t)-1;
             }
         }
@@ -673,39 +671,39 @@ static uint32_t sys_readdir(const char *user_path) {
     /* ramfs is always flat — only shown when listing the actual root,
        since it never gained subdirectories in this phase */
     if (listing_root && ramfs_base) {
-        vga_puts("ramfs:\n");
+        console_puts("ramfs:\n");
         /* accesses n_entries and entries directly via ramfs_h */
         uint32_t n = *(uint32_t *)ramfs_base;
         ramfs_entry_t *entries = (ramfs_entry_t *)(ramfs_base + sizeof(uint32_t));
         for (uint32_t i = 0; i < n; i++) {
-            vga_puts("  ");
+            console_puts("  ");
             puts_padded(entries[i].name, 20);
-            vga_putdec(entries[i].size);
-            vga_puts(" B\n");
+            console_put_dec(entries[i].size);
+            console_puts(" B\n");
         }
         any = 1;
     }
 
     /* FAT16 */
     if (fat16_available()) {
-        vga_puts("fat16:\n");
+        console_puts("fat16:\n");
         char name[13];
         uint32_t size;
         uint8_t is_dir;
         for (uint32_t idx = 0; fat16_readdir(list_cluster, idx, name, &size, &is_dir); idx++) {
-            vga_puts("  ");
+            console_puts("  ");
             puts_padded(name, 20);
             if (is_dir) {
-                vga_puts("<DIR>\n");
+                console_puts("<DIR>\n");
             } else {
-                vga_putdec(size);
-                vga_puts(" B\n");
+                console_put_dec(size);
+                console_puts(" B\n");
             }
             any = 1;
         }
     }
 
-    if (!any) vga_puts("(no files)\n");
+    if (!any) console_puts("(no files)\n");
     return 0;
 }
 
@@ -885,15 +883,15 @@ uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t ar
         case SYS_CLOSE:    return sys_close(arg1);
         case SYS_READ_RAW: {
             int r;
-            while ((r = keyboard_raw_nowait()) == -1)
+            while ((r = input_poll_raw()) == -1)
                 scheduler_sleep_current(1);
             return (uint32_t)r;
         }
-        case SYS_GOTOXY:    vga_set_cursor((uint8_t)arg1, (uint8_t)arg2); return 0;
-        case SYS_CLEAR:     vga_clear(); return 0;
+        case SYS_GOTOXY:    console_set_cursor((uint8_t)arg1, (uint8_t)arg2); return 0;
+        case SYS_CLEAR:     console_clear(); return 0;
         case SYS_GETARG:    return sys_getarg((char *)arg1, arg2);
-        case SYS_KBD_FLUSH: keyboard_flush(); return 0;
-        case SYS_SETCOLOR:     vga_set_color((vga_color_t)arg1, (vga_color_t)arg2); return 0;
+        case SYS_KBD_FLUSH: input_flush(); return 0;
+        case SYS_SETCOLOR:     console_set_color((console_color_t)arg1, (console_color_t)arg2); return 0;
         case SYS_SET_RAW_MODE: return sys_set_raw_mode(arg1);
         case SYS_WAIT:         return sys_wait(arg1);
         case SYS_READDIR:      return sys_readdir((const char *)arg1);
@@ -910,11 +908,11 @@ uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t ar
         case SYS_SHUTDOWN:     return sys_shutdown();
         case SYS_PCI_FIND:     return (uint32_t)pci_find_device((uint16_t)arg1, (uint16_t)arg2, 0, 0, 0);
         default:
-            vga_set_color(VGA_YELLOW, VGA_BLACK);
-            vga_puts("[SYSCALL] unknown number: ");
-            vga_putdec(num);
-            vga_puts("\n");
-            vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+            console_set_color(CONSOLE_YELLOW, CONSOLE_BLACK);
+            console_puts("[SYSCALL] unknown number: ");
+            console_put_dec(num);
+            console_puts("\n");
+            console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
             return (uint32_t)-1;
     }
 }

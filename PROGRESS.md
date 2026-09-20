@@ -13,7 +13,7 @@ Do not duplicate README/docs content here. `README.md` is a lean index
 
 ## Current status
 
-Current version: **0.17.1** (documentation patch on top of `v0.17.0`; `main` tagged `v0.17.1`).
+Current version: **0.18.0-nightly** (last release: `v0.17.1` on `main`).
 Last closed phase: **Phase 17** (Cleanup A).
 
 ### Closed phases (one line each; detail in CHANGELOG.md / README.md)
@@ -26,16 +26,22 @@ Last closed phase: **Phase 17** (Cleanup A).
 - Phase 17 — Cleanup A (audit fixes, technical debt, libnos/shell tools +
   reboot/shutdown, test/build infrastructure) — `0.17.0`.
 
-### Next: Phase 18 — HAL + Safe Mode
+### Current work: Phase 18-A (HAL) — first pass done, uncommitted
 
-See ROADMAP.md (18-A HAL, 18-B Safe Mode; 18-B depends on 18-A and must
+`kernel/hal.h/.c` + `docs/hal.md`: thin wrappers over vga/keyboard/ata/
+power/Multiboot2, call sites outside the drivers migrated (build clean,
+no runtime test yet). Still owed in 18-A: `msg(ID)` centralized text output
+(separate commit); loose ends in `docs/TODO.md` (idt.c exception handler,
+wiring `boot_get_memory_map()` into `pmm_init`). Then 18-B (Safe Mode; must
 not rely on `process_spawn_user`/fork/exec/scheduler — see CLAUDE.md).
 Also owed to 18-B: the permanent "NullOS vX.Y.Z (anterior)" GRUB entry
 CLAUDE.md requires at each merge into `main` (never implemented for
 v0.16.0/v0.17.0; ROADMAP 18-B lists it).
-Deferred from Phase 17, not blocking: test `docs/setup.md` on Windows (no
-machine available). The selftest's Intel 440FX check breaks by design in
-Phase 24 (q35) — noted in ROADMAP Phase 24.
+Version is `0.18.0-nightly`; `NULLOS_PHASE`/`DESC` stay 17 / "Cleanup A"
+until Phase 18 closes (CLAUDE.md: MINOR/phase only move on a completed
+phase, no sub-phase letters in version.h).
+
+Deferred, not blocking: test `docs/setup.md` on Windows (Phase 29).
 
 ### Future roadmap
 
@@ -102,6 +108,10 @@ package manager phase was deliberately decided against — don't add one.
 - **libnos (`user/lib/nullos.c/h`, `nos_*`)** is the single syscall wrapper
   layer for all user programs (`0.15.1`), so changing a syscall's internals
   means recompiling one file. See `docs/kernel.md`.
+- **HAL (`kernel/hal.h`) is a forwarding layer, not a rewrite**: the
+  interface is arch-neutral, `hal.c` just calls the existing drivers; the
+  exception handler (`idt.c`) and driver bring-up deliberately bypass it.
+  See `docs/hal.md`.
 - **`kernel/version.h` is macros-only** so userland may include it; it is
   the single version source. Any shared kernel/user header needs the same
   "macros only" property.

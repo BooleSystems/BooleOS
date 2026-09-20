@@ -4,7 +4,7 @@
 #include "scheduler.h"
 #include "memory/vmm.h"
 #include "memory/pmm.h"
-#include "drivers/vga.h"
+#include "hal.h"
 
 #define USER_STACK_VIRT  0x02000000U   /* virtual base of user stack */
 #define USER_STACK_PAGES 2             /* 8 KB user stack */
@@ -13,11 +13,11 @@ process_t *exec(const char *name, uint32_t cwd_cluster, int start_blocked) {
     uint32_t file_offset = 0, file_size = 0;
 
     if (!ramfs_find(name, &file_offset, &file_size)) {
-        vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
-        vga_puts("[EXEC] not found: ");
-        vga_puts(name);
-        vga_puts("\n");
-        vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+        console_set_color(CONSOLE_LIGHT_RED, CONSOLE_BLACK);
+        console_puts("[EXEC] not found: ");
+        console_puts(name);
+        console_puts("\n");
+        console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
         return 0;
     }
 
@@ -28,19 +28,19 @@ process_t *exec(const char *name, uint32_t cwd_cluster, int start_blocked) {
 
     uint32_t cr3 = vmm_create_directory();
     if (!cr3) {
-        vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
-        vga_puts("[EXEC] failed to create page directory\n");
-        vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+        console_set_color(CONSOLE_LIGHT_RED, CONSOLE_BLACK);
+        console_puts("[EXEC] failed to create page directory\n");
+        console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
         return 0;
     }
 
     uint32_t entry = 0;
     if (elf_load(cr3, elf_data, &entry) != 0) {
-        vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
-        vga_puts("[EXEC] elf_load failed: ");
-        vga_puts(name);
-        vga_puts("\n");
-        vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+        console_set_color(CONSOLE_LIGHT_RED, CONSOLE_BLACK);
+        console_puts("[EXEC] elf_load failed: ");
+        console_puts(name);
+        console_puts("\n");
+        console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
         return 0;
     }
 
@@ -49,16 +49,16 @@ process_t *exec(const char *name, uint32_t cwd_cluster, int start_blocked) {
         uint32_t va   = USER_STACK_VIRT + i * PAGE_SIZE;
         uint32_t phys = pmm_alloc_page();
         if (!phys) {
-            vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
-            vga_puts("[EXEC] out of memory for user stack\n");
-            vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+            console_set_color(CONSOLE_LIGHT_RED, CONSOLE_BLACK);
+            console_puts("[EXEC] out of memory for user stack\n");
+            console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
             return 0;
         }
         if (vmm_map_user_page(cr3, va, phys) != 0) {
             pmm_free_page(phys);
-            vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
-            vga_puts("[EXEC] failed to map user stack\n");
-            vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+            console_set_color(CONSOLE_LIGHT_RED, CONSOLE_BLACK);
+            console_puts("[EXEC] failed to map user stack\n");
+            console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
             return 0;
         }
     }
@@ -67,20 +67,20 @@ process_t *exec(const char *name, uint32_t cwd_cluster, int start_blocked) {
 
     process_t *p = scheduler_spawn_user(name, entry, user_esp, cr3, cwd_cluster, start_blocked);
     if (!p) {
-        vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
-        vga_puts("[EXEC] scheduler_spawn_user failed\n");
-        vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+        console_set_color(CONSOLE_LIGHT_RED, CONSOLE_BLACK);
+        console_puts("[EXEC] scheduler_spawn_user failed\n");
+        console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
         return 0;
     }
 
-    vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
-    vga_puts("[EXEC] spawned: ");
-    vga_puts(name);
-    vga_puts(" entry=0x");
-    vga_puthex(entry);
-    vga_puts(" esp=0x");
-    vga_puthex(user_esp);
-    vga_puts("\n");
-    vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
+    console_set_color(CONSOLE_LIGHT_GREEN, CONSOLE_BLACK);
+    console_puts("[EXEC] spawned: ");
+    console_puts(name);
+    console_puts(" entry=0x");
+    console_put_hex(entry);
+    console_puts(" esp=0x");
+    console_put_hex(user_esp);
+    console_puts("\n");
+    console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
     return p;
 }

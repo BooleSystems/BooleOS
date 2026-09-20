@@ -1,6 +1,6 @@
 // nullos/kernel/memory/pmm.c
 #include "pmm.h"
-#include "../drivers/vga.h"
+#include "../hal.h"
 #include <stdint.h>
 
 // Bitmap at a fixed safe address: 0x202000 (right after the IDT at 0x200000)
@@ -80,27 +80,27 @@ void pmm_init(uint32_t mem_upper) {
     pmm_total = total_pages;
     pmm_used  = 0;
 
-    vga_puts("   pmm: [1] bitmap at "); vga_puthex(PMM_BITMAP_ADDR); vga_puts("\n");
+    console_puts("   pmm: [1] bitmap at "); console_put_hex(PMM_BITMAP_ADDR); console_puts("\n");
     for (i = 0; i < PMM_BITMAP_SIZE; i++) get_bitmap()[i] = 0xFFFFFFFF;
 
-    vga_puts("   pmm: [2] freeing high mem\n");
+    console_puts("   pmm: [2] freeing high mem\n");
     if (total_pages > 256)
         pmm_mark_free(0x100000, (total_pages - 256) * PAGE_SIZE);
     else
-        vga_puts("   pmm: WARNING no memory above 1MB to free\n");
+        console_puts("   pmm: WARNING no memory above 1MB to free\n");
 
-    vga_puts("   pmm: [3] marking used regions\n");
+    console_puts("   pmm: [3] marking used regions\n");
     pmm_mark_used(0x100000, 0x300000);
     pmm_mark_used(0x200000, 0x3000);
     pmm_mark_used(0x0F0000, 0x10000);
 
-    vga_puts("   pmm: [4] free="); vga_putdec(pmm_free_pages()); vga_puts(" pages\n");
+    console_puts("   pmm: [4] free="); console_put_dec(pmm_free_pages()); console_puts(" pages\n");
 }
 
 void pmm_dump(void) {
-    vga_set_color(VGA_CYAN, VGA_BLACK);
-    vga_puts("[PMM] ");
-    vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
-    vga_puts("Total: "); vga_putdec(pmm_total_pages() * 4);
-    vga_puts("KB Free: "); vga_putdec(pmm_free_pages() * 4); vga_puts("KB\n");
+    console_set_color(CONSOLE_CYAN, CONSOLE_BLACK);
+    console_puts("[PMM] ");
+    console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
+    console_puts("Total: "); console_put_dec(pmm_total_pages() * 4);
+    console_puts("KB Free: "); console_put_dec(pmm_free_pages() * 4); console_puts("KB\n");
 }

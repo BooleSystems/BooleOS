@@ -1,6 +1,6 @@
 // nullos/kernel/process.c
 #include "process.h"
-#include "drivers/vga.h"
+#include "hal.h"
 #include "memory/vmm.h"
 #include "memory/pmm.h"
 #include "tss.h"
@@ -386,26 +386,26 @@ const char *process_state_name(process_state_t state) {
 }
 
 void process_dump(void) {
-    vga_set_color(VGA_CYAN, VGA_BLACK);
-    vga_puts("[PROC] ");
-    vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
-    vga_puts("PID  STATE     RUNS  ESP       NAME\n");
+    console_set_color(CONSOLE_CYAN, CONSOLE_BLACK);
+    console_puts("[PROC] ");
+    console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
+    console_puts("PID  STATE     RUNS  ESP       NAME\n");
 
     for (uint32_t i = 0; i < PROCESS_MAX; i++) {
         process_t *process = &process_table[i];
         if (process->state == PROCESS_UNUSED)
             continue;
 
-        vga_puts("       ");
-        vga_putdec(process->pid);
-        vga_puts("    ");
-        vga_puts(process_state_name(process->state));
-        vga_puts("    ");
-        vga_putdec(process->runs);
-        vga_puts("    ");
-        vga_puthex(process->esp);
-        vga_puts("    ");
-        vga_puts(process->name);
-        vga_puts("\n");
+        console_puts("       ");
+        console_put_dec(process->pid);
+        console_puts("    ");
+        console_puts(process_state_name(process->state));
+        console_puts("    ");
+        console_put_dec(process->runs);
+        console_puts("    ");
+        console_put_hex(process->esp);
+        console_puts("    ");
+        console_puts(process->name);
+        console_puts("\n");
     }
 }

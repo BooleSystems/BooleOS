@@ -1,7 +1,7 @@
 // nullos/kernel/scheduler.c
 #include "scheduler.h"
 #include "timer.h"
-#include "drivers/vga.h"
+#include "hal.h"
 #include "memory/vmm.h"
 #include "tss.h"
 #include "usermode.h"
@@ -107,9 +107,9 @@ void scheduler_block_current(void) {
 }
 
 void scheduler_dump(void) {
-    vga_set_color(VGA_CYAN, VGA_BLACK);
-    vga_puts("[SCHED] ");
-    vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
-    vga_puts("round-robin cooperative context switching\n");
+    console_set_color(CONSOLE_CYAN, CONSOLE_BLACK);
+    console_puts("[SCHED] ");
+    console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
+    console_puts("round-robin cooperative context switching\n");
     process_dump();
 }

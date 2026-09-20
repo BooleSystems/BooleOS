@@ -6,7 +6,7 @@
 #include "heap.h"
 #include "pmm.h"
 #include "vmm.h"
-#include "../drivers/vga.h"
+#include "../hal.h"
 #include <stdint.h>
 #include <stddef.h>
 
@@ -39,17 +39,17 @@ static int heap_expand(uint32_t size) {
 
     for (i = 0; i < pages_needed; i++) {
         if (heap_end + PAGE_SIZE > HEAP_MAX) {
-            vga_puts("heap: ERROR no room to expand!\n");
+            console_puts("heap: ERROR no room to expand!\n");
             return 0;
         }
         uint32_t phys = pmm_alloc_page();
         if (!phys) {
-            vga_puts("heap: ERROR out of physical pages!\n");
+            console_puts("heap: ERROR out of physical pages!\n");
             return 0;
         }
         if (vmm_map_page(heap_end, phys, VMM_KERNEL) != 0) {
             pmm_free_page(phys);
-            vga_puts("heap: ERROR out of page tables!\n");
+            console_puts("heap: ERROR out of page tables!\n");
             return 0;
         }
         heap_end += PAGE_SIZE;
@@ -62,13 +62,13 @@ static int heap_expand(uint32_t size) {
 // ============================================================
 
 void heap_init(void) {
-    vga_puts("   heap: initializing at ");
-    vga_puthex(HEAP_START);
-    vga_puts("\n");
+    console_puts("   heap: initializing at ");
+    console_put_hex(HEAP_START);
+    console_puts("\n");
 
     // Allocate the first page
     if (!heap_expand(PAGE_SIZE)) {
-        vga_puts("   heap: ERROR initializing!\n");
+        console_puts("   heap: ERROR initializing!\n");
         return;
     }
 
@@ -79,9 +79,9 @@ void heap_init(void) {
     heap_start_ptr->next  = 0;
     heap_start_ptr->prev  = 0;
 
-    vga_puts("   heap: initial block size=");
-    vga_putdec(heap_start_ptr->size);
-    vga_puts(" bytes\n");
+    console_puts("   heap: initial block size=");
+    console_put_dec(heap_start_ptr->size);
+    console_puts(" bytes\n");
 }
 
 void *kmalloc(size_t size) {
@@ -102,7 +102,7 @@ void *kmalloc(size_t size) {
 
     while (cur) {
         if (cur->magic != MAGIC_FREE && cur->magic != MAGIC_USED) {
-            vga_puts("heap: CORRUPTION DETECTED!\n");
+            console_puts("heap: CORRUPTION DETECTED!\n");
             return 0;
         }
 
@@ -166,7 +166,7 @@ void kfree(void *ptr) {
     block_header_t *hdr = (block_header_t *)((uint8_t *)ptr - HEADER_SIZE);
 
     if (hdr->magic != MAGIC_USED) {
-        vga_puts("kfree: ERROR invalid pointer or double free!\n");
+        console_puts("kfree: ERROR invalid pointer or double free!\n");
         return;
     }
 
@@ -214,14 +214,14 @@ void heap_dump(void) {
         cur = cur->next;
     }
 
-    vga_set_color(VGA_CYAN, VGA_BLACK);
-    vga_puts("[HEAP] ");
-    vga_set_color(VGA_LIGHT_GREY, VGA_BLACK);
-    vga_puts("Blocks: ");
-    vga_putdec(n_blocks);
-    vga_puts(" | Free: ");
-    vga_putdec(free_bytes);
-    vga_puts("B | Used: ");
-    vga_putdec(used_bytes);
-    vga_puts("B\n");
+    console_set_color(CONSOLE_CYAN, CONSOLE_BLACK);
+    console_puts("[HEAP] ");
+    console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
+    console_puts("Blocks: ");
+    console_put_dec(n_blocks);
+    console_puts(" | Free: ");
+    console_put_dec(free_bytes);
+    console_puts("B | Used: ");
+    console_put_dec(used_bytes);
+    console_puts("B\n");
 }

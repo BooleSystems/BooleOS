@@ -1,7 +1,7 @@
 // nullos/kernel/power.c — reboot / shutdown (see power.h).
 #include "power.h"
 #include "drivers/pci.h"
-#include "drivers/vga.h"
+#include "hal.h"
 #include <stdint.h>
 
 static inline uint8_t inb(uint16_t port) {
@@ -45,26 +45,26 @@ int power_reboot(void) {
     outb(KBC_STATUS_PORT, KBC_CMD_RESET);
 
     wait_for_request_to_take_effect();
-    vga_puts("reboot failed: keyboard-controller reset had no effect\n");
+    console_puts("reboot failed: keyboard-controller reset had no effect\n");
     return -1;
 }
 
 int power_shutdown(void) {
     uint8_t bus, dev, fn;
     if (!pci_find_device(PIIX4_VENDOR, PIIX4_PM_DEVICE, &bus, &dev, &fn)) {
-        vga_puts("shutdown not supported on this hardware\n");
+        console_puts("shutdown not supported on this hardware\n");
         return -1;
     }
 
     uint16_t pmba = (uint16_t)(pci_config_read32(bus, dev, fn, PIIX4_PMBA_REG) & PIIX4_PMBA_MASK);
     if (pmba == 0) {
-        vga_puts("shutdown failed: PM I/O base address is not set\n");
+        console_puts("shutdown failed: PM I/O base address is not set\n");
         return -1;
     }
 
     outw((uint16_t)(pmba + PM1A_CNT_OFFSET), PM1A_CNT_SLP_EN);
 
     wait_for_request_to_take_effect();
-    vga_puts("shutdown failed: ACPI power-off had no effect\n");
+    console_puts("shutdown failed: ACPI power-off had no effect\n");
     return -1;
 }
