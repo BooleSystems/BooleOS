@@ -33,9 +33,14 @@ Phase 18-B (Safe Mode) — pass 1 of 5 done (infrastructure), see `docs/safemode
   Not done, by design: writes/edit, delete (Phase 21), fsck-like verify/repair
   (its own later sub-phase). Also `kmain` still has its own copy of the PMM
   reservations (module + boot info); it could use the new HAL accessors.
-- Pass 5: GRUB entries (Safe Mode, previous release), `tools/prev/`,
-  `make snapshot` and the release-checklist step; document the
-  "anterior kernel does not know the counter" behavior.
+- Pass 5 (done, awaiting the QEMU check): "previous release" GRUB entry,
+  `tools/prev/`, `make snapshot`. To exercise: the menu shows four entries, the
+  "(previous release)" one boots (identical to the current build for now).
+  **Release-time step, before releasing 0.18.0:** replace `tools/prev/` with a
+  build of the v0.17.1 tag (worktree + `make snapshot`), so the 0.18.0 ISO's
+  "previous release" is really v0.17.1 and not a nightly. Consider adding
+  `make snapshot` (after the tag, commit `tools/prev/`) to CLAUDE.md's release
+  checklist.
 
 ## TECHNICAL DEBT (pre-existing, real) — kernel touches physical pages through the 0-8 MB identity map
 

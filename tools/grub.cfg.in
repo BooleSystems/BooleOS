@@ -28,3 +28,11 @@ menuentry "NullOS (Safe Mode)" {
     module2    /boot/ramfs.img
     boot
 }
+
+## PREV-BEGIN (this whole entry is dropped at build time when tools/prev/ has no snapshot)
+menuentry "NullOS v@PREV_VERSION@ (previous release)" {
+    multiboot2 /boot/prev-nullos.elf
+    module2    /boot/prev-ramfs.img
+    boot
+}
+## PREV-END

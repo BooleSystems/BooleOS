@@ -26,25 +26,20 @@ Last closed phase: **Phase 17** (Cleanup A).
 - Phase 17 — Cleanup A (audit fixes, technical debt, libnos/shell tools +
   reboot/shutdown, test/build infrastructure) — `0.17.0`.
 
-### Current work: Phase 18-B (Safe Mode) — pass 4 of 5 done (awaiting QEMU check)
+### Current work: Phase 18 code complete (18-A + 18-B); closing checklist pending
 
-18-A is closed. 18-B is split in 5 passes (`docs/safemode.md`, `docs/TODO.md`):
-1. **done, uncommitted:** config sector `kernel/bootcfg.*` (LBA 1) +
-   `boot_get_cmdline()`/`boot_has_flag()` + `make_disk.sh -R 8`; verified on the
-   host (bootcfg logic tested with a fake block device) and by a temporary
-   serial `[BOOTCFG]` dump in kmain awaiting the user's QEMU check;
-2. done, committed `f5e1414`: `ata_init()` moved after `sti`; `boot_fail_count`
-   incremented at boot, reset on the first keyboard `SYS_READ`; at count >= 3 or the
-   `safemode` flag `kmain` enters Safe Mode;
-3. done, committed `f9fe2dc`: tier-1 TUI in `kernel/safemode.c` (main menu, Reboot
-   submenu, Disk info from the raw BPB, 2-page sector hexdump), static buffers only;
-4. **done, uncommitted:** tier 2 — menu item 5 initializes PMM/VMM/heap/FAT16 on
-   demand (once) and opens the read-only `safe> ` shell (`kernel/safeshell.*`:
-   help/ls/cat/pwd/cd/back), new HAL `boot_get_module()`/`boot_get_info_region()`;
-5. GRUB previous-release entry + `tools/prev/` + `make snapshot` (the "Safe Mode"
-   GRUB entry already exists).
-Design decisions (LBA 1, two tiers, success = first fd-0 read, N = 3, GUI
-entries deferred to Phase 26) are in `docs/safemode.md`.
+18-A (HAL, `msg(ID)`, PMM on the real memory map) is done and committed. 18-B
+(Safe Mode, `docs/safemode.md`) is done in 5 passes: 1 config sector + cmdline
+flags, 2 failure counter + entry + stub, 3 tier-1 TUI, 4 tier-2 restricted
+shell (committed through `b02d25b`), 5 **done, uncommitted, awaiting the QEMU
+check:** "previous release" GRUB entry, `tools/prev/` (tracked), `make snapshot`.
+
+**Before releasing 0.18.0:** (a) replace `tools/prev/` with a build of the
+v0.17.1 tag (today it holds the 0.18.0-nightly build, taken as the first
+snapshot); (b) the Phase 18 closing checklist (version.h 0.18.0 / phase 18,
+README table + banner, CHANGELOG `[0.18.0]` single entry, docs, syscall grep,
+merge to `main`, tag); (c) then, on the tag, `make snapshot` and commit
+`tools/prev/` for the next release.
 
 **Real pre-existing debt (Phase 22):** the kernel accesses physical pages
 through the 0–8 MB identity map (elf.c:54, process.c:262-265); the 8 MB PMM cap
@@ -123,6 +118,9 @@ package manager phase was deliberately decided against — don't add one.
 - **`msg(ID)`: fragments, not format strings; only OUTPUT text** (never
   strcmp keys / exec names / file names); kernel and userland get separate
   tables (user programs can't call the kernel). See `docs/hal.md`.
+- **The previous release is kept as files in the repo (`tools/prev/`: kernel +
+  ramfs together, ABI must match) and refreshed by hand with `make snapshot`
+  after a release tag** — never automatically. See `docs/safemode.md`.
 - **Safe Mode config lives in raw sector LBA 1 (FAT16 reserved region), not a
   file**, so it works when FAT16/VFS/heap are broken; unavailable (defaults,
   no writes) if the boot sector's `reserved_sectors` < 2. See

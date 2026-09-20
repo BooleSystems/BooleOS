@@ -78,6 +78,15 @@ CAT_ELF      = $(BUILD)/user/cat.elf
 RAMFS_IMG    = $(BUILD)/ramfs.img
 DISK_IMG     = $(BUILD)/disk.img
 GRUB_CFG_IN  = $(ROOT)/tools/grub.cfg.in
+
+# Previous-release kernel kept in the repo for the permanent "previous
+# release" GRUB entry (see docs/safemode.md). It is the kernel AND the ramfs
+# of that release: the old kernel needs its own userland (syscall ABI).
+PREV_DIR          = $(ROOT)/tools/prev
+PREV_ELF          = $(PREV_DIR)/nullos.elf
+PREV_RAMFS        = $(PREV_DIR)/ramfs.img
+PREV_VERSION_FILE = $(PREV_DIR)/VERSION
+VERSION_STR       = $(shell sed -n 's/^\#define NULLOS_VERSION *"\(.*\)"/\1/p' $(VERSION_H))
 GRUB_CFG     = $(BUILD)/grub.cfg
 VERSION_H    = $(ROOT)/kernel/version.h
 
@@ -95,7 +104,7 @@ QEMU_FLAGS = -boot d \
 # `run-reboot-test` to test a real reboot.
 QEMU_FLAGS_RUN = $(QEMU_FLAGS) -no-reboot
 
-.PHONY: all clean run run-reboot-test debug dirs user disk inject
+.PHONY: all clean run run-reboot-test debug dirs user disk inject snapshot
 
 all: dirs user $(KERNEL_ISO) $(DISK_IMG)
 	@echo ""
@@ -136,18 +145,33 @@ $(RAMFS_IMG): $(INIT_ELF) $(SPINTEST_ELF) $(SHELL_ELF) $(EDIT_ELF) $(FORKTEST_EL
 # version straight out of kernel/version.h — the single source of
 # truth for the version string (see CLAUDE.md). Never hand-edit the
 # generated file; edit grub.cfg.in (wording) or version.h (version).
-$(GRUB_CFG): $(GRUB_CFG_IN) $(VERSION_H)
+#
+# The "previous release" entry sits between the PREV-BEGIN/PREV-END marker
+# lines of the template. It is kept (with @PREV_VERSION@ filled from
+# tools/prev/VERSION) only when tools/prev/ holds a complete snapshot, and
+# deleted from the generated file otherwise.
+$(GRUB_CFG): $(GRUB_CFG_IN) $(VERSION_H) $(wildcard $(PREV_DIR)/*)
 	@echo "  GEN  $@"
 	@mkdir -p $(BUILD)
-	@V=$$(sed -n 's/^#define NULLOS_VERSION *"\(.*\)"/\1/p' $(VERSION_H)); \
-	sed "s/@NULLOS_VERSION@/$$V/" $(GRUB_CFG_IN) > $@
+	@V="$(VERSION_STR)"; \
+	if [ -f "$(PREV_ELF)" ] && [ -f "$(PREV_RAMFS)" ] && [ -f "$(PREV_VERSION_FILE)" ]; then \
+	    PV=$$(head -n 1 "$(PREV_VERSION_FILE)" | tr -d '\r\n'); \
+	    sed -e "s/@NULLOS_VERSION@/$$V/" -e "s/@PREV_VERSION@/$$PV/" -e '/^## PREV-\(BEGIN\|END\)/d' $(GRUB_CFG_IN) > $@; \
+	else \
+	    sed -e "s/@NULLOS_VERSION@/$$V/" -e '/^## PREV-BEGIN/,/^## PREV-END/d' $(GRUB_CFG_IN) > $@; \
+	fi
 
-$(KERNEL_ISO): $(KERNEL_ELF) $(RAMFS_IMG) $(GRUB_CFG)
+$(KERNEL_ISO): $(KERNEL_ELF) $(RAMFS_IMG) $(GRUB_CFG) $(wildcard $(PREV_DIR)/*)
 	@echo "  ISO  $@"
 	@mkdir -p $(ISO_DIR)/boot/grub
 	@cp $(KERNEL_ELF) $(ISO_DIR)/boot/nullos.elf
 	@cp $(RAMFS_IMG)  $(ISO_DIR)/boot/ramfs.img
 	@cp $(GRUB_CFG)   $(ISO_DIR)/boot/grub/grub.cfg
+	@rm -f $(ISO_DIR)/boot/prev-nullos.elf $(ISO_DIR)/boot/prev-ramfs.img
+	@if [ -f "$(PREV_ELF)" ] && [ -f "$(PREV_RAMFS)" ]; then \
+	    cp "$(PREV_ELF)"   $(ISO_DIR)/boot/prev-nullos.elf; \
+	    cp "$(PREV_RAMFS)" $(ISO_DIR)/boot/prev-ramfs.img; \
+	fi
 	grub2-mkrescue -o $@ $(ISO_DIR)
 	@echo "  OK"
 
@@ -156,6 +180,23 @@ $(DISK_IMG):
 	bash $(ROOT)/tools/make_disk.sh $@
 
 disk: $(DISK_IMG)
+
+# make snapshot
+# Records the CURRENT build as the "previous release" for the GRUB menu:
+# copies build/nullos.elf and build/ramfs.img to tools/prev/ and writes the
+# version to tools/prev/VERSION. The three files are tracked in git on
+# purpose. Run it by hand, once, right after a release is tagged (on the
+# tagged tree, after `make clean && make`), and commit tools/prev/ — the NEXT
+# release's ISO then offers this release as its "previous release" entry. It
+# is never run by `all`, `run` or any other target. (The kernel and the ramfs
+# are saved together: the old kernel needs its own userland, the syscall ABI
+# must match.)
+snapshot: $(KERNEL_ELF) $(RAMFS_IMG)
+	@mkdir -p $(PREV_DIR)
+	@cp $(KERNEL_ELF) $(PREV_ELF)
+	@cp $(RAMFS_IMG)  $(PREV_RAMFS)
+	@echo "$(VERSION_STR)" > $(PREV_VERSION_FILE)
+	@echo "  SNAPSHOT $(VERSION_STR) -> $(PREV_DIR)"
 
 # make inject FILE=path/to/algo.elf [NAME=algo.elf]
 # Copies an arbitrary file into the root of build/disk.img with mcopy

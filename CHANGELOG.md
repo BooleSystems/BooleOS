@@ -86,6 +86,15 @@ at the time.
   `boot_get_info_region()` let it reserve the ramfs module and the boot-info
   block in the PMM by their real addresses.
 
+- Safe Mode, pass 5 (`docs/safemode.md`): a permanent "NullOS v<version>
+  (previous release)" GRUB entry that boots the last release's kernel, with the
+  release tooling: `tools/prev/` (tracked: `nullos.elf`, `ramfs.img`, `VERSION`
+  — kernel and ramfs together, the syscall ABI must match) and `make snapshot`
+  (copies the current build there; run by hand after tagging a release, never
+  automatically). The ISO gains `/boot/prev-nullos.elf` and
+  `/boot/prev-ramfs.img`; when `tools/prev/` is absent the entry and the files
+  are simply left out. Safe Mode (Phase 18-B) is now complete.
+
 ### Changed
 
 - `ata_init()` now runs right after interrupts are enabled, before the PMM, so

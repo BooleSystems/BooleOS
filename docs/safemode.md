@@ -2,7 +2,17 @@
 
 Safe Mode is a recovery environment inside the **same kernel binary**, entered very early in `kmain()` when the previous boots kept failing (or when GRUB asks for it). It exists to survive bugs in exactly the subsystems it must not depend on, so it runs in ring 0 before the scheduler, `process_spawn_user`, `exec` and the syscall layer are initialized. This document holds the design as approved and what is implemented so far.
 
-**Status: pass 4 of 5.** The failure counter, the entry condition, the tier-1 text UI and the tier-2 restricted shell are implemented. Only the previous-release GRUB entry and release tooling (pass 5) are left.
+**Status: complete (pass 5 of 5).** Failure counter and entry condition, tier-1 text UI, tier-2 restricted shell, and the GRUB entries (Safe Mode, previous release) with the release tooling are implemented. Phase 18-B is closed; the GUI-debug / Text-mode entries wait for the GUI (Phase 26).
+
+## Implemented in pass 5: the "previous release" GRUB entry and release tooling
+
+The kernel of the last release stays bootable from the GRUB menu, covering what Safe Mode cannot: a bug in the boot code itself (paging, GDT/IDT, early init), which runs before any Safe Mode flag is even read.
+
+- **Menu** (`tools/grub.cfg.in`): Default, serial debug mode, Safe Mode (`safemode` flag, since pass 2) and **"NullOS v<version> (previous release)"**, booting `/boot/prev-nullos.elf` with `/boot/prev-ramfs.img`. The entry is a block between `## PREV-BEGIN` / `## PREV-END` marker lines; `tools/Makefile`'s "GEN grub.cfg" rule fills `@PREV_VERSION@` from `tools/prev/VERSION` and deletes the block (and the ISO gets no `prev-*` files) when `tools/prev/` doesn't hold a complete snapshot. The title says "previous release" (English UI text) plus the version.
+- **`tools/prev/`** (tracked in git on purpose, not ignored): `nullos.elf`, `ramfs.img` and a one-line `VERSION`. The kernel and the ramfs are kept **together** — the old kernel needs its own userland, because the syscall ABI must match.
+- **`make snapshot`** copies the current `build/nullos.elf` and `build/ramfs.img` there and writes the version from `kernel/version.h`. It is never run by `all`, `run` or any other target. **Release routine:** after a release is tagged, on the tagged tree run `make clean && make && make snapshot` and commit `tools/prev/`; the *next* release's ISO then offers that release as its "previous release". (`make clean` only removes `build/`, so `tools/prev/` survives.)
+- **Behavior to expect:** the old kernel does not know the failure counter, so booting it neither increments nor resets `boot_fail_count`. If you got there because of repeated failures the counter is still at the limit, and the next normal boot lands in Safe Mode again — from which "Reboot normally" resets it. That is the intended behavior.
+- **First snapshot:** taken from the `0.18.0-nightly` build, so "previous" and "current" are identical for now. **Before releasing 0.18.0, replace `tools/prev/` with a build of the v0.17.1 tag** (build the tag in a worktree, `make snapshot` there, copy `tools/prev/` back), otherwise the 0.18.0 ISO would offer a nightly as its "previous release".
 
 ## Implemented in pass 4: tier 2, the restricted shell (`kernel/safemode.c`, `kernel/safeshell.c`)
 
@@ -67,7 +77,7 @@ The kernel used to ignore the Multiboot2 command line (the `debug` word of the "
   - *Tier 1* uses only what is ready: console, keyboard, block HAL, power, PCI — menu, counter reset, reboot submenu, disk info, sector hexdump. No heap.
   - *Tier 2* (restricted shell with files) initializes the PMM, VMM, heap and FAT16 **on demand** from a menu entry (`fat16_init()` calls `kmalloc` for the FAT cache). If that crashes, the counter is still >= N, so the next boot lands in Safe Mode again.
 - **TUI.** Numbered menu with submenus; destructive actions always go through their own confirmation screen; fsck-like operations split into verify-only vs verify-and-repair. Restricted shell: built-ins only, calling FAT16/HAL functions directly (no processes, no `run`), static `help` text.
-- **GRUB.** Entries: Default, Safe Mode (`multiboot2 /boot/nullos.elf safemode`), and a permanent "previous release" entry. The GUI-debug and Text-mode entries wait for the GUI (Phase 26). The previous-release entry needs **both** the old `nullos.elf` and the old `ramfs.img` (the userland ABI must match the kernel), kept in a tracked `tools/prev/` and refreshed by a `make snapshot` step after each release tag.
+- **GRUB** (implemented in passes 2 and 5). Entries: Default, serial debug mode, Safe Mode (`multiboot2 /boot/nullos.elf safemode`), and a permanent "previous release" entry. The GUI-debug and Text-mode entries wait for the GUI (Phase 26). The previous-release entry needs **both** the old `nullos.elf` and the old `ramfs.img` (the userland ABI must match the kernel), kept in a tracked `tools/prev/` and refreshed by a `make snapshot` step after each release tag.
 
 ## Files
 
@@ -78,4 +88,6 @@ kernel/safeshell.h/.c   Safe Mode restricted shell (tier 2)
 kernel/hal.h/.c         boot_get_cmdline(), boot_has_flag()
 kernel/multiboot2.h     cmdline tag (type 1) parser
 tools/make_disk.sh      mkfs.vfat -R 8
+tools/grub.cfg.in       menu template (Default, serial debug, Safe Mode, previous release)
+tools/prev/             previous-release nullos.elf + ramfs.img + VERSION (make snapshot)
 ```

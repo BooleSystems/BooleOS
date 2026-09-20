@@ -134,6 +134,7 @@ make          # generates build/nullos.iso and build/disk.img (only creates the 
 make disk     # forces creation of build/disk.img on its own
 make run      # launches in QEMU with the disk attached (-drive ...,if=ide); keeps -no-reboot (post-mortem state on a triple fault)
 make run-reboot-test   # same, but without -no-reboot, so the shell's `reboot` really restarts the guest
+make snapshot   # records the current build in tools/prev/ as the "previous release" GRUB entry (run by hand after tagging a release)
 make inject FILE=path/to/file [NAME=name.ext]   # copies a file (e.g. a .elf) into build/disk.img with mcopy, no ISO rebuild (host-side only; the kernel can't exec() from FAT16 until Phase 19)
 make clean    # cleans build/ (⚠ also deletes disk.img — persisted data is lost)
 ```
