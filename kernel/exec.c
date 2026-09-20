@@ -5,27 +5,76 @@
 #include "memory/vmm.h"
 #include "memory/pmm.h"
 #include "hal.h"
+#include "fs/vfs.h"
+#include "memory/heap.h"
 #include "messages.h"
 
 #define USER_STACK_VIRT  0x02000000U   /* virtual base of user stack */
 #define USER_STACK_PAGES 2             /* 8 KB user stack */
 
-process_t *exec(const char *name, uint32_t cwd_cluster, int start_blocked) {
-    uint32_t file_offset = 0, file_size = 0;
+/* A program file bigger than this is refused (it is read whole into a kernel
+   heap buffer before loading). Generous for today's programs (~10-20 KB). */
+#define EXEC_MAX_FILE_SIZE 0x100000u
 
-    if (!ramfs_find(name, &file_offset, &file_size)) {
-        console_set_color(CONSOLE_LIGHT_RED, CONSOLE_BLACK);
-        console_puts(msg(MSG_EXEC_NOT_FOUND));
-        console_puts(name);
-        console_puts("\n");
-        console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
+static void exec_fail(msg_id_t id, const char *name) {
+    console_set_color(CONSOLE_LIGHT_RED, CONSOLE_BLACK);
+    console_puts(msg(id));
+    console_puts(name);
+    console_puts("\n");
+    console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
+}
+
+process_t *exec(const char *name, uint32_t cwd_cluster, int start_blocked) {
+    /* The program is found by the SAME lookup every file open uses,
+       vfs_open(): the ramfs first (flat, read-only, system programs — a disk
+       file can never shadow one), then FAT16 resolved against the caller's
+       cwd (so "run tools/hello.elf" works like "cat tools/x.txt"). There is
+       no second lookup loop here on purpose: a duplicated dirent lookup is
+       exactly how earlier FAT16 bugs happened. The vfs_fd_t is a local, never
+       entered in any process's fd table. */
+    vfs_fd_t file;
+    if (vfs_open(cwd_cluster, name, &file) < 0) {
+        exec_fail(MSG_EXEC_NOT_FOUND, name);
         return 0;
     }
 
-    /* ramfs_find returns offset relative to image start; the image base was
-       passed to ramfs_init(), which we recover via the global below.          */
-    extern uint8_t *ramfs_base;   /* defined in ramfs.c */
-    const void *elf_data = (const void *)(ramfs_base + file_offset);
+    const uint8_t *elf_data;
+    uint32_t       elf_size = file.size;
+    void          *disk_copy = 0;      /* heap buffer for a FAT16 program, freed below */
+
+    if (file.backend == VFS_RAMFS) {
+        /* The ramfs image is already in memory: load straight from it. */
+        elf_data = ramfs_base + file.first;
+    } else {
+        /* FAT16: the size is the directory entry's, never assumed. The file
+           is READ from disk into a heap buffer (nothing about it is in
+           memory yet), then elf_load() copies its segments into the new
+           address space. */
+        if (elf_size == 0 || elf_size > EXEC_MAX_FILE_SIZE) {
+            vfs_close(&file);
+            exec_fail(MSG_EXEC_BAD_SIZE, name);
+            return 0;
+        }
+        disk_copy = kmalloc(elf_size);
+        if (!disk_copy) {
+            vfs_close(&file);
+            exec_fail(MSG_EXEC_OUT_OF_MEMORY_FILE, name);
+            return 0;
+        }
+        uint32_t got = 0;
+        while (got < elf_size) {
+            int r = vfs_read(&file, (char *)disk_copy + got, elf_size - got);
+            if (r <= 0) {                 /* error, or the file ended early */
+                kfree(disk_copy);
+                vfs_close(&file);
+                exec_fail(MSG_EXEC_READ_FAILED, name);
+                return 0;
+            }
+            got += (uint32_t)r;
+        }
+        elf_data = (const uint8_t *)disk_copy;
+    }
+    vfs_close(&file);
 
     uint32_t cr3 = vmm_create_directory();
     if (!cr3) {
@@ -36,12 +85,10 @@ process_t *exec(const char *name, uint32_t cwd_cluster, int start_blocked) {
     }
 
     uint32_t entry = 0;
-    if (elf_load(cr3, elf_data, &entry) != 0) {
-        console_set_color(CONSOLE_LIGHT_RED, CONSOLE_BLACK);
-        console_puts(msg(MSG_EXEC_ELF_LOAD_FAILED));
-        console_puts(name);
-        console_puts("\n");
-        console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
+    int loaded = elf_load(cr3, elf_data, elf_size, &entry);
+    if (disk_copy) kfree(disk_copy);      /* the segments were copied out (or loading failed) */
+    if (loaded != 0) {
+        exec_fail(MSG_EXEC_ELF_LOAD_FAILED, name);
         return 0;
     }
 

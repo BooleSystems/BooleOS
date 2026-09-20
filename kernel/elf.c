@@ -15,9 +15,11 @@ static void memzero8(uint8_t *dst, uint32_t len) {
         dst[i] = 0;
 }
 
-int elf_load(uint32_t cr3, const void *elf_data, uint32_t *entry_point) {
+int elf_load(uint32_t cr3, const void *elf_data, uint32_t size, uint32_t *entry_point) {
     const uint8_t      *base = (const uint8_t *)elf_data;
     const elf32_ehdr_t *ehdr = (const elf32_ehdr_t *)base;
+
+    if (!elf_data || !entry_point || size < sizeof(elf32_ehdr_t)) return -1;
 
     /* Validate magic */
     if (ehdr->e_ident[0] != ELF_MAGIC0 ||
@@ -31,10 +33,35 @@ int elf_load(uint32_t cr3, const void *elf_data, uint32_t *entry_point) {
     if (ehdr->e_type      != ET_EXEC)      return -1;  /* not executable */
     if (ehdr->e_machine   != EM_386)       return -1;  /* not x86 */
 
+    /* The program header table must fit inside the file (64-bit math: the
+       fields are 32-bit and their product/sum can wrap). */
+    if (ehdr->e_phnum > ELF_MAX_PHNUM)                 return -1;
+    if (ehdr->e_phnum != 0) {
+        if (ehdr->e_phentsize < sizeof(elf32_phdr_t))  return -1;
+        uint64_t ph_end = (uint64_t)ehdr->e_phoff +
+                          (uint64_t)ehdr->e_phnum * ehdr->e_phentsize;
+        if (ph_end > size)                             return -1;
+    }
+
+    /* Validate EVERY program header before mapping anything: a bad header
+       found half way would otherwise leave earlier segments mapped. */
+    for (uint16_t i = 0; i < ehdr->e_phnum; i++) {
+        const elf32_phdr_t *ph = (const elf32_phdr_t *)
+            (base + ehdr->e_phoff + (uint32_t)i * ehdr->e_phentsize);
+
+        if (ph->p_type != PT_LOAD || ph->p_memsz == 0)
+            continue;
+
+        if (ph->p_filesz > ph->p_memsz)                          return -1;
+        if ((uint64_t)ph->p_offset + ph->p_filesz > size)        return -1;
+        if (ph->p_vaddr < 0x00800000u)                           return -1;
+        if ((uint64_t)ph->p_vaddr + ph->p_memsz > ELF_USER_LIMIT) return -1;
+    }
+
     /* Iterate program headers */
     for (uint16_t i = 0; i < ehdr->e_phnum; i++) {
         const elf32_phdr_t *ph = (const elf32_phdr_t *)
-            (base + ehdr->e_phoff + i * ehdr->e_phentsize);
+            (base + ehdr->e_phoff + (uint32_t)i * ehdr->e_phentsize);
 
         if (ph->p_type != PT_LOAD)
             continue;
@@ -46,7 +73,8 @@ int elf_load(uint32_t cr3, const void *elf_data, uint32_t *entry_point) {
         if (memsz == 0)
             continue;
 
-        /* Map every page covered by [vaddr, vaddr+memsz) */
+        /* Map every page covered by [vaddr, vaddr+memsz) (no overflow: the
+           range was validated above to end at or below ELF_USER_LIMIT). */
         uint32_t page_start = vaddr & ~0xFFFu;
         uint32_t page_end   = (vaddr + memsz + 0xFFF) & ~0xFFFu;
 

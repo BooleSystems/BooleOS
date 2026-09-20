@@ -43,15 +43,33 @@ typedef struct {
 #define EM_386        3
 #define PT_LOAD       1
 
+/* Program headers and segments must lie in [0x00800000, ELF_USER_LIMIT): below
+   is the kernel's shared identity map (vmm_map_user_page() refuses it), and
+   ELF_USER_LIMIT is where exec() puts the user stack (USER_STACK_VIRT). */
+#define ELF_USER_LIMIT 0x02000000u
+
+/* At most this many program headers are examined. */
+#define ELF_MAX_PHNUM  64
+
 /*
  * elf_load - load an ELF32 executable into a process address space.
  *
  * cr3         : physical address of the process page directory
  * elf_data    : pointer to the ELF image in kernel-accessible memory
+ * size        : size in bytes of that image. EVERY offset the file gives
+ *               (program header table, each segment's file data) is checked
+ *               against it, and every segment's virtual range against
+ *               [0x00800000, ELF_USER_LIMIT) — a file that comes from disk
+ *               is not trusted. Nothing is read outside [elf_data,
+ *               elf_data + size).
  * entry_point : out — virtual entry point (e_entry)
  *
- * Returns 0 on success, -1 on error.
+ * Returns 0 on success, -1 on error (malformed file, out of memory, ...).
+ * On a malformed file nothing is mapped for the segments after the bad
+ * header was found, but pages mapped for earlier segments are not returned
+ * (the caller's address space is abandoned anyway; see PROGRESS.md, the
+ * `process_exit()` leak).
  */
-int elf_load(uint32_t cr3, const void *elf_data, uint32_t *entry_point);
+int elf_load(uint32_t cr3, const void *elf_data, uint32_t size, uint32_t *entry_point);
 
 #endif

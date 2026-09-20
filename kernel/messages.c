@@ -263,6 +263,11 @@ static const char *const g_msgs[] = {
     [MSG_SAFESH_CD_NOT_DIR] = "cd: not a directory: ",
     [MSG_SAFESH_CD_IO] = "cd: I/O error\n",
     [MSG_SAFESH_PWD_ERR] = "pwd: cannot determine the current directory\n",
+
+    // exec() from FAT16 (exec.c)
+    [MSG_EXEC_BAD_SIZE] = "[EXEC] program file is empty or too large: ",
+    [MSG_EXEC_OUT_OF_MEMORY_FILE] = "[EXEC] out of memory to load the program file: ",
+    [MSG_EXEC_READ_FAILED] = "[EXEC] could not read the program from disk: ",
 };
 
 // Compile-time check: the table must reach exactly MSG_COUNT entries (its

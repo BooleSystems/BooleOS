@@ -682,12 +682,118 @@ void _start(void) {
         else     st_pass(tname);
     }
 
-    /* 19. Cleanup — not counted as PASS/FAIL, just a note: there is no
+    /* 19. exec() from FAT16 (Phase 19). Until now exec() only loaded programs
+       from the ramfs baked into the ISO. Here the ramfs program "cat" is
+       COPIED to a FAT16 file (st_cat.elf) and then launched from there with
+       SYS_EXEC_PIPE, stdin <- pipe 1, stdout -> pipe 2: the parent feeds a
+       known string in and checks the same string comes back. That proves the
+       whole path: exec()'s lookup finds a program that exists only on disk,
+       reads it from disk by its directory-entry size, loads it and runs it.
+       Runs from the root (test 18 leaves cwd there). */
+    {
+        const char *tname = "exec() runs a program that exists only on FAT16";
+        const char *msg   = "NullOS exec-from-FAT16 test 7431\n";
+        unsigned int mlen = strlen(msg);
+        static char chunk[512];
+        const char *why = 0;
+
+        int src = nos_open("cat");                   /* ramfs */
+        int dst = nos_create("st_cat.elf");          /* FAT16 */
+        if (src < 0)      why = "could not open the ramfs program \"cat\"";
+        else if (dst < 0) why = "could not create st_cat.elf on FAT16 (no disk?)";
+        else if (nos_write_file(dst, "", 0) != 0) why = "could not truncate st_cat.elf";
+        else {
+            for (;;) {
+                int r = nos_read(src, chunk, sizeof(chunk));
+                if (r < 0) { why = "reading the ramfs program failed"; break; }
+                if (r == 0) break;
+                if (nos_write(dst, chunk, (unsigned)r) != r) { why = "writing st_cat.elf failed"; break; }
+            }
+        }
+        if (src >= 0) nos_close(src);
+        if (dst >= 0) nos_close(dst);
+
+        if (!why) {
+            int p1[2] = { -1, -1 }, p2[2] = { -1, -1 };
+            if (nos_pipe(p1) != 0) {
+                why = "nos_pipe() #1 failed";
+            } else if (nos_pipe(p2) != 0) {
+                why = "nos_pipe() #2 failed";
+                nos_close(p1[0]); nos_close(p1[1]);
+            } else {
+                int pid = nos_exec_pipe("st_cat.elf", p1[0], p2[1]);
+                if (pid < 0) why = "exec of st_cat.elf (FAT16) failed";
+                else if (nos_write(p1[1], msg, mlen) != (int)mlen) why = "writing to the program's stdin failed";
+                nos_close(p1[0]); nos_close(p1[1]); nos_close(p2[1]);
+
+                if (!why) {
+                    static char rbuf[128];
+                    unsigned int got = 0;
+                    memset(rbuf, 0, sizeof(rbuf));
+                    for (;;) {
+                        int r = nos_read(p2[0], rbuf + got, (unsigned)sizeof(rbuf) - 1 - got);
+                        if (r <= 0) break;
+                        got += (unsigned int)r;
+                        if (got >= sizeof(rbuf) - 1) break;
+                    }
+                    if (got != mlen || memcmp(rbuf, msg, mlen) != 0)
+                        why = "the FAT16 program's output differs from its input";
+                }
+                nos_close(p2[0]);
+                if (pid > 0) nos_wait(pid);
+            }
+        }
+
+        if (why) st_fail(tname, why);
+        else     st_pass(tname);
+    }
+
+    /* 20. exec() refuses malformed programs on FAT16 (Phase 19). A disk file
+       is not trusted: a file that isn't an ELF at all, and a real ELF cut
+       short so its program headers point past the end, must both be rejected
+       (nos_exec() returns -1) — not crash the kernel, not run. */
+    {
+        const char *tname = "exec() rejects a FAT16 file that is not a valid program";
+        static char hdr[512];
+        const char *why = 0;
+
+        /* (a) garbage: 100 bytes of a repeated pattern */
+        int gf = nos_create("st_bad.bin");
+        if (gf < 0 || nos_write_file(gf, "", 0) != 0) why = "could not create st_bad.bin";
+        else {
+            for (unsigned i = 0; i < 100; i++) hdr[i] = (char)('A' + (i % 26));
+            if (nos_write(gf, hdr, 100) != 100) why = "could not write st_bad.bin";
+        }
+        if (gf >= 0) nos_close(gf);
+        if (!why && nos_exec("st_bad.bin", 0) >= 0) why = "a garbage file was accepted by exec()";
+
+        /* (b) the first 100 bytes of a real ELF: valid header, program
+           headers pointing past the end of the file */
+        int src = nos_open("cat");
+        int tf  = nos_create("st_trunc.elf");
+        if (!why && (src < 0 || tf < 0 || nos_write_file(tf, "", 0) != 0))
+            why = "could not create st_trunc.elf";
+        if (!why) {
+            int r = nos_read(src, hdr, 100);
+            if (r != 100 || nos_write(tf, hdr, 100) != 100) why = "could not write st_trunc.elf";
+        }
+        if (src >= 0) nos_close(src);
+        if (tf >= 0)  nos_close(tf);
+        if (!why && nos_exec("st_trunc.elf", 0) >= 0) why = "a truncated ELF was accepted by exec()";
+
+        /* (c) a name that does not exist anywhere */
+        if (!why && nos_exec("st_nothere.elf", 0) >= 0) why = "a missing program was reported as launched";
+
+        if (why) st_fail(tname, why);
+        else     st_pass(tname);
+    }
+
+    /* 21. Cleanup — not counted as PASS/FAIL, just a note: there is no
        delete/unlink/rmdir syscall yet, so st_root.txt, st_big.txt,
        selftest_dir/ (and the two files inside it) and st_d1/st_d2/st_d3/ (with st_deep.txt) are left on disk. Harmless: the
        next run just re-creates/overwrites everything by the same names. */
     st_puts("[INFO] cleanup: no delete/unlink/rmdir syscall exists yet -"
-            " st_root.txt, st_big.txt, selftest_dir/ and st_d1/ (with their files) left on disk (harmless)\n");
+            " st_root.txt, st_big.txt, st_cat.elf, st_bad.bin, st_trunc.elf, selftest_dir/ and st_d1/ (with their files) left on disk (harmless)\n");
 
     st_puts("Selftest: ");
     char nbuf[16];

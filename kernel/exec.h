@@ -4,9 +4,14 @@
 #include "process.h"
 
 /*
- * exec - load a program from the ramfs and spawn it as a user process.
+ * exec - load a program (ELF) and spawn it as a user process.
  *
- * name        : filename to look up in the ramfs (e.g. "init")
+ * name        : program to run. Looked up like any file open (vfs_open()):
+ *               first the ramfs (flat names such as "shell"), then FAT16,
+ *               where a relative path resolves against cwd_cluster below.
+ *               A FAT16 program is read from disk whole (size from its
+ *               directory entry, at most EXEC_MAX_FILE_SIZE) into a
+ *               temporary heap buffer, loaded, and the buffer freed.
  * cwd_cluster : starting current directory for the new process (0 =
  *               root). SYS_EXEC (syscall.c) passes the calling
  *               process's own cwd_cluster, so "run"/"edit" launch
@@ -25,7 +30,8 @@
  *               process once that seeding is done.
  *
  * Returns a pointer to the new process on success, NULL on failure.
- * ramfs_init() must have been called before exec().
+ * ramfs_init() must have been called before exec(); FAT16 programs also
+ * need the heap and fat16_init().
  */
 process_t *exec(const char *name, uint32_t cwd_cluster, int start_blocked);
 

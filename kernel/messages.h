@@ -278,6 +278,11 @@ typedef enum {
     MSG_SAFESH_CD_IO,
     MSG_SAFESH_PWD_ERR,
 
+    // exec() from FAT16 (exec.c)
+    MSG_EXEC_BAD_SIZE,
+    MSG_EXEC_OUT_OF_MEMORY_FILE,
+    MSG_EXEC_READ_FAILED,
+
     MSG_COUNT
 } msg_id_t;
 
