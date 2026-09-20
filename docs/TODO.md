@@ -110,48 +110,28 @@ Phase 17-C (syscall table in `docs/syscalls.md` is already updated for
   mirroring). Files: `user/selftest.c`, `kernel/drivers/vga.c`,
   `kernel/syscall.c`.
 
-### Known open issues found in the final 17-C QEMU test (NOT fixed — pending)
+### Pre-existing debt (not a 17-C item): intermittent ATA `probe()` "no disk"
 
-- **`reboot` looks identical to `shutdown` under `make run`
-  (probably NOT a kernel bug).** Symptom: both commands left the QEMU
-  window in the "Stopped" (paused) state; the expectation written down
-  in the 17-C hand-off ("with `-no-reboot` the window should close")
-  was wrong for this flag set. Findings:
-  - The code paths are separate, not copy-pasted: shell `reboot` ->
-    `nos_reboot()` -> `SYS_REBOOT` (31) -> `sys_reboot()` ->
-    `power_reboot()` (i8042, `outb(0x64, 0xFE)`); `shutdown` ->
-    `SYS_SHUTDOWN` (32) -> `power_shutdown()` (PIIX4 PM1a_CNT).
-  - If the 0xFE reset had been ignored, `power_reboot()` would have
-    printed "reboot failed: keyboard-controller reset had no effect" and
-    the guest would have kept running. It stopped instead, so the reset
-    request very likely reached QEMU.
-  - Suspected root cause (from QEMU's documented options, NOT verified
-    here): `tools/Makefile`'s `QEMU_FLAGS` has both `-no-reboot` (exit
-    instead of rebooting — i.e. `-action reboot=shutdown`, a guest reset
-    is turned into a shutdown request) and `-no-shutdown` (stop before
-    shutdown — `-action shutdown=pause`). Together, a guest reboot ends
-    as a shutdown request that is then paused, indistinguishable from a
-    real shutdown. Nothing distinguishes the two in the current test
-    setup.
-  - To verify next session: run QEMU by hand with only `-no-shutdown`
-    (or `-action reboot=reset`) — a working `reboot` should then really
-    restart the guest — and with only `-no-reboot` the window should
-    close. If it still pauses with reboot left at its default, THEN look
-    at `power_reboot()` (fallbacks to consider: port 0xCF9 reset, or a
-    triple fault). Also revisit the `-no-reboot`/`-no-shutdown` choice in
-    the Makefile and the note in `docs/testing.md`.
-- **Bare `run` (no program name) prints `[EXEC] not found:` instead of a
-  usage message — a regression from this session's newline fix.**
-  Symptom: typing just `run` reported `[EXEC] not found:` with an empty
-  name (the kernel's message), while a bare `cat` correctly printed
-  `usage: cat <file>`. Cause: `user/shell.c` has TWO `run` paths. The
-  `_start()` branch (`run` + optional name, with foreground-pid
-  tracking) has no empty-name check; `cmd_run()` in `run_command()` has
-  one (`usage: run <program>`). Before the trailing-`\n` strip added in
-  17-C, a bare `run` never matched the `_start()` branch (`line[3]` was
-  `'\n'`), fell through to `run_command()` and got the usage message from
-  `cmd_run()`. Now that the newline is stripped, a bare `run` reaches the
-  `_start()` branch and executes with an empty name. Fix: add the
-  `!*name` -> `usage: run <program>` check there (or better, make
-  `_start()` reuse `cmd_run()` instead of duplicating its logic; a name
-  with only trailing spaces should be trimmed with `sh_trim()` too).
+- First seen on a 17-B boot (CHANGELOG, before any `power.c`/`syscall.c`
+  change). Briefly suspected to be tied to `reboot` (one boot after a real
+  reboot printed `no disk` / `no FAT16 disk`), but 9 boot/reboot cycles
+  (5 with real reboot in `make run-reboot-test`, 4 plain `make run`) with
+  serial tracing of `probe()` never reproduced it: always BSY cleared,
+  status 0x50 after select, 0x58 after IDENTIFY. No evidence that `reboot`
+  causes or worsens it. Still unexplained; the tracing was removed.
+  Ideas if it returns: timing right after reset/SRST, stale controller
+  state, QEMU-specific behaviour (confirm before assuming).
+
+### Resolved / clarified in 17-C
+
+- **`reboot` "looked like" `shutdown` under `make run`: NOT a kernel bug.**
+  `make run` passes `-no-reboot`, which makes QEMU turn a guest reset into
+  a shutdown; together with `-no-shutdown` it ends paused. Without
+  `-no-reboot`, `reboot` restarts the guest for real (boot banner reappears
+  on serial). `-no-reboot` stays on `run`/`debug` on purpose (post-mortem
+  state on a triple fault). New target `make run-reboot-test` omits it.
+  (Exposed the ATA bug above.)
+- **Bare `run` printed `[EXEC] not found:`: fixed.** `cmd_run()` in
+  `user/shell.c` now trims, validates the name, and returns the pid; the
+  `_start()` foreground path and `run_command()` both call it (single
+  implementation).

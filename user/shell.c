@@ -307,16 +307,21 @@ static void run_redirected(char *line) {
     if (pid >= 0) nos_wait(pid);
 }
 
-static void cmd_run(const char *name) {
-    if (!name || !*name) { sh_puts("usage: run <program>\n"); return; }
+/* Launches <name> and returns its pid, or -1 on usage error / not found.
+   The single implementation of "run": run_command() and _start()'s
+   foreground path both call it, so validation cannot diverge. */
+static int cmd_run(char *name) {
+    name = sh_trim(name);
+    if (!*name) { sh_puts("usage: run <program>\n"); return -1; }
     int pid = nos_exec(name, 0);
     if (pid < 0) {
         sh_puts("error: program not found\n");
-    } else {
-        sh_puts("running: ");
-        sh_puts(name);
-        sh_puts("\n");
+        return -1;
     }
+    sh_puts("running: ");
+    sh_puts(name);
+    sh_puts("\n");
+    return pid;
 }
 
 static const char *help_text =
@@ -387,7 +392,7 @@ static void run_command(char *line, int len) {
     } else if (strncmp(line, "kill", 4) == 0 && (line[4] == ' ' || line[4] == '\0')) {
         cmd_kill(line[4] == ' ' ? line + 5 : "");
     } else if (strncmp(line, "run", 3) == 0 && (line[3] == ' ' || line[3] == '\0')) {
-        cmd_run(line[3] == ' ' ? line + 4 : "");
+        cmd_run(line[3] == ' ' ? line + 4 : line + 3);
     } else if (strcmp(line, "clear") == 0) {
         sh_puts(clear_text);
     } else if (strcmp(line, "exit") == 0) {
@@ -486,18 +491,8 @@ void _start(void) {
                 foreground_pid = 0;
             }
         } else if (strncmp(line, "run", 3) == 0 && (line[3] == ' ' || line[3] == '\0')) {
-            char *name = line[3] == ' ' ? line + 4 : "";
-            unsigned int nlen = strlen(name);
-            if (nlen > 0 && name[nlen - 1] == '\n') name[nlen - 1] = '\0';
-            int pid = nos_exec(name, 0);
-            if (pid < 0) {
-                sh_puts("error: program not found\n");
-            } else {
-                foreground_pid = pid;
-                sh_puts("running: ");
-                sh_puts(name);
-                sh_puts("\n");
-            }
+            int pid = cmd_run(line[3] == ' ' ? line + 4 : line + 3);
+            foreground_pid = pid > 0 ? pid : 0;
         } else {
             foreground_pid = 0;
             run_command(line, n);

@@ -34,7 +34,21 @@ at the time.
   stubs left during `nightly` development, resolved at each version's
   final polish (per the new CLAUDE.md documentation rule).
 
+### Changed
+
+- `PROGRESS.md`: consolidated from 411 to ~162 lines. Closed phases
+  are now one line each, architecture decisions tightened to their
+  essential point with links to `docs/`, and 17-C keeps full detail
+  including its open bugs at the time.
+
 ### Fixed
+
+- Bare `run` printed `[EXEC] not found:` (empty name). `cmd_run()` in
+  `user/shell.c` now trims and validates the name and returns the pid;
+  the `_start()` foreground path reuses it instead of a duplicated copy.
+- `reboot` "looking like" `shutdown` was not a kernel bug: `-no-reboot`
+  turns a guest reset into a shutdown. Added `make run-reboot-test`
+  (`tools/Makefile`, no `-no-reboot`); `run`/`debug` keep the flag.
 
 Phase 17-A (mechanical fixes from the old audit) — all 6 items done.
 Confirmed via manual QEMU testing: clean build, boot, `selftest` 13/13,
@@ -103,9 +117,9 @@ gives the capital, Shift+1 gives `!`, Shift+\ gives `|`).
   helpers, also used by `alloc_pid()`.
 
 Phase 17-C (libnos consolidation + shell tools) — functionally complete
-after manual QEMU testing, EXCEPT for the two known issues listed under
-"Known issues (17-C)" below, which are deliberately left open for the
-next session.
+and closed after manual QEMU testing (the two issues found in the final
+test, `reboot` looking like `shutdown` and bare `run`, are resolved; see
+Fixed above).
 
 - `user/lib/nullos.c/h`, `user/shell.c`, `forktest.c`, `selftest.c`,
   `edit.c`: libnos gained `memcpy`/`memset`/`memmove`/`memcmp`/`strlen`/
@@ -143,21 +157,6 @@ next session.
   echoes a backspace on an empty line, which used to blank the shell's own
   `> ` prompt. The typed buffer itself was always right (a backspace just
   decrements the count).
-
-### Known issues (17-C)
-
-Found in the final 17-C test, not fixed (details in `docs/TODO.md`):
-
-- `reboot` and `shutdown` look the same under `make run` (window
-  "Stopped"). Probably not a kernel bug: the Makefile passes both
-  `-no-reboot` and `-no-shutdown`, and together a guest reset becomes a
-  paused shutdown. Not yet verified with other QEMU flags. If it still
-  doesn't restart with the flags relaxed, `power_reboot()` may need a
-  fallback (port 0xCF9 / triple fault).
-- A bare `run` prints `[EXEC] not found:` (empty name) instead of
-  `usage: run <program>`. Regression from the trailing-newline fix: the
-  `_start()` branch for `run` has no empty-name check, and used to be
-  shadowed by `cmd_run()`'s.
 
 ### Added (17-C)
 

@@ -81,11 +81,16 @@ QEMU_FLAGS = -boot d \
               -drive file=$(DISK_IMG),format=raw,if=ide \
               -m 256M \
               -serial stdio \
-              -no-reboot \
               -no-shutdown \
               -display sdl
 
-.PHONY: all clean run debug dirs user disk
+# `run` keeps -no-reboot on purpose (post-mortem state on a triple fault:
+# QEMU exits instead of silently rebooting). That flag turns a guest reset
+# into a shutdown too, so `reboot` looks like `shutdown` there. Use
+# `run-reboot-test` to test a real reboot.
+QEMU_FLAGS_RUN = $(QEMU_FLAGS) -no-reboot
+
+.PHONY: all clean run run-reboot-test debug dirs user disk
 
 all: dirs user $(KERNEL_ISO) $(DISK_IMG)
 	@echo ""
@@ -148,6 +153,9 @@ $(DISK_IMG):
 disk: $(DISK_IMG)
 
 run: $(KERNEL_ISO) $(DISK_IMG)
+	qemu-system-x86_64 $(QEMU_FLAGS_RUN)
+
+run-reboot-test: $(KERNEL_ISO) $(DISK_IMG)
 	qemu-system-x86_64 $(QEMU_FLAGS)
 
 # GDB debugging, two terminals:
@@ -164,7 +172,7 @@ run: $(KERNEL_ISO) $(DISK_IMG)
 # for a plain 32-bit CPU with no long-mode extensions. Debug-only:
 # `run` keeps using qemu-system-x86_64 as always.
 debug: $(KERNEL_ISO) $(DISK_IMG)
-	qemu-system-i386 $(QEMU_FLAGS) -cpu qemu32 -s -S
+	qemu-system-i386 $(QEMU_FLAGS_RUN) -cpu qemu32 -s -S
 
 clean:
 	@rm -rf $(BUILD)
