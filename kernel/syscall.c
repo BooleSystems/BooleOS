@@ -4,6 +4,7 @@
 #include "scheduler.h"
 #include "timer.h"
 #include "hal.h"
+#include "bootcfg.h"
 #include "messages.h"
 #include "memory/pmm.h"
 #include "memory/heap.h"
@@ -265,6 +266,8 @@ static int raw_mode_pid = -1;
    user_ptr_valid() above for why. */
 #define SYS_READ_CHUNK 128
 
+static int g_boot_considered_up = 0;   /* set on the first keyboard read; see sys_read() */
+
 static uint32_t sys_read(uint32_t fd, char *buf, uint32_t len) {
     if (!buf || len == 0) return (uint32_t)-1;
 
@@ -307,6 +310,18 @@ static uint32_t sys_read(uint32_t fd, char *buf, uint32_t len) {
 
     /* fd == 0: keyboard */
     if (fd != 0) return (uint32_t)-1;
+
+    /* The first interactive read of the process lifetime means a program has
+       reached its prompt: the boot is considered successful, so the failure
+       counter (docs/safemode.md) goes back to 0. Once only, never per read.
+       (fd 0 redirected to a file/pipe was resolved above and does not count.) */
+    if (!g_boot_considered_up) {
+        g_boot_considered_up = 1;
+        if (bootcfg_is_available()) {
+            bootcfg_set_u32(BOOTCFG_KEY_FAIL_COUNT, 0);
+            bootcfg_write();
+        }
+    }
 
     uint32_t n = 0;
     while (n < len) {

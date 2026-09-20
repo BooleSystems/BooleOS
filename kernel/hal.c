@@ -50,6 +50,43 @@ int hal_boot_init(uint32_t boot_magic, uintptr_t boot_info) {
     return 0;
 }
 
+int boot_get_cmdline(char *out, int max) {
+    if (!g_boot_info || !out || max <= 0) return -1;
+
+    mb2_tag_cmdline_t *tag = multiboot2_find_cmdline((void *)g_boot_info);
+    if (!tag || tag->size <= sizeof(mb2_tag_t)) return -1;
+
+    int room = (int)(tag->size - sizeof(mb2_tag_t));   // bytes of string in the tag
+    int n = 0;
+    while (n < room && n < max - 1 && tag->string[n]) {
+        out[n] = tag->string[n];
+        n++;
+    }
+    out[n] = '\0';
+    return n;
+}
+
+int boot_has_flag(const char *flag) {
+    char cmd[128];
+    if (!flag || !*flag) return 0;
+    int len = boot_get_cmdline(cmd, (int)sizeof(cmd));
+    if (len <= 0) return 0;
+
+    int i = 0;
+    while (i < len) {
+        while (i < len && cmd[i] == ' ') i++;      // skip separators
+        int start = i;
+        while (i < len && cmd[i] != ' ') i++;      // one word
+        int wlen = i - start;
+        if (wlen <= 0) continue;
+
+        int j = 0;
+        while (j < wlen && flag[j] && cmd[start + j] == flag[j]) j++;
+        if (j == wlen && flag[j] == '\0') return 1;   // whole word equals the whole flag
+    }
+    return 0;
+}
+
 int boot_get_memory_map(boot_mem_region_t *out, int max) {
     if (!g_boot_info || !out || max <= 0) return -1;
 

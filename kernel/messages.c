@@ -189,6 +189,17 @@ static const char *const g_msgs[] = {
     [MSG_POWER_SHUTDOWN_NO_PM_BASE] = "shutdown failed: PM I/O base address is not set\n",
     [MSG_POWER_SHUTDOWN_FAILED_ACPI] = "shutdown failed: ACPI power-off had no effect\n",
 
+    // Safe Mode (safemode.c)
+    [MSG_SAFE_TITLE] = "\n*** NullOS SAFE MODE ***\n\n",
+    [MSG_SAFE_REASON_COUNT_1] = "Reason: too many consecutive failed boots (boot_fail_count = ",
+    [MSG_SAFE_REASON_COUNT_2] = ", limit ",
+    [MSG_SAFE_REASON_COUNT_3] = ")\n",
+    [MSG_SAFE_REASON_REQUESTED] = "Reason: Safe Mode was requested on the boot command line.\nboot_fail_count = ",
+    [MSG_SAFE_STUB_NOTE] = "\n(Minimal Safe Mode: the full menu is not implemented yet.)\n\n",
+    [MSG_SAFE_MENU_REBOOT] = "  R - reboot normally (resets the boot failure counter)\n",
+    [MSG_SAFE_RESET_FAILED] = "\nWarning: could not save the reset counter to disk.\n",
+    [MSG_SAFE_REBOOTING] = "\nRebooting...\n",
+
 };
 
 // Compile-time check: the table must reach exactly MSG_COUNT entries (its

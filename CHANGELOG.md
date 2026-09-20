@@ -52,8 +52,30 @@ at the time.
   into `shell`, `edit` and `cat`. `selftest`/`forktest` (diagnostic output)
   and `init`/`spintest` (one demo line each) are not migrated.
 
+- Safe Mode infrastructure, pass 1 (no behavior change; `docs/safemode.md`):
+  `kernel/bootcfg.h/.c`, a `key=value` config store in one raw sector (LBA 1,
+  inside FAT16's reserved region, read/written only through the HAL block
+  I/O, magic line `# nullos-config v1`, empty defaults when the sector is
+  invalid, guarded by the boot sector's `reserved_sectors`); the Multiboot2
+  command-line tag parser with `boot_get_cmdline()` / `boot_has_flag()` in the
+  HAL. Nothing uses them yet.
+
+- Safe Mode, pass 2 (`docs/safemode.md`): a boot failure counter
+  (`boot_fail_count` in the config sector, incremented right after the disk is
+  up and reset on the first keyboard read), automatic entry into Safe Mode when
+  it reaches `BOOTCFG_FAIL_THRESHOLD` (3) or when `safemode` is on the boot
+  command line, and `kernel/safemode.h/.c`: a minimal Safe Mode screen (why it
+  was entered, the counter, and "R - reboot normally" which resets the counter)
+  that uses only the HAL and the config sector. The full menu is later work.
+
 ### Changed
 
+- `ata_init()` now runs right after interrupts are enabled, before the PMM, so
+  the boot log shows `[ATA]` before `[PMM]`; it is still called once. If the
+  config sector is unavailable the failure counter is skipped and boot is
+  unchanged.
+- `tools/make_disk.sh` passes `-R 8` to `mkfs.vfat` so sector 1 is explicitly
+  outside FAT16 (existing disks already have it: 4 reserved sectors).
 - `pmm_init()` now consumes the bootloader's real memory map
   (`boot_get_memory_map()`): it frees only the usable regions (rounded
   inward to pages, fragmented maps supported) instead of one fixed

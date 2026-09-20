@@ -17,7 +17,27 @@ only) whenever a version is closed.
 
 Phase 18-A (HAL, first pass) — see `docs/hal.md`:
 
-(none — Phase 18-A items are all done; see `docs/hal.md`)
+Phase 18-B (Safe Mode) — pass 1 of 5 done (infrastructure), see `docs/safemode.md`:
+
+- WIP: the temporary serial dump `[BOOTCFG]` in `kmain` (marked
+  `TEMP-DEBUG(bootcfg)`, with its `dbg_*` helpers) is still there to check the
+  counter on the real QEMU; REMOVE it once pass 2 is confirmed. Expected on a
+  fresh disk, normal entry: `bootcfg_read()=0`, `action=counter incremented`,
+  `boot_fail_count=1`, `sector 1 all zero=0`; a following boot shows
+  `boot_fail_count=1` again (it was reset by the first shell read).
+- Pass 2 (done, awaiting the QEMU check): `ata_init()` moved to just after
+  `sti`; counter increment / reset on the first keyboard read; branch to a
+  minimal Safe Mode stub at count >= 3 or the `safemode` flag. Untested paths
+  the user should exercise: force Safe Mode by editing the GRUB entry to add
+  `safemode`, and by making three boots die (e.g. close QEMU during boot).
+- Pass 3: Safe Mode TUI, tier 1 (numbered menu + submenus, counter reset,
+  reboot submenu, disk info, sector hexdump).
+- Pass 4: tier 2 restricted shell (PMM/VMM/heap/FAT16 on demand; `ls`, `cat`,
+  `pwd`, `cd`, `mkdir`, simple edit, static `help`). No delete until Phase 21;
+  the fsck-like verify/repair is its own later sub-phase.
+- Pass 5: GRUB entries (Safe Mode, previous release), `tools/prev/`,
+  `make snapshot` and the release-checklist step; document the
+  "anterior kernel does not know the counter" behavior.
 
 ## TECHNICAL DEBT (pre-existing, real) — kernel touches physical pages through the 0-8 MB identity map
 

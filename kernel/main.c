@@ -6,6 +6,8 @@
 #include "drivers/vga.h"
 #include "messages.h"
 #include "hal.h"
+#include "bootcfg.h"
+#include "safemode.h"
 #include "serial.h"
 #include "gdt.h"
 #include "idt.h"
@@ -43,6 +45,15 @@ static void print_separator(void) {
     console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
 }
 
+
+/* TEMP-DEBUG(bootcfg): serial-only helpers, remove with the dump in kmain */
+static void dbg_s(const char *s) { while (*s) serial_putchar(*s++); }
+static void dbg_dec(uint32_t v) {
+    char b[11]; int i = 10; b[i] = 0;
+    if (!v) b[--i] = '0';
+    while (v) { b[--i] = (char)('0' + v % 10); v /= 10; }
+    dbg_s(&b[i]);
+}
 
 void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     serial_init();
@@ -122,6 +133,73 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
 
     __asm__ volatile ("sti");
 
+    // ATA + boot failure counter (Phase 18-B). The disk comes up right after the
+    // interrupts are on and BEFORE the PMM/VMM/heap/scheduler, so the counter can
+    // be incremented before anything that could fail, and Safe Mode can be
+    // entered without depending on those subsystems. Before the scheduler runs
+    // process_current() is NULL, so ata_read/write_sector() use their polling
+    // path (no IRQ wait, no process to block).
+    print_tag(msg(MSG_TAG_ATA));
+    console_puts(msg(MSG_BOOT_DETECTING_DISK));
+    int disk_ok = ata_init();
+    if (disk_ok) {
+        print_ok();
+    } else {
+        console_set_color(CONSOLE_DARK_GREY, CONSOLE_BLACK);
+        console_puts(msg(MSG_BOOT_NO_DISK));
+        console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
+    }
+
+    {
+        int cfg_rc = disk_ok ? bootcfg_read() : -1;
+        int enter_safemode = 0;
+        safemode_reason_t reason = SAFEMODE_REASON_FAIL_COUNT;
+        const char *action = "skipped (no usable config sector)";
+
+        // No config sector (no disk, or a disk without the reserved layout):
+        // there is nowhere to record failures, so boot as usual.
+        if (bootcfg_is_available()) {
+            uint32_t fails = bootcfg_get_u32(BOOTCFG_KEY_FAIL_COUNT, 0);
+            int requested = boot_has_flag("safemode");
+
+            if (fails >= BOOTCFG_FAIL_THRESHOLD || requested) {
+                // Enter Safe Mode WITHOUT touching the counter.
+                enter_safemode = 1;
+                reason = requested ? SAFEMODE_REASON_REQUESTED : SAFEMODE_REASON_FAIL_COUNT;
+                action = "entering Safe Mode (counter left as is)";
+            } else {
+                bootcfg_set_u32(BOOTCFG_KEY_FAIL_COUNT, fails + 1);
+                action = (bootcfg_write() == 0) ? "counter incremented"
+                                                 : "counter increment FAILED to write";
+            }
+        }
+
+        /* TEMP-DEBUG(bootcfg): serial-only check of the boot config sector and the cmdline. Remove after Phase 18-B pass 2. */
+        {
+            char cmd[128];
+            int cl = boot_get_cmdline(cmd, (int)sizeof(cmd));
+            dbg_s("[BOOTCFG] cmdline="); dbg_s(cl <= 0 ? "(none)" : cmd); dbg_s("\n");
+            dbg_s("[BOOTCFG] safemode="); dbg_dec((uint32_t)boot_has_flag("safemode"));
+            dbg_s(" debug="); dbg_dec((uint32_t)boot_has_flag("debug")); dbg_s("\n");
+            dbg_s("[BOOTCFG] bootcfg_read()="); dbg_s(cfg_rc == 1 ? "1 (valid config)" : cfg_rc == 0 ? "0 (empty, defaults)" : "-1 (unavailable)");
+            dbg_s(" available="); dbg_dec((uint32_t)bootcfg_is_available()); dbg_s("\n");
+            dbg_s("[BOOTCFG] boot_fail_count="); dbg_dec(bootcfg_get_u32(BOOTCFG_KEY_FAIL_COUNT, 0)); dbg_s("\n");
+            dbg_s("[BOOTCFG] action="); dbg_s(action); dbg_s("\n");
+
+            unsigned char raw[512];
+            if (disk_ok && block_read_sector(BOOTCFG_LBA, raw) == 0) {
+                int allzero = 1;
+                for (int i = 0; i < 512; i++) if (raw[i]) { allzero = 0; break; }
+                dbg_s("[BOOTCFG] sector 1 all zero="); dbg_dec((uint32_t)allzero); dbg_s("\n");
+            } else {
+                dbg_s("[BOOTCFG] sector 1 read failed\n");
+            }
+        }
+
+        if (enter_safemode)
+            safemode_enter(reason, bootcfg_get_u32(BOOTCFG_KEY_FAIL_COUNT, 0));
+    }
+
     print_separator();
 
     // PMM
@@ -167,17 +245,6 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     console_puts(msg(MSG_BOOT_SCHED_INITIALIZING));
     scheduler_init();
     print_ok();
-
-    // ATA
-    print_tag(msg(MSG_TAG_ATA));
-    console_puts(msg(MSG_BOOT_DETECTING_DISK));
-    if (ata_init()) {
-        print_ok();
-    } else {
-        console_set_color(CONSOLE_DARK_GREY, CONSOLE_BLACK);
-        console_puts(msg(MSG_BOOT_NO_DISK));
-        console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
-    }
 
     // FAT16
     print_tag(msg(MSG_TAG_FAT16));

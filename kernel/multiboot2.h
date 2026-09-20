@@ -27,6 +27,15 @@ typedef struct {
     char     cmdline[]; /* null-terminated module name/args */
 } __attribute__((packed)) mb2_tag_module_t;
 
+/* Tag type 1 — boot command line (the text after the kernel path in the GRUB entry) */
+#define MB2_TAG_CMDLINE 1
+
+typedef struct {
+    uint32_t type;      /* = 1 */
+    uint32_t size;
+    char     string[];  /* null-terminated */
+} __attribute__((packed)) mb2_tag_cmdline_t;
+
 /* Tag type 6 — memory map */
 #define MB2_TAG_MMAP 6
 
@@ -63,6 +72,31 @@ static inline mb2_tag_mmap_t *multiboot2_find_mmap(void *mbi)
             break;
         if (tag->type == MB2_TAG_MMAP)
             return (mb2_tag_mmap_t *)p;
+
+        uint32_t aligned = (tag->size + 7) & ~7u;
+        p += aligned ? aligned : 8;
+    }
+    return 0;
+}
+
+/*
+ * multiboot2_find_cmdline - scan MBI tags for the boot command line.
+ *
+ * Returns a pointer to the tag, or 0 if the bootloader gave none.
+ */
+static inline mb2_tag_cmdline_t *multiboot2_find_cmdline(void *mbi)
+{
+    mb2_header_t *hdr = (mb2_header_t *)mbi;
+    uint8_t      *p   = (uint8_t *)mbi + sizeof(mb2_header_t);
+    uint8_t      *end = (uint8_t *)mbi + hdr->total_size;
+
+    while (p < end) {
+        mb2_tag_t *tag = (mb2_tag_t *)p;
+
+        if (tag->type == MB2_TAG_END)
+            break;
+        if (tag->type == MB2_TAG_CMDLINE)
+            return (mb2_tag_cmdline_t *)p;
 
         uint32_t aligned = (tag->size + 7) & ~7u;
         p += aligned ? aligned : 8;

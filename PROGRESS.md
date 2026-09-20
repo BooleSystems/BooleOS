@@ -26,29 +26,29 @@ Last closed phase: **Phase 17** (Cleanup A).
 - Phase 17 — Cleanup A (audit fixes, technical debt, libnos/shell tools +
   reboot/shutdown, test/build infrastructure) — `0.17.0`.
 
-### Current work: Phase 18-A done (uncommitted final step); next Phase 18-B (Safe Mode)
+### Current work: Phase 18-B (Safe Mode) — pass 2 of 5 done (awaiting QEMU check)
 
-18-A = HAL (`kernel/hal.h/.c`, `docs/hal.md`) + `msg(ID)` kernel and userland
-tables + `idt.c` through the HAL + `pmm_init()` consuming the real memory map
-(8 MB allocation ceiling, `[PMM] Total` = allocatable 8192 KB). The last step
-(PMM) awaits the user's QEMU check: expect `Total: 8192KB`, `Free: 4096KB`
-(1024 pages), selftest 18/18. Also fixed there: `pmm_free_pages()` used to
-over-report (`pmm_used` started at 0).
+18-A is closed. 18-B is split in 5 passes (`docs/safemode.md`, `docs/TODO.md`):
+1. **done, uncommitted:** config sector `kernel/bootcfg.*` (LBA 1) +
+   `boot_get_cmdline()`/`boot_has_flag()` + `make_disk.sh -R 8`; verified on the
+   host (bootcfg logic tested with a fake block device) and by a temporary
+   serial `[BOOTCFG]` dump in kmain awaiting the user's QEMU check;
+2. **done, uncommitted:** `ata_init()` moved after `sti`; `boot_fail_count`
+   incremented at boot, reset on the first keyboard `SYS_READ`; at count >= 3 or the
+   `safemode` flag `kmain` calls the stub `safemode_enter()` (`kernel/safemode.*`);
+   temp `[BOOTCFG]` dump still in kmain; 3. TUI tier 1;
+4. restricted shell tier 2; 5. GRUB entries + `tools/prev/` + `make snapshot`.
+Design decisions (LBA 1, two tiers, success = first fd-0 read, N = 3, GUI
+entries deferred to Phase 26) are in `docs/safemode.md`.
 
 **Real pre-existing debt (Phase 22):** the kernel accesses physical pages
-through the 0–8 MB identity map (elf.c:54, process.c:262-265); the 8 MB cap is
-only a mitigation. See `docs/TODO.md`. Also known: `process_exit()` never
-frees, so ~10 pages leak per process and the 1024 free pages last roughly a
-dozen selftest runs per boot before `exec`/`fork` start failing cleanly.
+through the 0–8 MB identity map (elf.c:54, process.c:262-265); the 8 MB PMM cap
+is only a mitigation. See `docs/TODO.md`. `process_exit()` never frees, so ~10
+pages leak per process (1024 free at boot).
 
-Next: 18-B (Safe Mode; must not rely on `process_spawn_user`/fork/exec/
-scheduler — see CLAUDE.md). Also owed to 18-B: the permanent "NullOS vX.Y.Z
-(anterior)" GRUB entry CLAUDE.md requires at each merge into `main` (never
-implemented for v0.16.0/v0.17.0; ROADMAP 18-B lists it).
-Version is `0.18.0-nightly`; `NULLOS_PHASE`/`DESC` stay 17 / "Cleanup A"
-until Phase 18 closes.
-
-Deferred, not blocking: test `docs/setup.md` on Windows (Phase 29).
+Version is `0.18.0-nightly`; `NULLOS_PHASE`/`DESC` stay 17 / "Cleanup A" until
+Phase 18 closes. Deferred, not blocking: test `docs/setup.md` on Windows
+(Phase 29).
 
 ### Future roadmap
 
@@ -118,6 +118,10 @@ package manager phase was deliberately decided against — don't add one.
 - **`msg(ID)`: fragments, not format strings; only OUTPUT text** (never
   strcmp keys / exec names / file names); kernel and userland get separate
   tables (user programs can't call the kernel). See `docs/hal.md`.
+- **Safe Mode config lives in raw sector LBA 1 (FAT16 reserved region), not a
+  file**, so it works when FAT16/VFS/heap are broken; unavailable (defaults,
+  no writes) if the boot sector's `reserved_sectors` < 2. See
+  `docs/safemode.md`.
 - **PMM manages only 0–8 MB (`PMM_LIMIT_ADDR`)** because the kernel touches
   frames by physical address and only 0–8 MB is identity-mapped; a mitigation,
   not the fix (Phase 22). See `docs/memory.md`.

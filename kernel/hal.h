@@ -102,4 +102,13 @@ int hal_boot_init(uint32_t boot_magic, uintptr_t boot_info);
 // where GRUB puts it).
 int boot_get_memory_map(boot_mem_region_t *out, int max);
 
+// Copies the boot command line (x86: the text after the kernel path in the
+// GRUB entry) into out, NUL-terminated and truncated to max. Returns its
+// length, or -1 if there is none (or boot info is not initialized).
+int boot_get_cmdline(char *out, int max);
+
+// True if `flag` is one of the whitespace-separated words of the boot command
+// line (exact match, e.g. "safemode"). False if there is no command line.
+int boot_has_flag(const char *flag);
+
 #endif // HAL_H

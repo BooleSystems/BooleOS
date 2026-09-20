@@ -54,6 +54,7 @@ Detailed, per-system documentation lives under `docs/`:
 - [docs/filesystem.md](docs/filesystem.md) — ATA PIO driver, FAT16, VFS
 - [docs/pipes.md](docs/pipes.md) — in-kernel pipes, `SYS_EXEC_PIPE`, the shell's `cmd1 | cmd2`
 - [docs/hal.md](docs/hal.md) — hardware abstraction layer (console, input, block I/O, power, boot memory map)
+- [docs/safemode.md](docs/safemode.md) — Safe Mode design and the boot configuration sector (in progress)
 - [docs/security.md](docs/security.md) — userland pointer validation, Phase 14 bug history
 - [docs/pci.md](docs/pci.md) — PCI bus enumeration
 - [docs/shell.md](docs/shell.md) — interactive shell and commands
@@ -81,6 +82,7 @@ kernel/
   serial.c/h          Serial driver (mirrors VGA output)
   power.c/h           power_reboot() / power_shutdown()
   hal.c/h             Hardware abstraction layer (console/input/block/boot info) — see docs/hal.md
+  bootcfg.c/h         boot config sector (LBA 1, key=value) — see docs/safemode.md
   messages.c/h        msg(ID): central table of kernel output text — see docs/hal.md
   pipe.c/h            Inter-process pipes (fixed pool)
   tss.c               Task State Segment

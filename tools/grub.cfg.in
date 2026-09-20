@@ -22,3 +22,9 @@ menuentry "NullOS (serial debug mode)" {
     module2    /boot/ramfs.img
     boot
 }
+
+menuentry "NullOS (Safe Mode)" {
+    multiboot2 /boot/nullos.elf safemode
+    module2    /boot/ramfs.img
+    boot
+}
