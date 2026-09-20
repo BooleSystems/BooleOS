@@ -68,6 +68,14 @@ at the time.
   was entered, the counter, and "R - reboot normally" which resets the counter)
   that uses only the HAL and the config sector. The full menu is later work.
 
+- Safe Mode, pass 3 (`docs/safemode.md`): the stub is replaced by the tier-1
+  text UI in `kernel/safemode.c` — numbered main menu (reboot normally with
+  counter reset; a Reboot submenu with Normal / Safe Mode-keep-counter; Disk
+  info from the raw boot sector plus the config sector state; a sector hexdump
+  with decimal LBA entry and a hex + ASCII view), static buffers only, no
+  heap. Safe Mode is left only by rebooting. The temporary `[BOOTCFG]` serial
+  dump in `kmain` was removed.
+
 ### Changed
 
 - `ata_init()` now runs right after interrupts are enabled, before the PMM, so

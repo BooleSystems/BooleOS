@@ -26,7 +26,7 @@ Last closed phase: **Phase 17** (Cleanup A).
 - Phase 17 — Cleanup A (audit fixes, technical debt, libnos/shell tools +
   reboot/shutdown, test/build infrastructure) — `0.17.0`.
 
-### Current work: Phase 18-B (Safe Mode) — pass 2 of 5 done (awaiting QEMU check)
+### Current work: Phase 18-B (Safe Mode) — pass 3 of 5 done (awaiting QEMU check)
 
 18-A is closed. 18-B is split in 5 passes (`docs/safemode.md`, `docs/TODO.md`):
 1. **done, uncommitted:** config sector `kernel/bootcfg.*` (LBA 1) +
@@ -36,7 +36,9 @@ Last closed phase: **Phase 17** (Cleanup A).
 2. **done, uncommitted:** `ata_init()` moved after `sti`; `boot_fail_count`
    incremented at boot, reset on the first keyboard `SYS_READ`; at count >= 3 or the
    `safemode` flag `kmain` calls the stub `safemode_enter()` (`kernel/safemode.*`);
-   temp `[BOOTCFG]` dump still in kmain; 3. TUI tier 1;
+   (validated, committed `f5e1414`; temp dump removed in pass 3); 3. **done, uncommitted:** tier-1 TUI in
+   `kernel/safemode.c` (main menu, Reboot submenu, Disk info from the raw BPB,
+   2-page sector hexdump), static buffers only;
 4. restricted shell tier 2; 5. GRUB entries + `tools/prev/` + `make snapshot`.
 Design decisions (LBA 1, two tiers, success = first fd-0 read, N = 3, GUI
 entries deferred to Phase 26) are in `docs/safemode.md`.

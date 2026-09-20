@@ -2,16 +2,27 @@
 
 Safe Mode is a recovery environment inside the **same kernel binary**, entered very early in `kmain()` when the previous boots kept failing (or when GRUB asks for it). It exists to survive bugs in exactly the subsystems it must not depend on, so it runs in ring 0 before the scheduler, `process_spawn_user`, `exec` and the syscall layer are initialized. This document holds the design as approved and what is implemented so far.
 
-**Status: pass 2 of 5.** The failure counter and the entry condition work; Safe Mode itself is still a **stub** (one screen, one action) — not the final TUI.
+**Status: pass 3 of 5.** The failure counter, the entry condition and the tier-1 text UI work. The restricted shell with file access (tier 2) and the previous-release GRUB entry are not done yet.
+
+## Implemented in pass 3: the tier-1 TUI (`kernel/safemode.c`)
+
+Runs before the PMM/VMM/heap/scheduler, so it uses only the HAL (console, input, block I/O, power) and bootcfg, with **static buffers only** (a 512-byte sector buffer, a small input buffer; no `kmalloc`). All text is in the message table (`MSG_SAFE_*`). The main menu is redrawn every time you come back to it; an invalid key is ignored. There is no "continue booting": Safe Mode is left only by rebooting, never resumed in place (that would mean trusting the subsystems that may be why we are here).
+
+1. **Reboot normally** — sets `boot_fail_count` to 0, writes it, `power_reboot()`. If the counter can't be written, it warns and reboots anyway.
+2. **Reboot...** — submenu: *1. Normal (reset counter)* (same as item 1), *2. Safe Mode (keep counter)* (`power_reboot()` without touching the counter), *0 / ESC* back. Option 2 lands in Safe Mode again only while the counter is at or above the limit; if Safe Mode was entered with the `safemode` flag and the counter is lower, the next boot is a normal one, and the submenu says so. GUI debug / Text mode join this submenu with the GUI (Phase 26).
+3. **Disk info** — reads LBA 0 raw (no FAT16 initialization, which would need the heap) and prints bytes/sector, sectors/cluster, reserved sectors, number of FATs, root entries, total sectors, sectors/FAT, the volume label and FS-type fields (when the extended boot record signature `0x29` is present) and whether the boot signature `55 AA` is valid; then whether the config sector is available and the current `boot_fail_count`. Any key returns.
+4. **Sector hexdump** — asks for an LBA (decimal digits only, at most 10, Enter confirms, Backspace corrects, ESC cancels; empty, non-digit and overflowing input are rejected with a message and asked again), reads it and prints 16 bytes per line as hex plus an ASCII column (`.` for non-printable). A sector is shown in **two pages** of 256 bytes because 32 lines would not fit the 25-line screen; any key advances/returns. LBAs above `0x0FFFFFFF` are refused (the ATA driver is LBA28 and would silently alias).
+
+The temporary `[BOOTCFG]` serial dump was removed from `kmain`; nothing extra is printed on a normal boot (the counter and config availability are visible in Disk info).
 
 ## Implemented in pass 2: counter, entry condition, stub
 
 - **`ata_init()` moved.** It is still called exactly once, but now right after `sti` (after the keyboard) and before the PMM, so the log order is `[ATA]` before `[PMM]`. It needs the PIC, IDT and PIT (IRQ 14/15 registration, `timer_get_ticks()` for the BSY timeout). Before the scheduler runs, `process_current()` is NULL and `ata_read_sector()`/`ata_write_sector()` use their polling path (no IRQ wait, no process to block; bounded loops return -1 instead of hanging) — the same path `fat16_init()` has always used.
 - **Counter and entry** (`kmain`): after the disk is up, `bootcfg_read()`. If the config sector is unavailable (no disk, or a disk without the reserved layout) the whole mechanism is skipped and boot is as before — there is nowhere to record failures. Otherwise: if `boot_fail_count >= BOOTCFG_FAIL_THRESHOLD` (3, in `bootcfg.h`) **or** the `safemode` flag is on the command line, `kmain` calls `safemode_enter()` **without touching the counter**; else it writes `boot_fail_count + 1` and continues booting.
 - **Reset** (`sys_read`): on the first *keyboard* read (fd 0, after any stdin redirection is resolved) by any process — once per kernel lifetime, guarded by `g_boot_considered_up` — the counter is written back to 0. An interactive read only happens after a prompt was printed. (Reads from a redirected stdin don't count.)
-- **The stub** (`kernel/safemode.h/.c`, `safemode_enter()`, never returns): clears the screen, prints why it was entered (counter reached the limit, or requested on the command line) and the current `boot_fail_count`, and offers one action: **R** — reset the counter, write it, and `power_reboot()`. Any other key is ignored. It uses only the HAL and bootcfg: no heap, PMM, VMM or scheduler. All its text goes through `msg()`.
+- **The entry function** (`kernel/safemode.h/.c`, `safemode_enter()`, never returns): in this pass it was a one-action stub; pass 3 replaced it with the TUI above.
 - Expected effect on the boot: the counter is 1 during boot and back to 0 once the shell asks for input. A boot that dies in between leaves it at >= 1; three in a row send the fourth boot to Safe Mode. Booting the "serial debug mode" entry does **not** enter Safe Mode (only the `safemode` word does; no GRUB entry passes it yet — pass 5).
-- The temporary `[BOOTCFG]` serial dump now runs after the counter logic (before Safe Mode would be entered) and adds an `action=` line; it shows the counter *after* the update, and `sector 1 all zero` is now `0` on a disk that has been booted once.
+- (The temporary `[BOOTCFG]` serial dump used to verify this pass was removed in pass 3.)
 
 ## Implemented in pass 1
 
@@ -45,7 +56,7 @@ The kernel used to ignore the Multiboot2 command line (the `debug` word of the "
 
 ```
 kernel/bootcfg.h/.c     config sector (LBA 1), BOOTCFG_FAIL_THRESHOLD
-kernel/safemode.h/.c    Safe Mode (stub in pass 2)
+kernel/safemode.h/.c    Safe Mode (tier-1 TUI, pass 3)
 kernel/hal.h/.c         boot_get_cmdline(), boot_has_flag()
 kernel/multiboot2.h     cmdline tag (type 1) parser
 tools/make_disk.sh      mkfs.vfat -R 8
