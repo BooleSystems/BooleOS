@@ -183,6 +183,37 @@ handles the cross-compiled build).
   `make snapshot` refreshes it; run it by hand right after tagging a release,
   on the tagged tree (see `docs/safemode.md`).
 
+### Building the development version (`nightly`)
+
+A plain `git clone` checks out **`main`**, the last stable release, so building
+right after cloning gives you that release. To build the development version
+instead, switch to the `nightly` branch first:
+
+```bash
+git clone https://github.com/TheShannonDev/NullOS.git   # first time only
+cd NullOS
+
+git fetch origin            # get the latest branches and tags
+git switch nightly          # or: git checkout nightly
+
+cd tools
+make clean && make         # build the development version
+```
+
+The first `git switch nightly` creates a local `nightly` branch tracking
+`origin/nightly`; later, `git pull` (on that branch) brings in new work.
+While a version is being developed the build shows it with the `-nightly`
+suffix — in the boot banner, in the shell's `uname`/`fetch`, and in the GRUB
+entry title (for example `vX.Y.Z-nightly`); that suffix is how you can tell you
+are really on the development branch. Right after a release, until the next
+phase starts, `nightly` and `main` can still be the same version.
+
+`nightly` may be temporarily broken between pushes (see above). To go back to
+the stable release run `git switch main`, or build an exact release with
+`git switch --detach vX.Y.Z` (release tags are listed by `git tag`). Run
+`make clean` after switching branches so no objects from the other one are
+reused.
+
 ## Build and run
 
 ```bash

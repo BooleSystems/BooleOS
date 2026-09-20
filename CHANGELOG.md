@@ -38,6 +38,15 @@ at the time.
   release with an annotated tag, `nightly` = daily work, the `-nightly` suffix,
   `tools/prev/`). `README.md` and `docs/kernel.md` now link the right document
   for each case.
+  Follow-up: version numbers in the quickstart's explanatory text are now the
+  placeholders `vX.Y.Z` (current) and `vA.B.C` (previous release) instead of
+  hardcoded values; the QEMU installation section covers Linux, macOS (Homebrew,
+  MacPorts) and Windows evenly; a new section explains running the ISO and disk
+  image in other virtual machines (general requirements, plus step-by-step
+  VirtualBox and VMware Workstation/Player, including the one-time raw-to-VDI/VMDK
+  conversion — general guidance, not verified by the project); and `setup.md` now
+  explains how to switch to the `nightly` branch to build the development
+  version.
 - `CLAUDE.md`: two release conventions made formal — every version closed and
   merged into `main` gets an annotated `vX.Y.Z` tag at the same moment, and right
   after the tag `make snapshot` is run on the tagged tree and `tools/prev/` is
