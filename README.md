@@ -60,7 +60,8 @@ Detailed, per-system documentation lives under `docs/`:
 - [docs/pci.md](docs/pci.md) — PCI bus enumeration
 - [docs/shell.md](docs/shell.md) — interactive shell and commands
 - [docs/testing.md](docs/testing.md) — `run selftest`, the automated regression suite
-- [docs/setup.md](docs/setup.md) — toolchain/dependency setup
+- [docs/quickstart.md](docs/quickstart.md) — just run a release in QEMU, without compiling anything
+- [docs/setup.md](docs/setup.md) — building from source (developers): toolchain, Docker, make targets, debugging
 
 [PROGRESS.md](PROGRESS.md) (not end-user documentation) carries cross-session working
 memory: non-obvious architecture decisions and known technical debt.
@@ -142,7 +143,9 @@ make clean    # cleans build/ (⚠ also deletes disk.img — persisted data is l
 
 **Dependencies:** `i686-elf-gcc`, `i686-elf-ld`, `nasm`, `grub2-mkrescue`, `qemu-system-x86_64`, `mkfs.vfat`/`mcopy` (`dosfstools`/`mtools` packages, used by `tools/make_disk.sh`)
 
-See [docs/setup.md](docs/setup.md) for toolchain installation details.
+**Just want to run it?** No compiler needed: download the zip from a [release](https://github.com/TheShannonDev/NullOS/releases) and follow [docs/quickstart.md](docs/quickstart.md).
+
+**Want to build or contribute?** See [docs/setup.md](docs/setup.md) for the toolchain, Docker build and debugging.
 
 ## Technical specs
 

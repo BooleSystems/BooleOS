@@ -89,4 +89,4 @@ user/
   lib/nullos.c/h      Syscall wrapper library (libnos, "nos_*") — one thin wrapper per syscall
 ```
 
-See also `docs/setup.md` for the Phase 0 build/toolchain setup.
+See also `docs/setup.md` (building from source: toolchain, Docker, make targets) and `docs/quickstart.md` (running a released build without compiling).

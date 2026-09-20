@@ -26,6 +26,18 @@ at the time.
 
 ### Changed
 
+- Documentation split by audience: the new `docs/quickstart.md` covers only
+  "download a release zip, install QEMU, run one command" (no toolchain, no
+  Docker, no compiling), and `docs/setup.md` is now developer-only. `setup.md`
+  was re-checked against `tools/Makefile` and the scripts: it now states that the
+  Makefile runs `grub2-mkrescue` (the Fedora name) and that the Docker script
+  installs neither `dosfstools` nor `python3` (both unverified), documents
+  `make disk`, `make snapshot`, the exact `make run` flags (including `-display
+  sdl`), the four-entry GRUB menu, that the `debug` boot argument is parsed but
+  not acted on yet, and adds a "Branches and versions" section (`main` = last
+  release with an annotated tag, `nightly` = daily work, the `-nightly` suffix,
+  `tools/prev/`). `README.md` and `docs/kernel.md` now link the right document
+  for each case.
 - `CLAUDE.md`: two release conventions made formal — every version closed and
   merged into `main` gets an annotated `vX.Y.Z` tag at the same moment, and right
   after the tag `make snapshot` is run on the tagged tree and `tools/prev/` is

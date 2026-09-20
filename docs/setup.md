@@ -1,9 +1,10 @@
 # NullOS — Setup and Build
 
-This document describes how to set up the build environment and
-build/run NullOS today. (The project has grown a lot since its first
-boot — see the top-level `README.md` for the list of completed
-phases — but this file only covers the current setup, not history.)
+This document is for **developers**: how to set up the build environment,
+compile NullOS from source, run it in QEMU from the build tree and debug
+it. (If you only want to run a released build without compiling anything,
+see [quickstart.md](quickstart.md).) The top-level `README.md` has the list
+of completed phases; this file only covers the current setup, not history.
 
 ## Dependencies
 
@@ -21,8 +22,12 @@ packages manually. You need:
 - `gcc`/`make` — host toolchain (used for host-side tooling; the
   kernel itself is built with the `i686-elf-gcc` cross-compiler, see
   below)
-- GRUB2 tools providing `grub-mkrescue`/`grub2-mkrescue` (Fedora:
-  `grub2-tools`; Debian: `grub-common` + `grub-pc-bin`)
+- GRUB2 tools: `tools/Makefile` runs **`grub2-mkrescue`** (the Fedora
+  name; Fedora package `grub2-tools`). Debian-family systems ship the same
+  tool as `grub-mkrescue` (packages `grub-common` + `grub-pc-bin`); if only
+  that name exists on your system, the ISO step fails with "command not
+  found" and you need a `grub2-mkrescue` alias/symlink to it (not verified
+  on Debian for this document)
 - `xorriso` — builds the bootable ISO
 - A QEMU x86 package providing `qemu-system-x86_64`/`qemu-system-i386`
   (Fedora/Debian package name: `qemu-system-x86`)
@@ -79,6 +84,12 @@ you use a different one), installs `nasm`/`grub-pc-bin`/`grub-common`/
 `tools/` — producing `build/nullos.iso` on the host (ownership fixed
 up to your UID/GID afterward). See `tools/docker_build.sh` for the
 exact steps.
+
+Not verified for this document: the script does not install `dosfstools`
+(`mkfs.vfat`, needed by `tools/make_disk.sh`) or `python3` (needed by
+`tools/make_ramfs.py`) in the container, nor does it check that the
+container has a `grub2-mkrescue` command — the build only works if the image
+already provides them.
 
 **Manual option (crosstool-ng), targeting i686 — not x86_64:**
 
@@ -156,6 +167,22 @@ below for how to run them (note that QEMU itself still needs to be
 installed on the host to actually boot the resulting ISO; Docker only
 handles the cross-compiled build).
 
+## Branches and versions
+
+- **`main`** always holds the last released version. Every release is an
+  annotated tag `vX.Y.Z` on `main`.
+- **`nightly`** is where the day-to-day work happens; it may be temporarily
+  broken between pushes. While a version is in progress, `kernel/version.h`
+  reads `X.Y.Z-nightly` (the *next* version); closing the version drops the
+  suffix, merges `nightly` into `main` and tags it.
+- `kernel/version.h` is the single source of the version string: the boot
+  banner, the shell's `uname`/`fetch` and the GRUB entry title all come from
+  it (the GRUB config is generated at build time from `tools/grub.cfg.in`).
+- The ISO also carries the *previous release* as an extra GRUB entry, kept in
+  `tools/prev/` (`nullos.elf` + `ramfs.img` + `VERSION`, tracked in git).
+  `make snapshot` refreshes it; run it by hand right after tagging a release,
+  on the tagged tree (see `docs/safemode.md`).
+
 ## Build and run
 
 ```bash
@@ -164,13 +191,21 @@ cd nullos/tools
 # Full build (generates nullos.iso and disk.img)
 make
 
+# Create build/disk.img on its own (only if it doesn't exist yet)
+make disk
+
 # Run in QEMU (attaches the FAT16 test disk; serial output goes to
-# this terminal via -serial stdio — see tools/Makefile's run target)
+# this terminal via -serial stdio — see tools/Makefile's QEMU_FLAGS)
 make run
 
 # Clean the build (⚠ also deletes disk.img — persisted FAT16 data is lost)
 make clean
 ```
+
+`make run` starts `qemu-system-x86_64` with `-boot d -cdrom build/nullos.iso
+-drive file=build/disk.img,format=raw,if=ide -m 256M -serial stdio
+-no-shutdown -no-reboot -display sdl`. `-display sdl` needs a QEMU built with
+SDL support (edit `QEMU_FLAGS` in `tools/Makefile` if yours isn't).
 
 `make run-reboot-test` is the same as `make run` but without `-no-reboot`,
 so the `reboot` command really restarts the guest (`run`/`debug` keep the
@@ -182,6 +217,10 @@ root of `build/disk.img` with `mcopy`, without rebuilding the ISO. It is
 host-side infrastructure only: the kernel still cannot `exec()` programs
 from FAT16 (that arrives with Phase 19), so it is for putting test files on
 the disk quickly. Don't run it while QEMU has the image open.
+
+`make snapshot` records the current build in `tools/prev/` as the "previous
+release" GRUB entry (see "Branches and versions"); it is never run by any
+other target.
 
 ## Debugging with GDB
 
@@ -239,11 +278,20 @@ phase. Generically, the banner looks like:
  > _
 ```
 
+## The GRUB menu
+
+The generated menu (`tools/grub.cfg.in`) has four entries: the default boot,
+"NullOS (serial debug mode)", "NullOS (Safe Mode)" (boots with the `safemode`
+argument, see `docs/safemode.md`) and "NullOS v<version> (previous release)".
+Safe Mode also starts by itself after 3 boots in a row that never reached the
+shell prompt.
+
 ## Debug via serial
 
 `serial_init()` runs at the very start of `kmain` (before VGA), and
 every `vga_putchar()` call already mirrors its character to serial
 automatically. `make run` passes `-serial stdio` to QEMU, so the same
 boot log VGA shows also appears in the terminal you ran `make run`
-from. The GRUB menu (`tools/grub.cfg.in`) also offers a second "NullOS
-(serial debug mode)" entry at the boot menu.
+from. The "NullOS (serial debug mode)" entry passes a `debug` boot argument;
+the kernel reads the command line (`boot_has_flag()`), but nothing acts on
+`debug` yet, so today it boots exactly like the default entry.
