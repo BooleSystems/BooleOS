@@ -13,7 +13,7 @@ Do not duplicate README/docs content here. `README.md` is a lean index
 
 ## Current status
 
-Current version: **0.17.0** (released; `main` tagged `v0.17.0`).
+Current version: **0.17.1** (documentation patch on top of `v0.17.0`; `main` tagged `v0.17.1`).
 Last closed phase: **Phase 17** (Cleanup A).
 
 ### Closed phases (one line each; detail in CHANGELOG.md / README.md)
@@ -30,6 +30,9 @@ Last closed phase: **Phase 17** (Cleanup A).
 
 See ROADMAP.md (18-A HAL, 18-B Safe Mode; 18-B depends on 18-A and must
 not rely on `process_spawn_user`/fork/exec/scheduler — see CLAUDE.md).
+Also owed to 18-B: the permanent "NullOS vX.Y.Z (anterior)" GRUB entry
+CLAUDE.md requires at each merge into `main` (never implemented for
+v0.16.0/v0.17.0; ROADMAP 18-B lists it).
 Deferred from Phase 17, not blocking: test `docs/setup.md` on Windows (no
 machine available). The selftest's Intel 440FX check breaks by design in
 Phase 24 (q35) — noted in ROADMAP Phase 24.
@@ -37,7 +40,7 @@ Phase 24 (q35) — noted in ROADMAP Phase 24.
 ### Future roadmap
 
 See `ROADMAP.md` for the full per-phase breakdown and priority order
-(Phases 17–31, v1.0.0 closes right after Phase 31, the DOOM port). A
+(Phases 17–30, v1.0.0 closes right after Phase 30, the DOOM port). A
 package manager phase was deliberately decided against — don't add one.
 
 ## Architecture decisions (non-obvious; detail lives in the linked docs)

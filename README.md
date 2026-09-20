@@ -41,7 +41,7 @@ See [CHANGELOG.md](CHANGELOG.md) for version history and [ROADMAP.md](ROADMAP.md
 | **16** | Inter-process pipes (`kernel/pipe.c`, fixed pool, `SYS_PIPE`/`SYS_EXEC_PIPE`) and a real blocking `waitpid()` (`process_t.waiting_for_pid`, woken by `process_exit()`); shell gains `cmd1 \| cmd2` (`user/cat.c` as a minimal pipe sink) | ✅ Done |
 | **17** | Cleanup A: audit fixes (`pmm_init` overflow, checked `vmm_map_page` returns, atomic pid/slot allocation, `fat16_init` validation), edit.c Shift and `process_spawn_user` race fixes, libnos string helpers, stream FAT16 writes (`fat16_write_at`), shell `>`/`<` redirection, `cat <file>`, `pwd`/`SYS_GETCWD`, `reboot`/`shutdown`, selftest expanded to 18 tests (`SYS_PCI_FIND`), `make inject` / `make run-reboot-test` | ✅ Done |
 
-For planned Phases 17–31, see **[ROADMAP.md](ROADMAP.md)**.
+For planned Phases 17–30, see **[ROADMAP.md](ROADMAP.md)**.
 
 ## Documentation
 
@@ -126,7 +126,9 @@ docs/                 Per-system technical documentation (see "Documentation" ab
 cd tools
 make          # generates build/nullos.iso and build/disk.img (only creates the disk if it doesn't exist)
 make disk     # forces creation of build/disk.img on its own
-make run      # launches in QEMU with the disk attached (-drive ...,if=ide)
+make run      # launches in QEMU with the disk attached (-drive ...,if=ide); keeps -no-reboot (post-mortem state on a triple fault)
+make run-reboot-test   # same, but without -no-reboot, so the shell's `reboot` really restarts the guest
+make inject FILE=path/to/file [NAME=name.ext]   # copies a file (e.g. a .elf) into build/disk.img with mcopy, no ISO rebuild (host-side only; the kernel can't exec() from FAT16 until Phase 19)
 make clean    # cleans build/ (⚠ also deletes disk.img — persisted data is lost)
 ```
 

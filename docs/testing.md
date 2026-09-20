@@ -25,14 +25,19 @@ Expected output shape (exact wording may evolve as tests are added):
 [PASS] file duplicate-create regression (Phase 10)
 [PASS] invalid pointer into kernel-only region (0x1000) rejected by syscall
 [PASS] PCI enumeration found at least 1 device
+[PASS] PCI: Intel 440FX host bridge (8086:1237) present [QEMU -machine pc only]
 [PASS] mkdir (selftest_dir)
 [PASS] file write/read roundtrip inside selftest_dir
 [PASS] fork() child inherits cwd_cluster (marker created by child found in selftest_dir)
 [PASS] subdirectory files do not leak into the root
 [PASS] pipe write/read roundtrip
 [PASS] pipe read returns EOF after writer closes
-[INFO] cleanup: no delete/unlink/rmdir syscall exists yet - st_root.txt and selftest_dir/ (with its files) left on disk (harmless)
-Selftest: 13/13 passed
+[PASS] SYS_WRITE >128 bytes accumulates in a FAT16 file
+[PASS] two-process pipe (fork writer -> exec cat -> parent)
+[PASS] waitpid with 3 children: each pid collected with its own result
+[PASS] mkdir/cd 3 levels deep, file at the bottom, cd .. back to /
+[INFO] cleanup: no delete/unlink/rmdir syscall exists yet - st_root.txt, st_big.txt, selftest_dir/ and st_d1/ (with their files) left on disk (harmless)
+Selftest: 18/18 passed
 ```
 
 A `[FAIL] <name>: <reason>` line pinpoints which subsystem broke without

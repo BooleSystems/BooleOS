@@ -22,6 +22,37 @@ called out inline rather than silently "corrected", and `[0.11.0]`–
 Phase 10), not a version string that ever actually appeared in the repo
 at the time.
 
+## [0.17.1] - Documentation patch: v0.17.0 closing gaps + ROADMAP restructuring
+
+Documentation only; no behavior change (`kernel/version.h` is 0.17.1, phase
+still 17 / "Cleanup A").
+
+### Changed
+
+- `docs/testing.md`: the example selftest output still showed the old
+  `13/13` with 13 `[PASS]` lines and the old cleanup note; it now shows the
+  real 18/18 output (including the Intel 440FX check, the two-process pipe,
+  the 3-child `waitpid` and the 3-level `mkdir`/`cd`) and the current
+  `[INFO] cleanup` text.
+- `README.md`: the "Build" section now lists `make run-reboot-test` (`make
+  run` without `-no-reboot`, so `reboot` really restarts the guest) and
+  `make inject` (copies a file into `build/disk.img` with `mcopy` without
+  rebuilding the ISO; host-side only). The planned-phases range is 17–30.
+- `ROADMAP.md`: restructured the end of the plan. The separate "technical
+  prerequisites for DOOM" phase (old Phase 30) is gone: `lseek` moved into
+  Phase 29 (general polish, next to `mv`/`cp`), the deferred Windows test of
+  `docs/setup.md` was added there too, and the DOOM engine port (old Phase
+  31) is now Phase 30 (sub-phases 30-A..D). It needs only Phase 26 and a
+  one-shot single-block memory reservation syscall (DOOM's Z_Zone allocator
+  asks for one big block at startup), not a full userland `malloc`/`free`.
+  The plan now covers Phases 17–30, with v1.0.0 right after Phase 30.
+  `PROGRESS.md` range updated to match. Phase 23's "Independent of Phases
+  17–22" now reads "Independent of the other planned phases".
+- Not part of this patch: the permanent "NullOS vX.Y.Z (anterior)" GRUB
+  entry that CLAUDE.md requires at every merge into `main` was never
+  implemented (neither in v0.16.0 nor v0.17.0). It is tracked for Phase
+  18-B (Safe Mode and the 4-entry GRUB menu).
+
 ## [0.17.0] - Phase 17: Cleanup A (audit fixes, libnos/shell tools, test/build infrastructure)
 
 ### Added

@@ -17,7 +17,7 @@
 #ifndef NULLOS_VERSION_H
 #define NULLOS_VERSION_H
 
-#define NULLOS_VERSION      "0.17.0"
+#define NULLOS_VERSION      "0.17.1"
 #define NULLOS_PHASE        "17"
 #define NULLOS_PHASE_DESC   "Cleanup A"
 

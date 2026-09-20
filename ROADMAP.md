@@ -2,7 +2,7 @@
 
 The table below is the granular phase table: one row per phase AND per
 sub-phase, for both completed work (Phases 0–16, detailed in `README.md`,
-`CHANGELOG.md` and `docs/`) and planned work (Phases 17–31, ending at the
+`CHANGELOG.md` and `docs/`) and planned work (Phases 17–30, ending at the
 v1.0.0 milestone, detailed in the section further down). Planned
 sub-phases become completed rows as they land.
 
@@ -66,22 +66,21 @@ restructuring after Phase 16) use a hyphen and an uppercase letter
 | **27** | Syscall deprecation/compatibility strategy | 🔜 Planned | below |
 | **28** | Second pass of audit fixes | 🔜 Planned | below |
 | **29** | General polish | 🔜 Planned | below |
-| **30** | Technical prerequisites for DOOM (`lseek`, userland `malloc`/`free`) | 🔜 Planned | below |
-| **31** | DOOM engine port (v1.0.0 milestone) | 🔜 Planned | below |
-| **31-A** | Portability layer (`i_video`/`i_system`/`i_input`) | 🔜 Planned | below |
-| **31-B** | `lseek`/`malloc` integration for WAD and memory | 🔜 Planned | below |
-| **31-C** | Full engine build/link, first menu screen | 🔜 Planned | below |
-| **31-D** | Playable without crashing (no audio) | 🔜 Planned | below |
+| **30** | DOOM engine port (v1.0.0 milestone) | 🔜 Planned | below |
+| **30-A** | Portability layer (`i_video`/`i_system`/`i_input`) | 🔜 Planned | below |
+| **30-B** | Single-block memory reservation syscall integration for the engine's allocator | 🔜 Planned | below |
+| **30-C** | Full engine build/link, first menu screen | 🔜 Planned | below |
+| **30-D** | Playable without crashing (no audio) | 🔜 Planned | below |
 
-## Detailed planning (Phases 17–31)
+## Detailed planning (Phases 17–30)
 
 The table above gives the one-line summary of each planned phase. This section expands each one with its goal, intended approach, main risk, and dependencies on other phases, as of the current planning pass. No code has changed as part of this — this is a documentation-only update.
 
-History of the numbering: the phases that used to be listed here as 17–22 (copy-on-write `fork()`, `e1000`, AHCI, xHCI, framebuffer/GUI, syscall deprecation) were renumbered as part of a full restructuring of the roadmap, and are now Phases 20, 23, 24, 25, 26 and 27 respectively. Earlier renumberings (FAT16 subdirectories landing as Phase 15, pipes + real `waitpid()` as Phase 16) are recorded in CHANGELOG.md `[0.15.0]`/`[0.16.0]`.
+History of the numbering: the phases that used to be listed here as 17–22 (copy-on-write `fork()`, `e1000`, AHCI, xHCI, framebuffer/GUI, syscall deprecation) were renumbered as part of a full restructuring of the roadmap, and are now Phases 20, 23, 24, 25, 26 and 27 respectively. Earlier renumberings (FAT16 subdirectories landing as Phase 15, pipes + real `waitpid()` as Phase 16) are recorded in CHANGELOG.md `[0.15.0]`/`[0.16.0]`. The separate "technical prerequisites for DOOM" phase (previously Phase 30) was folded away: `lseek` moved into Phase 29 (general polish, alongside `mv`/`cp`) since it is a generic filesystem capability, and the single-block memory reservation syscall DOOM actually needs was folded directly into the DOOM engine port phase itself (now Phase 30, previously 31) — DOOM does not need a full userland `malloc`/`free`, only Z_Zone-style single upfront reservation (its own allocator asks for one large contiguous block once at startup and manages it itself). The DOOM port was renumbered 31 → 30 accordingly (sub-phases 31-A..D → 30-A..D).
 
 ### Phase 17 — Cleanup A (closed in 0.17.0)
 
-Done; see the table above and CHANGELOG `[0.17.0]`. One item carried over, not blocking: **test `docs/setup.md` end-to-end on Windows** (no machine available; macOS is out of scope). Do it whenever a Windows environment is available, or in Phase 30 (polish).
+Done; see the table above and CHANGELOG `[0.17.0]`. One item carried over, not blocking: **test `docs/setup.md` end-to-end on Windows** (no machine available; macOS is out of scope). Do it whenever a Windows environment is available, or in Phase 29 (polish).
 
 ### Phase 18 — Safety/portability foundation (HAL + Safe Mode)
 
@@ -91,6 +90,7 @@ Done; see the table above and CHANGELOG `[0.17.0]`. One item carried over, not b
 - **18-A — HAL (hardware abstraction layer):** `console_putc()`, `input_poll_key()`, `block_read_sector()`/`block_write_sector()`, `power_reboot()`/`power_shutdown()`, `boot_get_memory_map()`, and `msg(ID)` (centralized text output — English-only table, no translation column and no language selector; this is repositioning text that already exists today, not i18n work).
 
 - **18-B — Safe Mode** (depends on 18-A):
+  - GRUB menu entries (4: default GUI, GUI debug, text mode, Safe Mode) **plus the permanent "NullOS vX.Y.Z (anterior)" entry** that CLAUDE.md requires at every merge into `main` — the previous release's kernel binary must be preserved at build time. Never implemented for v0.16.0/v0.17.0 (`tools/grub.cfg.in` has no such entry); carried over here
   - `key=value` config file, a single disk sector (write atomicity for free thanks to the small size), starting with only `boot_fail_count`
   - Boot-failure counter + automatic entry into Safe Mode after N consecutive failures
   - Runs in ring 0, a branch very early in `kernel_main()`, before the scheduler/`process_spawn_user`/`exec`/`syscall.c` are initialized — never as a user process or a separate kernel
@@ -141,7 +141,7 @@ Done; see the table above and CHANGELOG `[0.17.0]`. One item carried over, not b
 - **Goal:** a modest starting point — respond to `ping` (ICMP echo request).
 - **Approach:** the `e1000` device was already detected via PCI enumeration in Phase 11. Steps: (a) use `pci.c` to find the device's memory BAR and map it via the VMM (it's memory-mapped I/O, unlike port I/O as used by ATA); (b) initialize RX/TX descriptor rings (the Intel datasheet is well documented publicly); (c) parse Ethernet frames; (d) implement ARP; (e) implement enough of IP+ICMP to answer a ping.
 - **Main risk:** the largest scope in the roadmap — split into sub-phases rather than attempting it all at once.
-- **Depends on:** Phase 11 (PCI) — already done. Independent of Phases 17–22.
+- **Depends on:** Phase 11 (PCI) — already done. Independent of the other planned phases.
 
 - 23-A: raw driver — map the memory BAR via the VMM, initialize the RX/TX descriptor rings, send/receive one Ethernet frame
 - 23-B: ARP (resolve MAC from IP)
@@ -199,37 +199,30 @@ Done; see the table above and CHANGELOG `[0.17.0]`. One item carried over, not b
 - **Depends on:** makes the most sense with the command/error surface already mature (hence it sits near the end).
 
 - `mv`/`cp` (once `unlink` — Phase 21 — exists)
-- `lseek` is NOT here — it was moved to Phase 30 as a direct DOOM prerequisite
+- `lseek` (positional file access; a generic filesystem capability like `mv`/`cp` — the DOOM port's WAD reading (`W_wad.c`) needs it as a hard requirement, so it must land before Phase 30)
 - Standardize shell error messages (today each command has its own style)
 - Stress test with a huge command line / many spaces
 - Measure boot time as a reference for future performance
 - Re-read the README with "a stranger's eyes" before the release
 - Multiple commands per line with `;` (low priority, optional)
+- Actually test `docs/setup.md` on Windows (not blocking; no environment was available when this was written — carried over from Phase 17; macOS is out of scope)
 
-### Phase 30 — Technical prerequisites for DOOM
-
-- **Goal:** only what is strictly necessary to run the original DOOM engine, with no audio and no performance target (explicit decision: "I want to run DOOM, not run DOOM with audio and a stable 240fps").
-- **Depends on:** Phase 26 (framebuffer).
-
-- `lseek` — the WAD is accessed with random positioning inside the file, sequential access isn't enough
-- Real userland `malloc`/`free` (a per-process heap, `sbrk`-style) — DOOM allocates memory dynamically and heavily; today only static buffers exist in user programs
-
-### Phase 31 — DOOM engine port (v1.0.0 milestone)
+### Phase 30 — DOOM engine port (v1.0.0 milestone)
 
 - **Goal:** the first proof that NullOS runs real, complex third-party software, closing out pre-1.0. Scope explicitly cut: no audio, no performance target, just actually running.
 - **Licensing:** the engine (GPL since 1997) can go in the repo; the WAD NEVER goes in the repo — the user injects `doom1.wad` (shareware) or Freedoom on their own.
-- **Depends on:** Phase 26 (framebuffer/GUI), Phase 30 (`lseek` + `malloc`).
+- **Depends on:** Phase 26 (framebuffer/GUI). Also uses `lseek` from Phase 29 (general polish).
 
-- 31-A: portability layer (`i_video`/`i_system`/`i_input` in the original code) using NullOS's framebuffer, input and timer — reuse 100% of the original game logic (physics, AI, software rendering) untouched
-- 31-B: integration with `lseek`/`malloc` for WAD reading and the engine's memory allocation
-- 31-C: build/link of the full engine running on NullOS, first menu screen appearing
-- 31-D: actually playing without crashing (functional level, no audio)
+- 30-A: portability layer (`i_video`/`i_system`/`i_input` in the original code) using NullOS's framebuffer, input and timer — reuse 100% of the original game logic (physics, AI, software rendering) untouched
+- 30-B: integrate the single-block memory reservation syscall (a one-shot "reserve N MB contiguous" call, `sbrk`-style but called once — DOOM's Z_Zone allocator requests one large block at startup and manages it itself, so no userland `malloc`/`free` is needed); `lseek` for WAD reading already comes from Phase 29
+- 30-C: build/link of the full engine running on NullOS, first menu screen appearing
+- 30-D: actually playing without crashing (functional level, no audio)
 
-**v1.0.0** closes right after Phase 31.
+**v1.0.0** closes right after Phase 30.
 
 ## Recommended priority order
 
-**Phase 17 → 18 → 19 → 20 → 21 → 22 → 23 → 24 → 25 → 26 → 27 → 28 → 29 → 30 → 31 → v1.0.0.**
+**Phase 17 → 18 → 19 → 20 → 21 → 22 → 23 → 24 → 25 → 26 → 27 → 28 → 29 → 30 → v1.0.0.**
 
 Dependency notes:
 
@@ -237,6 +230,6 @@ Dependency notes:
 - Phase 19 depends on Phase 17 (libnos consolidated).
 - Phase 22-C depends on Phase 20 (COW fork) being closed.
 - Phase 28 depends on Phase 18 (HAL).
-- Phases 30 and 31 depend on Phase 26 (framebuffer); Phase 31 also depends on Phase 30.
+- Phase 30 depends on Phase 26 (framebuffer) and on `lseek` from Phase 29.
 
 Rationale: first close accumulated debt and build the safety/portability foundation, then improve the app-development flow, then the process/filesystem/memory work, then the drivers (lowest environment-change risk first, the largest complexity jump — xHCI — last), then the GUI, and finally the second audit pass, polish and the DOOM port that closes pre-1.0.
