@@ -689,7 +689,7 @@ int fat16_write_file(uint32_t parent_cluster, const char *name, const char *buf,
        actual file payload instead. (dir_buf is a single global buffer
        shared by every FAT16 caller, so another process's FAT16 call
        during that loop's blocking disk writes could still clobber it —
-       known, tracked as Phase 28's whole-operation FAT16 lock.) */
+       known, tracked as Phase 29's whole-operation FAT16 lock.) */
     fat16_dirent_t *entry = (fat16_dirent_t *)dir_buf + index;
 
     /* free the old chain */

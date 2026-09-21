@@ -13,7 +13,7 @@
 // above PMM_LIMIT_ADDR may be handed out. This is a MITIGATION of a
 // pre-existing bug (see PROGRESS.md, "Known technical debt": identity map): an
 // exhausted PMM now fails an allocation instead of faulting in the kernel.
-// The real fix (Phase 22) is to stop accessing frames by physical address.
+// The real fix (Phase 23) is to stop accessing frames by physical address.
 #define PMM_LIMIT_ADDR  0x800000u
 #define PMM_MAX_PAGES   (PMM_LIMIT_ADDR / PAGE_SIZE)   // 2048 pages = 8MB
 #define PMM_BITMAP_SIZE (PMM_MAX_PAGES / 32)

@@ -100,7 +100,7 @@ static void screen_reboot(void) {
         put_title(MSG_SAFE_REBOOT_TITLE);
         console_puts(msg(MSG_SAFE_REBOOT_1));
         console_puts(msg(MSG_SAFE_REBOOT_2));
-        // GUI debug / Text mode entries join this submenu when the GUI exists (Phase 26).
+        // GUI debug / Text mode entries join this submenu when the GUI exists (Phase 27).
         console_puts(msg(MSG_SAFE_REBOOT_BACK));
         if (bootcfg_get_u32(BOOTCFG_KEY_FAIL_COUNT, 0) < BOOTCFG_FAIL_THRESHOLD)
             console_puts(msg(MSG_SAFE_REBOOT_NOTE_LOW));

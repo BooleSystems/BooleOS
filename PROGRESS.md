@@ -13,8 +13,8 @@ Do not duplicate README/docs content here. `README.md` is a lean index
 
 ## Current status
 
-Current version: **0.19.0** (Phase 19 closed, merged to `main`, tagged `v0.19.0`).
-Last closed phase: **Phase 19** (SDK / app-development experience).
+Current version: **0.20.0** (Phase 20 closed, merged to `main`, tagged `v0.20.0`).
+Last closed phase: **Phase 20** (Crash handler leads into Safe Mode).
 
 ### Closed phases (one line each; detail in CHANGELOG.md / README.md)
 
@@ -31,20 +31,23 @@ Last closed phase: **Phase 19** (SDK / app-development experience).
 - Phase 19 — SDK / app-development experience: `exec()` from FAT16 (via
   `vfs_open()`), size-checked ELF loader, `printf` family in libnos, `sdk/` +
   `docs/sdk.md`, `make test-elf` — `0.19.0`.
+- Phase 20 — Crash handler leads into Safe Mode: an unhandled exception saves a
+  record (polling-only ATA I/O), resets, and Safe Mode shows the crash; `crash
+  <de|pf|gpf>` test command — `0.20.0`. The roadmap was renumbered (old 20–30 are
+  now 21–31).
 
-### Next: Phase 20 — Copy-on-write `fork()`
+### Next: Phase 21 — Copy-on-write `fork()`
 
-See ROADMAP.md. (A proposed, still unnumbered phase "Crash handler leads into
-Safe Mode" is recorded there too; it has no place in the sequence yet.) Release
+See ROADMAP.md. Release
 routine after tagging: `make clean && make && make snapshot` on the tagged tree,
-commit `tools/prev/` (now holds v0.18.0, correct for 0.19.0), and publish the
+commit `tools/prev/` (now holds v0.19.0, correct for 0.20.0), and publish the
 GitHub Release with the zip (see the Definition of Done in CLAUDE.md).
-Deferred, not blocking: test `docs/setup.md` on Windows (Phase 29).
+Deferred, not blocking: test `docs/setup.md` on Windows (Phase 30).
 
 ### Future roadmap
 
 See `ROADMAP.md` for the full per-phase breakdown and priority order
-(Phases 17–30, v1.0.0 closes right after Phase 30, the DOOM port). A
+(Phases 21–31, v1.0.0 closes right after Phase 31, the DOOM port). A
 package manager phase was deliberately decided against — don't add one.
 
 ## Architecture decisions (non-obvious; detail lives in the linked docs)
@@ -118,7 +121,7 @@ package manager phase was deliberately decided against — don't add one.
   `docs/safemode.md`.
 - **PMM manages only 0–8 MB (`PMM_LIMIT_ADDR`)** because the kernel touches
   frames by physical address and only 0–8 MB is identity-mapped; a mitigation,
-  not the fix (Phase 22). See `docs/memory.md`.
+  not the fix (Phase 23). See `docs/memory.md`.
 - **HAL (`kernel/hal.h`) is a forwarding layer, not a rewrite**: the
   interface is arch-neutral, `hal.c` just calls the existing drivers; the
   exception handler (`idt.c`) and driver bring-up deliberately bypass it.
@@ -132,8 +135,8 @@ package manager phase was deliberately decided against — don't add one.
 ## Known technical debt
 
 - **A failed `exec()` leaks the page directory it already created** (the same
-  accepted leak as `process_exit()`, Phase 22); the selftest leaks two per run.
-- **The heap is virt == phys inside the process page pool (Phase 22).** The
+  accepted leak as `process_exit()`, Phase 23); the selftest leaks two per run.
+- **The heap is virt == phys inside the process page pool (Phase 23).** The
   kernel heap (4–8 MB virtual) is the identity-mapped range that the PMM also
   hands to processes; `heap_expand()` takes the exact physical page at
   `heap_end` and `heap_init()` pre-grows to 256 KB, but the heap cannot grow
@@ -142,7 +145,7 @@ package manager phase was deliberately decided against — don't add one.
   first `exec()` from FAT16 grew the heap with the lowest free page and
   repointed the identity view of a process's page directory.
 - **The kernel writes to physical pages through the 0–8 MB identity map
-  without checking (pre-existing, real; Phase 22).** The PMM can hand out
+  without checking (pre-existing, real; Phase 23).** The PMM can hand out
   frames above 8 MB while only 0–8 MB is identity-mapped, yet `elf.c:54`
   (`memzero8((uint8_t *)phys, ...)`) and `process.c:262-265` (`process_fork()`
   copying via `parent_phys`/`child_phys`) access a frame by its physical
@@ -160,14 +163,16 @@ package manager phase was deliberately decided against — don't add one.
   its `else` branch, reporting the misleading "saved (no disk)" — a message
   that covers two cases ("no disk", "no file name"). Expected: ask for a name
   (save as). Pre-existing since the editor got file saving.
-- **Safe Mode gaps:** no erase action (needs `unlink`, Phase 21), no fsck-like
+- **Safe Mode gaps:** no erase action (needs `unlink`, Phase 22), no fsck-like
   verify/repair submenu (its own future sub-phase), no GUI-debug/Text-mode
-  entries (Phase 26). `kmain` keeps its own copy of the module/boot-info PMM
+  entries (Phase 27). `kmain` keeps its own copy of the module/boot-info PMM
   reservations that could use `boot_get_module()`/`boot_get_info_region()`.
-- **The selftest's Intel 440FX check (`8086:1237`) breaks by design in Phase 24**
-  (QEMU `-machine q35`): update the IDs then (noted in ROADMAP Phase 24).
+- **The selftest's Intel 440FX check (`8086:1237`) breaks by design in Phase 25**
+  (QEMU `-machine q35`): update the IDs then (noted in ROADMAP Phase 25).
 
-- **ATA `probe()` intermittently reports `no disk`** (first seen in 17-B,
+- **ATA `probe()` intermittently reports `no disk`** (a temporary serial trace,
+  `TEMP-DEBUG(ata-probe)`, is left in `ata.c` to catch it; see `docs/TODO.md`)
+  — (first seen in 17-B,
   before any power.c change). 9 boot/reboot cycles with tracing in 17-C did
   not reproduce it and showed no evidence that `reboot` causes or worsens
   it; every traced probe took the success path (status 0x50 after select,
@@ -186,15 +191,15 @@ package manager phase was deliberately decided against — don't add one.
   returns nothing but 0 (the selftest passes child results through pipes).
 - **`dir_buf`/`sector_buf` in `fat16.c` are global buffers held across
   blocking ATA writes** — a concurrent FAT16 call from another process can
-  clobber them. Fix = whole-operation FAT16 lock, Phase 28
+  clobber them. Fix = whole-operation FAT16 lock, Phase 29
   (`docs/filesystem.md`).
 - **Shell redirection limits:** builtins can't be redirected; `>`/`<`
   can't combine with `|` and pass no arguments (`docs/shell.md`).
 - **`SYS_WRITE` chunks at 128 bytes**, each chunk doing its own dirent
   lookup (slow for large redirected output).
 - **`process_exit()` never frees `cr3` or mapped pages** (accepted leak;
-  slots stay reusable). Needs refcounting from Phase 20 (COW fork); the
-  actual fix is Phase 22.
+  slots stay reusable). Needs refcounting from Phase 21 (COW fork); the
+  actual fix is Phase 23.
 - **No unlink/delete syscall or FAT16 delete path** (cluster-chain free +
   0xE5 dirent). Test files can be overwritten, never removed.
 - **No syscall exposes `kmalloc()` to userland**, so userland can't test a

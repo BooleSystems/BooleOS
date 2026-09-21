@@ -136,7 +136,7 @@ needing to reproduce the bug by hand first.
     cluster) to `st_big.txt` and reads them all back; the regression
     test for the chunked-write data loss (`fat16_write_at`).
 15. **PCI: Intel 440FX host bridge** — `nos_pci_find(0x8086, 0x1237)`
-    (`SYS_PCI_FIND`). **Expected to fail once Phase 24 switches QEMU to
+    (`SYS_PCI_FIND`). **Expected to fail once Phase 25 switches QEMU to
     `-machine q35`** (different host bridge IDs): update the IDs then;
     the generic "≥ 1 device" test (7) is unaffected.
 16. **Two-process pipeline** — a `fork()`ed child writes a known string
@@ -223,8 +223,12 @@ see EOF and exit.
 - There is no exit-code syscall, so test 17 passes each child's result
   through a pipe.
 - A failed `exec()` does not free the page directory it already created
-  (the same accepted leak as `process_exit()`, Phase 22): test 20 leaks two
+  (the same accepted leak as `process_exit()`, Phase 23): test 20 leaks two
   pages per run, out of ~1000 free at boot.
+
+## Manual test: the crash handler (Phase 20)
+
+The crash pipeline (an exception saves a record, the machine resets, Safe Mode shows it) cannot run inside `selftest` — it takes the machine down — so it is tested by hand with the shell's `crash <de|pf|gpf>` debug command, which faults on purpose (`#DE`, a read of `0xDEADBEEF`, `#GP`). **Use `make run-reboot-test`, not `make run`:** the normal `run` passes `-no-reboot` on purpose, which makes QEMU exit when the guest resets. The full procedure and what each step must show are in `docs/safemode.md` ("How to test"). It was run for all three exceptions in one QEMU session, including the reboot between them. Not covered: a crash inside the saving code (the re-entry guard), a crash before the disk is up (the halt path) and a fault in kernel mode.
 
 ## Host-side test of the ELF loader (`make test-elf`)
 

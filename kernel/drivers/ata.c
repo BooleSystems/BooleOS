@@ -9,6 +9,7 @@
 #include "../process.h"
 #include "../scheduler.h"
 #include "../idt.h"
+#include "../serial.h"
 #include "../pic.h"
 #include <stdint.h>
 
@@ -245,8 +246,20 @@ static int wait_bsy_clear_after_reset(uint16_t ctrl) {
     }
 }
 
+/* TEMP-DEBUG(ata-probe): serial-only trace of every probe() step, to catch the
+   intermittent "no disk" (see PROGRESS.md). Remove once the cause is found. */
+static void dbg_s(const char *s) { while (*s) serial_putchar(*s++); }
+static void dbg_h(uint32_t v) {
+    static const char d[] = "0123456789ABCDEF";
+    serial_putchar('0'); serial_putchar('x');
+    for (int i = 28; i >= 0; i -= 4) serial_putchar(d[(v >> i) & 0xF]);
+}
+#define DBG(tag, val) do { dbg_s("[ATADBG] "); dbg_s(tag); dbg_s(" "); dbg_h(val); dbg_s("\n"); } while (0)
+
 /* ── tries to identify a slot; returns 1 if ATA (not ATAPI) ── */
 static int probe(uint16_t base, uint16_t ctrl, uint8_t drive_sel) {
+    DBG("probe base", base); DBG("  sel", drive_sel); DBG("  ticks", timer_get_ticks());
+    DBG("  altstatus BEFORE soft reset", inb(ctrl));
     /* soft reset */
     outb(ctrl, 0x04); outb(ctrl, 0x00);
     /* minimum delay before starting to poll: gives the device time
@@ -255,13 +268,15 @@ static int probe(uint16_t base, uint16_t ctrl, uint8_t drive_sel) {
 
     /* really wait for BSY==0 (timeout ~1s), instead of a fixed
        400ns delay that doesn't guarantee the reset has finished */
-    if (wait_bsy_clear_after_reset(ctrl) < 0) return 0;
+    if (wait_bsy_clear_after_reset(ctrl) < 0) { DBG("  FAIL bsy-after-reset, altstatus", inb(ctrl)); DBG("  ticks", timer_get_ticks()); return 0; }
+    DBG("  bsy cleared, ticks", timer_get_ticks());
 
     outb(base + REG_DRIVE_HEAD, drive_sel);
     /* ~400ns delay: 4 reads of the alternate status register */
     inb(ctrl); inb(ctrl); inb(ctrl); inb(ctrl);
 
     uint8_t status_after_select = inb(base + REG_STATUS);
+    DBG("  status after select", status_after_select);
     if (status_after_select == 0xFF) return 0;  /* floating bus */
 
     /* zero the registers and send IDENTIFY */
@@ -273,6 +288,7 @@ static int probe(uint16_t base, uint16_t ctrl, uint8_t drive_sel) {
     inb(ctrl); inb(ctrl); inb(ctrl); inb(ctrl);
 
     uint8_t st = inb(base + REG_STATUS);
+    DBG("  status after IDENTIFY", st);
     if (st == 0x00) return 0;   /* drive doesn't exist */
 
     /* wait for BSY=0 (quick timeout) */
@@ -285,14 +301,15 @@ static int probe(uint16_t base, uint16_t ctrl, uint8_t drive_sel) {
     uint8_t lba_hi  = inb(base + REG_LBA_HI);
 
     /* ATAPI sets LBA_MID=0x14, LBA_HI=0xEB — discard it */
+    DBG("  mid/hi", ((uint32_t)lba_mid << 8) | lba_hi);
     if (lba_mid == ATAPI_MID && lba_hi == ATAPI_HI) return 0;
 
     /* wait for DRQ */
     for (uint32_t i = 0; i < 0x10000000; i++) {
         st = inb(base + REG_STATUS);
-        if (st & ATA_SR_ERR) return 0;
+        if (st & ATA_SR_ERR) { DBG("  FAIL ERR st", st); return 0; }
         if (st & ATA_SR_DRQ) break;
-        if (i == 0x0FFFFFFF) return 0;
+        if (i == 0x0FFFFFFF) { DBG("  FAIL drq timeout st", st); return 0; }
     }
 
     /* drain the 256 IDENTIFY words */

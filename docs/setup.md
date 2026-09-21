@@ -249,6 +249,10 @@ host-side infrastructure only: the kernel still cannot `exec()` programs
 from FAT16 (that arrives with Phase 19), so it is for putting test files on
 the disk quickly. Don't run it while QEMU has the image open.
 
+`make run-reboot-test` is also the target for testing the **crash handler**
+(`crash pf` in the shell): the reset it triggers must not make QEMU exit, which is
+what `-no-reboot` in the plain `make run` would do (see `docs/safemode.md`).
+
 `make test-elf` builds the kernel's ELF loader (`kernel/elf.c`) for the host and
 tests it on every built user program, plus truncated, corrupted and hostile images
 (`tools/test_elf_load.c`, see `docs/testing.md`); it needs the host `gcc` and a

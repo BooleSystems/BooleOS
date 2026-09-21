@@ -1,0 +1,491 @@
+  USER user/init.c
+make -C ../user
+make[1]: Entering directory '/home/Heitor/NullOS/user'
+make[1]: Nothing to be done for 'all'.
+make[1]: Leaving directory '/home/Heitor/NullOS/user'
+qemu-system-x86_64 -boot d -cdrom ../build/nullos.iso -drive file=../build/disk.img,format=raw,if=ide -m 256M -serial stdio -no-shutdown -display sdl
+  _   _       _ _  ___  ____  
+ | \ | |_   _| | |/ _ \/ ___| 
+ |  \| | | | | | | | | \___ \ 
+ | |\  | |_| | | | |_| |___) |
+ |_| \_|\__,_|_|_|\___/|____/ 
+
+ NullOS v0.20.0-nightly - Phase 19: SDK / app-development experience
+
+------------------------------------------------------------
+[BOOT] Multiboot2: OK
+[BOOT] ramfs module: 0x0x0012F000 - 0x0x001480B0 (102576 bytes)
+[GDT]  Initializing... OK
+[PIC]  Remapping IRQs... OK
+[IDT]  Installing vectors...
+ [1] zeroing IDT at 0x200000
+ [2] exception gates (0-31)
+ [3] IRQ gates (32-33, 46-47)
+ [4] syscall gate (0x80, DPL=3)
+ [5] flush
+ [6] ok!
+       OK
+[TIMER]PIT @ 100Hz... OK
+[KB]   PS/2 keyboard... OK
+[ATA]  Detecting disk... [ATADBG] probe base 0x000001F0
+[ATADBG]   sel 0x000000A0
+[ATADBG]   ticks 0x00000001
+[ATADBG]   altstatus BEFORE soft reset 0x00000000
+[ATADBG]   bsy cleared, ticks 0x00000001
+[ATADBG]   status after select 0x00000050
+[ATADBG]   status after IDENTIFY 0x00000058
+[ATADBG]   mid/hi 0x00000000
+OK
+------------------------------------------------------------
+[PMM]  Initializing...
+   pmm: [1] bitmap at 0x00202000
+   pmm: [2] freeing high mem
+   pmm: [3] marking used regions
+   pmm: [4] free=1024 pages
+       OK
+[PMM] Total: 8192KB Free: 4096KB
+[VMM]  Enabling paging...
+   vmm: [1] zeroing PD and PTs
+   vmm: [2] mapping 0-4MB
+   vmm: [3] mapping 4MB-8MB
+   vmm: [4] CR3 + CR0.PG
+   vmm: [5] ok!
+       OK
+[VMM] PTs used: 0
+[HEAP] Initializing kmalloc...
+   heap: initializing at 0x00400000
+   heap: initial block size=262128 bytes
+       OK
+------------------------------------------------------------
+[SCHED]Initializing scheduler... OK
+[FAT16] Initializing... OK
+[PCI]  Scanning bus... OK
+  00:00.0  vendor=8086 device=1237 class=06/00 progif=00 htype=00
+  00:01.0  vendor=8086 device=7000 class=06/01 progif=00 htype=80
+  00:01.1  vendor=8086 device=7010 class=01/01 progif=80 htype=00
+        bars: bar4=0000C041
+  00:01.3  vendor=8086 device=7113 class=06/80 progif=00 htype=00
+  00:02.0  vendor=1234 device=1111 class=03/00 progif=00 htype=00
+        bars: bar0=FD000008 bar2=FEBF0000
+  00:03.0  vendor=8086 device=100E class=02/00 progif=00 htype=00
+        bars: bar0=FEBC0000 bar1=0000C001
+------------------------------------------------------------
+[RAMFS]Mounting image...
+       OK
+[EXEC] Loading shell...
+[EXEC] spawned: shell entry=0x0x01000130 esp=0x0x02002000
+[SCHED] round-robin cooperative context switching
+[PROC] PID  STATE     RUNS  ESP       NAME
+       1    ready    0    0x001194DC    shell
+------------------------------------------------------------
+
+ Shell started!
+NullOS shell — type 'help'
+> crash pf
+crash: reading the invalid address 0xDEADBEEF (#PF) on purpose...
+
+
+*** KERNEL EXCEPTION ***
+  Exception : #PF Page Fault
+  EIP       : 0x01001111
+  Err Code  : 0x00000004
+  CR2 (addr): 0xDEADBEEF
+  PF flags  : not-present read user
+
+  Crash information saved.
+  Restarting into Safe Mode...
+  _   _       _ _  ___  ____  
+ | \ | |_   _| | |/ _ \/ ___| 
+ |  \| | | | | | | | | \___ \ 
+ | |\  | |_| | | | |_| |___) |
+ |_| \_|\__,_|_|_|\___/|____/ 
+
+ NullOS v0.20.0-nightly - Phase 19: SDK / app-development experience
+
+------------------------------------------------------------
+[BOOT] Multiboot2: OK
+[BOOT] ramfs module: 0x0x0012F000 - 0x0x001480B0 (102576 bytes)
+[GDT]  Initializing... OK
+[PIC]  Remapping IRQs... OK
+[IDT]  Installing vectors...
+ [1] zeroing IDT at 0x200000
+ [2] exception gates (0-31)
+ [3] IRQ gates (32-33, 46-47)
+ [4] syscall gate (0x80, DPL=3)
+ [5] flush
+ [6] ok!
+       OK
+[TIMER]PIT @ 100Hz... OK
+[KB]   PS/2 keyboard... OK
+[ATA]  Detecting disk... [ATADBG] probe base 0x000001F0
+[ATADBG]   sel 0x000000A0
+[ATADBG]   ticks 0x00000001
+[ATADBG]   altstatus BEFORE soft reset 0x00000000
+[ATADBG]   bsy cleared, ticks 0x00000001
+[ATADBG]   status after select 0x00000050
+[ATADBG]   status after IDENTIFY 0x00000058
+[ATADBG]   mid/hi 0x00000000
+OK
+
+*** NullOS SAFE MODE ***
+
+Reason: the system crashed: #PF Page Fault at EIP 0x01001111
+Press 6 for the details of the crash.
+
+  1. Reboot normally (reset boot failure counter)
+  2. Reboot...
+  3. Disk info
+  4. Sector hexdump
+  5. Restricted shell (initializes disk access)
+  6. View last crash details
+
+Select an option (1-6): 
+Rebooting...
+  _   _       _ _  ___  ____  
+ | \ | |_   _| | |/ _ \/ ___| 
+ |  \| | | | | | | | | \___ \ 
+ | |\  | |_| | | | |_| |___) |
+ |_| \_|\__,_|_|_|\___/|____/ 
+
+ NullOS v0.20.0-nightly - Phase 19: SDK / app-development experience
+
+------------------------------------------------------------
+[BOOT] Multiboot2: OK
+[BOOT] ramfs module: 0x0x0012F000 - 0x0x001480B0 (102576 bytes)
+[GDT]  Initializing... OK
+[PIC]  Remapping IRQs... OK
+[IDT]  Installing vectors...
+ [1] zeroing IDT at 0x200000
+ [2] exception gates (0-31)
+ [3] IRQ gates (32-33, 46-47)
+ [4] syscall gate (0x80, DPL=3)
+ [5] flush
+ [6] ok!
+       OK
+[TIMER]PIT @ 100Hz... OK
+[KB]   PS/2 keyboard... OK
+[ATA]  Detecting disk... [ATADBG] probe base 0x000001F0
+[ATADBG]   sel 0x000000A0
+[ATADBG]   ticks 0x00000001
+[ATADBG]   altstatus BEFORE soft reset 0x00000000
+[ATADBG]   bsy cleared, ticks 0x00000001
+[ATADBG]   status after select 0x00000050
+[ATADBG]   status after IDENTIFY 0x00000058
+[ATADBG]   mid/hi 0x00000000
+OK
+------------------------------------------------------------
+[PMM]  Initializing...
+   pmm: [1] bitmap at 0x00202000
+   pmm: [2] freeing high mem
+   pmm: [3] marking used regions
+   pmm: [4] free=1024 pages
+       OK
+[PMM] Total: 8192KB Free: 4096KB
+[VMM]  Enabling paging...
+   vmm: [1] zeroing PD and PTs
+   vmm: [2] mapping 0-4MB
+   vmm: [3] mapping 4MB-8MB
+   vmm: [4] CR3 + CR0.PG
+   vmm: [5] ok!
+       OK
+[VMM] PTs used: 0
+[HEAP] Initializing kmalloc...
+   heap: initializing at 0x00400000
+   heap: initial block size=262128 bytes
+       OK
+------------------------------------------------------------
+[SCHED]Initializing scheduler... OK
+[FAT16] Initializing... OK
+[PCI]  Scanning bus... OK
+  00:00.0  vendor=8086 device=1237 class=06/00 progif=00 htype=00
+  00:01.0  vendor=8086 device=7000 class=06/01 progif=00 htype=80
+  00:01.1  vendor=8086 device=7010 class=01/01 progif=80 htype=00
+        bars: bar4=0000C041
+  00:01.3  vendor=8086 device=7113 class=06/80 progif=00 htype=00
+  00:02.0  vendor=1234 device=1111 class=03/00 progif=00 htype=00
+        bars: bar0=FD000008 bar2=FEBF0000
+  00:03.0  vendor=8086 device=100E class=02/00 progif=00 htype=00
+        bars: bar0=FEBC0000 bar1=0000C001
+------------------------------------------------------------
+[RAMFS]Mounting image...
+       OK
+[EXEC] Loading shell...
+[EXEC] spawned: shell entry=0x0x01000130 esp=0x0x02002000
+[SCHED] round-robin cooperative context switching
+[PROC] PID  STATE     RUNS  ESP       NAME
+       1    ready    0    0x001194DC    shell
+------------------------------------------------------------
+
+ Shell started!
+NullOS shell — type 'help'
+> crash de
+crash: dividing by zero (#DE) on purpose...
+
+
+*** KERNEL EXCEPTION ***
+  Exception : #DE Divide Error
+  EIP       : 0x0100113E
+  Err Code  : 0x00000000
+
+  Crash information saved.
+  Restarting into Safe Mode...
+  _   _       _ _  ___  ____  
+ | \ | |_   _| | |/ _ \/ ___| 
+ |  \| | | | | | | | | \___ \ 
+ | |\  | |_| | | | |_| |___) |
+ |_| \_|\__,_|_|_|\___/|____/ 
+
+ NullOS v0.20.0-nightly - Phase 19: SDK / app-development experience
+
+------------------------------------------------------------
+[BOOT] Multiboot2: OK
+[BOOT] ramfs module: 0x0x0012F000 - 0x0x001480B0 (102576 bytes)
+[GDT]  Initializing... OK
+[PIC]  Remapping IRQs... OK
+[IDT]  Installing vectors...
+ [1] zeroing IDT at 0x200000
+ [2] exception gates (0-31)
+ [3] IRQ gates (32-33, 46-47)
+ [4] syscall gate (0x80, DPL=3)
+ [5] flush
+ [6] ok!
+       OK
+[TIMER]PIT @ 100Hz... OK
+[KB]   PS/2 keyboard... OK
+[ATA]  Detecting disk... [ATADBG] probe base 0x000001F0
+[ATADBG]   sel 0x000000A0
+[ATADBG]   ticks 0x00000001
+[ATADBG]   altstatus BEFORE soft reset 0x00000000
+[ATADBG]   bsy cleared, ticks 0x00000001
+[ATADBG]   status after select 0x00000050
+[ATADBG]   status after IDENTIFY 0x00000058
+[ATADBG]   mid/hi 0x00000000
+OK
+
+*** NullOS SAFE MODE ***
+
+Reason: the system crashed: #DE Divide Error at EIP 0x0100113E
+Press 6 for the details of the crash.
+
+  1. Reboot normally (reset boot failure counter)
+  2. Reboot...
+  3. Disk info
+  4. Sector hexdump
+  5. Restricted shell (initializes disk access)
+  6. View last crash details
+
+Select an option (1-6): 
+Rebooting...
+  _   _       _ _  ___  ____  
+ | \ | |_   _| | |/ _ \/ ___| 
+ |  \| | | | | | | | | \___ \ 
+ | |\  | |_| | | | |_| |___) |
+ |_| \_|\__,_|_|_|\___/|____/ 
+
+ NullOS v0.20.0-nightly - Phase 19: SDK / app-development experience
+
+------------------------------------------------------------
+[BOOT] Multiboot2: OK
+[BOOT] ramfs module: 0x0x0012F000 - 0x0x001480B0 (102576 bytes)
+[GDT]  Initializing... OK
+[PIC]  Remapping IRQs... OK
+[IDT]  Installing vectors...
+ [1] zeroing IDT at 0x200000
+ [2] exception gates (0-31)
+ [3] IRQ gates (32-33, 46-47)
+ [4] syscall gate (0x80, DPL=3)
+ [5] flush
+ [6] ok!
+       OK
+[TIMER]PIT @ 100Hz... OK
+[KB]   PS/2 keyboard... OK
+[ATA]  Detecting disk... [ATADBG] probe base 0x000001F0
+[ATADBG]   sel 0x000000A0
+[ATADBG]   ticks 0x00000001
+[ATADBG]   altstatus BEFORE soft reset 0x00000000
+[ATADBG]   bsy cleared, ticks 0x00000001
+[ATADBG]   status after select 0x00000050
+[ATADBG]   status after IDENTIFY 0x00000058
+[ATADBG]   mid/hi 0x00000000
+OK
+------------------------------------------------------------
+[PMM]  Initializing...
+   pmm: [1] bitmap at 0x00202000
+   pmm: [2] freeing high mem
+   pmm: [3] marking used regions
+   pmm: [4] free=1024 pages
+       OK
+[PMM] Total: 8192KB Free: 4096KB
+[VMM]  Enabling paging...
+   vmm: [1] zeroing PD and PTs
+   vmm: [2] mapping 0-4MB
+   vmm: [3] mapping 4MB-8MB
+   vmm: [4] CR3 + CR0.PG
+   vmm: [5] ok!
+       OK
+[VMM] PTs used: 0
+[HEAP] Initializing kmalloc...
+   heap: initializing at 0x00400000
+   heap: initial block size=262128 bytes
+       OK
+------------------------------------------------------------
+[SCHED]Initializing scheduler... OK
+[FAT16] Initializing... OK
+[PCI]  Scanning bus... OK
+  00:00.0  vendor=8086 device=1237 class=06/00 progif=00 htype=00
+  00:01.0  vendor=8086 device=7000 class=06/01 progif=00 htype=80
+  00:01.1  vendor=8086 device=7010 class=01/01 progif=80 htype=00
+        bars: bar4=0000C041
+  00:01.3  vendor=8086 device=7113 class=06/80 progif=00 htype=00
+  00:02.0  vendor=1234 device=1111 class=03/00 progif=00 htype=00
+        bars: bar0=FD000008 bar2=FEBF0000
+  00:03.0  vendor=8086 device=100E class=02/00 progif=00 htype=00
+        bars: bar0=FEBC0000 bar1=0000C001
+------------------------------------------------------------
+[RAMFS]Mounting image...
+       OK
+[EXEC] Loading shell...
+[EXEC] spawned: shell entry=0x0x01000130 esp=0x0x02002000
+[SCHED] round-robin cooperative context switching
+[PROC] PID  STATE     RUNS  ESP       NAME
+       1    ready    0    0x001194DC    shell
+------------------------------------------------------------
+
+ Shell started!
+NullOS shell — type 'help'
+> crash gpf
+crash: loading an invalid segment selector (#GP) on purpose...
+
+
+*** KERNEL EXCEPTION ***
+  Exception : #GP General Protection
+  EIP       : 0x010010F8
+  Err Code  : 0x0000FFFC
+
+  Crash information saved.
+  Restarting into Safe Mode...
+  _   _       _ _  ___  ____  
+ | \ | |_   _| | |/ _ \/ ___| 
+ |  \| | | | | | | | | \___ \ 
+ | |\  | |_| | | | |_| |___) |
+ |_| \_|\__,_|_|_|\___/|____/ 
+
+ NullOS v0.20.0-nightly - Phase 19: SDK / app-development experience
+
+------------------------------------------------------------
+[BOOT] Multiboot2: OK
+[BOOT] ramfs module: 0x0x0012F000 - 0x0x001480B0 (102576 bytes)
+[GDT]  Initializing... OK
+[PIC]  Remapping IRQs... OK
+[IDT]  Installing vectors...
+ [1] zeroing IDT at 0x200000
+ [2] exception gates (0-31)
+ [3] IRQ gates (32-33, 46-47)
+ [4] syscall gate (0x80, DPL=3)
+ [5] flush
+ [6] ok!
+       OK
+[TIMER]PIT @ 100Hz... OK
+[KB]   PS/2 keyboard... OK
+[ATA]  Detecting disk... [ATADBG] probe base 0x000001F0
+[ATADBG]   sel 0x000000A0
+[ATADBG]   ticks 0x00000001
+[ATADBG]   altstatus BEFORE soft reset 0x00000000
+[ATADBG]   bsy cleared, ticks 0x00000002
+[ATADBG]   status after select 0x00000050
+[ATADBG]   status after IDENTIFY 0x00000058
+[ATADBG]   mid/hi 0x00000000
+OK
+
+*** NullOS SAFE MODE ***
+
+Reason: the system crashed: #GP General Protection at EIP 0x010010F8
+Press 6 for the details of the crash.
+
+  1. Reboot normally (reset boot failure counter)
+  2. Reboot...
+  3. Disk info
+  4. Sector hexdump
+  5. Restricted shell (initializes disk access)
+  6. View last crash details
+
+Select an option (1-6): 
+Rebooting...
+  _   _       _ _  ___  ____  
+ | \ | |_   _| | |/ _ \/ ___| 
+ |  \| | | | | | | | | \___ \ 
+ | |\  | |_| | | | |_| |___) |
+ |_| \_|\__,_|_|_|\___/|____/ 
+
+ NullOS v0.20.0-nightly - Phase 19: SDK / app-development experience
+
+------------------------------------------------------------
+[BOOT] Multiboot2: OK
+[BOOT] ramfs module: 0x0x0012F000 - 0x0x001480B0 (102576 bytes)
+[GDT]  Initializing... OK
+[PIC]  Remapping IRQs... OK
+[IDT]  Installing vectors...
+ [1] zeroing IDT at 0x200000
+ [2] exception gates (0-31)
+ [3] IRQ gates (32-33, 46-47)
+ [4] syscall gate (0x80, DPL=3)
+ [5] flush
+ [6] ok!
+       OK
+[TIMER]PIT @ 100Hz... OK
+[KB]   PS/2 keyboard... OK
+[ATA]  Detecting disk... [ATADBG] probe base 0x000001F0
+[ATADBG]   sel 0x000000A0
+[ATADBG]   ticks 0x00000001
+[ATADBG]   altstatus BEFORE soft reset 0x00000000
+[ATADBG]   bsy cleared, ticks 0x00000001
+[ATADBG]   status after select 0x00000050
+[ATADBG]   status after IDENTIFY 0x00000058
+[ATADBG]   mid/hi 0x00000000
+OK
+------------------------------------------------------------
+[PMM]  Initializing...
+   pmm: [1] bitmap at 0x00202000
+   pmm: [2] freeing high mem
+   pmm: [3] marking used regions
+   pmm: [4] free=1024 pages
+       OK
+[PMM] Total: 8192KB Free: 4096KB
+[VMM]  Enabling paging...
+   vmm: [1] zeroing PD and PTs
+   vmm: [2] mapping 0-4MB
+   vmm: [3] mapping 4MB-8MB
+   vmm: [4] CR3 + CR0.PG
+   vmm: [5] ok!
+       OK
+[VMM] PTs used: 0
+[HEAP] Initializing kmalloc...
+   heap: initializing at 0x00400000
+   heap: initial block size=262128 bytes
+       OK
+------------------------------------------------------------
+[SCHED]Initializing scheduler... OK
+[FAT16] Initializing... OK
+[PCI]  Scanning bus... OK
+  00:00.0  vendor=8086 device=1237 class=06/00 progif=00 htype=00
+  00:01.0  vendor=8086 device=7000 class=06/01 progif=00 htype=80
+  00:01.1  vendor=8086 device=7010 class=01/01 progif=80 htype=00
+        bars: bar4=0000C041
+  00:01.3  vendor=8086 device=7113 class=06/80 progif=00 htype=00
+  00:02.0  vendor=1234 device=1111 class=03/00 progif=00 htype=00
+        bars: bar0=FD000008 bar2=FEBF0000
+  00:03.0  vendor=8086 device=100E class=02/00 progif=00 htype=00
+        bars: bar0=FEBC0000 bar1=0000C001
+------------------------------------------------------------
+[RAMFS]Mounting image...
+       OK
+[EXEC] Loading shell...
+[EXEC] spawned: shell entry=0x0x01000130 esp=0x0x02002000
+[SCHED] round-robin cooperative context switching
+[PROC] PID  STATE     RUNS  ESP       NAME
+       1    ready    0    0x001194DC    shell
+------------------------------------------------------------
+
+ Shell started!
+NullOS shell — type 'help'
+> 

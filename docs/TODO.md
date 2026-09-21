@@ -15,20 +15,14 @@ only) whenever a version is closed.
 
 ## Pending
 
-Phase 20 (crash handler leads into Safe Mode), work in progress:
+Known, intermittent, NOT blocking any phase:
 
-- WIP: documentar o teste manual do crash handler em `docs/testing.md` (o
-  procedimento com `make run-reboot-test` e `crash <de|pf|gpf>` está em
-  `docs/safemode.md`; falta o ponteiro/resumo em testing.md)
-  (arquivos: kernel/crashdump.c, kernel/idt.c, user/shell.c).
-- TODO later doc. Related files: docs/setup.md — `make run-reboot-test` é o
-  alvo certo para testar o crash handler (o `run` tem `-no-reboot`)
-  (arquivos: tools/Makefile).
-- TODO later: teste de kernel-mode fault (hoje o `crash` falha em ring 3), da
-  guarda de re-entrada (falha durante a gravação) e do caminho "não salvou"
-  (crash antes do disco) — não cobertos pelo teste manual atual
-  (arquivos: kernel/idt.c, kernel/crashdump.c).
-- At the phase close: README (table + banner), CHANGELOG (`[Unreleased]` ->
-  `[0.20.0]`), ROADMAP (renumber: this phase becomes 20, the old 20-30 shift by
-  one; mark it done), `version.h`, PROGRESS. Ver "Definition of Done" no
-  CLAUDE.md.
+- TODO later: `probe()` in `kernel/drivers/ata.c` occasionally reports "no disk"
+  at boot (seen in 17-B, in a Phase 20 test session, never reproduced on demand:
+  9 cycles in 17-C and a 6-boot crash/reboot session in Phase 20 all showed
+  `bsy cleared` in 1-2 ticks and status `0x58` after IDENTIFY). The temporary
+  serial-only trace `TEMP-DEBUG(ata-probe)` (`[ATADBG]` lines, with its `dbg_*`
+  helpers, in `kernel/drivers/ata.c`) is deliberately LEFT in the kernel to catch
+  the next occurrence: when it happens, keep the serial log of that boot and of the
+  one before it, look at `altstatus BEFORE soft reset` and the step that failed,
+  fix the cause, then REMOVE the trace. Related files: kernel/drivers/ata.c.

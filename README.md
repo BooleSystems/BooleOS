@@ -9,7 +9,7 @@
  | |\  | |_| | | | |_| |___) |
  |_| \_|\__,_|_|_|\___/|____/ 
 
- NullOS v0.19.0 - Phase 19: SDK / app-development experience
+ NullOS v0.20.0 - Phase 20: Crash handler leads into Safe Mode
 ```
 
 ## Overview
@@ -42,8 +42,9 @@ See [CHANGELOG.md](CHANGELOG.md) for version history and [ROADMAP.md](ROADMAP.md
 | **17** | Cleanup A: audit fixes (`pmm_init` overflow, checked `vmm_map_page` returns, atomic pid/slot allocation, `fat16_init` validation), edit.c Shift and `process_spawn_user` race fixes, libnos string helpers, stream FAT16 writes (`fat16_write_at`), shell `>`/`<` redirection, `cat <file>`, `pwd`/`SYS_GETCWD`, `reboot`/`shutdown`, selftest expanded to 18 tests (`SYS_PCI_FIND`), `make inject` / `make run-reboot-test` | ✅ Done |
 | **18** | Safety/portability foundation: a hardware abstraction layer (`kernel/hal.*`: console, input, block I/O, power, boot info — [docs/hal.md](docs/hal.md)); `msg(ID)` centralized output text for the kernel and the userland; the exception handler and all disk access through the HAL; `pmm_init()` on the bootloader's real memory map (8 MB allocatable ceiling); and **Safe Mode** ([docs/safemode.md](docs/safemode.md)): boot failure counter in a raw config sector, automatic entry after 3 failed boots or from the GRUB menu, a text UI (reboot, disk info, sector hexdump) and a restricted read-only shell, plus a "previous release" GRUB entry (`tools/prev/`, `make snapshot`) | ✅ Done |
 | **19** | SDK / app-development experience: `exec()` loads programs from FAT16 as well as the ramfs (found by `vfs_open()`, read from disk by the directory-entry size), so a program no longer needs an ISO rebuild to be tested; the ELF loader validates the file against its real size; a minimal `printf` family in libnos (`printf`, `sprintf`, `snprintf`, `vsnprintf`); an SDK template and Makefile (`sdk/`, `make inject`) and a developer guide ([docs/sdk.md](docs/sdk.md)); `make test-elf` (host-side loader test); a kernel heap fix (its pages must be virt == phys) | ✅ Done |
+| **20** | Crash handler leads into Safe Mode: an unhandled CPU exception saves a crash record in the boot config sector (polling-only ATA I/O, no heap or scheduler), shows the red screen and resets the machine; the next boot goes to Safe Mode with the reason and a "View last crash details" screen; the `crash <de\|pf\|gpf>` shell command tests the pipeline ([docs/safemode.md](docs/safemode.md)) | ✅ Done |
 
-For planned Phases 20–30, see **[ROADMAP.md](ROADMAP.md)**.
+For planned Phases 21–31, see **[ROADMAP.md](ROADMAP.md)**.
 
 ## Documentation
 
@@ -56,7 +57,7 @@ Detailed, per-system documentation lives under `docs/`:
 - [docs/filesystem.md](docs/filesystem.md) — ATA PIO driver, FAT16, VFS
 - [docs/pipes.md](docs/pipes.md) — in-kernel pipes, `SYS_EXEC_PIPE`, the shell's `cmd1 | cmd2`
 - [docs/hal.md](docs/hal.md) — hardware abstraction layer (console, input, block I/O, power, boot memory map)
-- [docs/safemode.md](docs/safemode.md) — Safe Mode: boot failure counter, config sector, text UI, restricted shell, previous-release entry
+- [docs/safemode.md](docs/safemode.md) — Safe Mode: boot failure counter, config sector, text UI, restricted shell, previous-release entry, and the crash handler
 - [docs/security.md](docs/security.md) — userland pointer validation, Phase 14 bug history
 - [docs/pci.md](docs/pci.md) — PCI bus enumeration
 - [docs/shell.md](docs/shell.md) — interactive shell and commands
@@ -87,6 +88,7 @@ kernel/
   power.c/h           power_reboot() / power_shutdown()
   hal.c/h             Hardware abstraction layer (console/input/block/boot info) — see docs/hal.md
   bootcfg.c/h         boot config sector (LBA 1, key=value) — see docs/safemode.md
+  crashdump.c/h       the crash path: save the crash record, reset — see docs/safemode.md
   messages.c/h        msg(ID): central table of kernel output text — see docs/hal.md
   pipe.c/h            Inter-process pipes (fixed pool)
   tss.c               Task State Segment

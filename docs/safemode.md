@@ -2,7 +2,7 @@
 
 Safe Mode is a recovery environment inside the **same kernel binary**, entered very early in `kmain()` when the previous boots kept failing (or when GRUB asks for it). It exists to survive bugs in exactly the subsystems it must not depend on, so it runs in ring 0 before the scheduler, `process_spawn_user`, `exec` and the syscall layer are initialized. This document holds the design as approved and what is implemented so far.
 
-**Status: complete (pass 5 of 5).** Failure counter and entry condition, tier-1 text UI, tier-2 restricted shell, and the GRUB entries (Safe Mode, previous release) with the release tooling are implemented. Phase 18-B is closed; the GUI-debug / Text-mode entries wait for the GUI (Phase 26).
+**Status: complete (pass 5 of 5).** Failure counter and entry condition, tier-1 text UI, tier-2 restricted shell, and the GRUB entries (Safe Mode, previous release) with the release tooling are implemented. Phase 18-B is closed; the GUI-debug / Text-mode entries wait for the GUI (Phase 27).
 
 ## Crash handler: a crash restarts into Safe Mode (Phase 20)
 
@@ -113,14 +113,14 @@ Main menu item **5. Restricted shell (initializes disk access)**. Tier 1 never t
   - `cd [dir]` — no argument = root;
   - `back` — returns to the menu; nothing is torn down, and the current directory is kept for the next visit.
   Unknown command: an error and the prompt continues.
-- **Deliberately not here:** file writes/editing, delete (no `unlink` until Phase 21), an fsck-like check, and the Tier-1 screens (reboot, disk info, hexdump stay in the main menu). It is a read/navigation-only recovery aid so it cannot corrupt more.
+- **Deliberately not here:** file writes/editing, delete (no `unlink` until Phase 22), an fsck-like check, and the Tier-1 screens (reboot, disk info, hexdump stay in the main menu). It is a read/navigation-only recovery aid so it cannot corrupt more.
 
 ## Implemented in pass 3: the tier-1 TUI (`kernel/safemode.c`)
 
 Runs before the PMM/VMM/heap/scheduler, so it uses only the HAL (console, input, block I/O, power) and bootcfg, with **static buffers only** (a 512-byte sector buffer, a small input buffer; no `kmalloc`). All text is in the message table (`MSG_SAFE_*`). The main menu is redrawn every time you come back to it; an invalid key is ignored. There is no "continue booting": Safe Mode is left only by rebooting, never resumed in place (that would mean trusting the subsystems that may be why we are here).
 
 1. **Reboot normally** — sets `boot_fail_count` to 0, writes it, `power_reboot()`. If the counter can't be written, it warns and reboots anyway.
-2. **Reboot...** — submenu: *1. Normal (reset counter)* (same as item 1), *2. Safe Mode (keep counter)* (`power_reboot()` without touching the counter), *0 / ESC* back. Option 2 lands in Safe Mode again only while the counter is at or above the limit; if Safe Mode was entered with the `safemode` flag and the counter is lower, the next boot is a normal one, and the submenu says so. GUI debug / Text mode join this submenu with the GUI (Phase 26).
+2. **Reboot...** — submenu: *1. Normal (reset counter)* (same as item 1), *2. Safe Mode (keep counter)* (`power_reboot()` without touching the counter), *0 / ESC* back. Option 2 lands in Safe Mode again only while the counter is at or above the limit; if Safe Mode was entered with the `safemode` flag and the counter is lower, the next boot is a normal one, and the submenu says so. GUI debug / Text mode join this submenu with the GUI (Phase 27).
 3. **Disk info** — reads LBA 0 raw (no FAT16 initialization, which would need the heap) and prints bytes/sector, sectors/cluster, reserved sectors, number of FATs, root entries, total sectors, sectors/FAT, the volume label and FS-type fields (when the extended boot record signature `0x29` is present) and whether the boot signature `55 AA` is valid; then whether the config sector is available and the current `boot_fail_count`. Any key returns.
 4. **Sector hexdump** — asks for an LBA (decimal digits only, at most 10, Enter confirms, Backspace corrects, ESC cancels; empty, non-digit and overflowing input are rejected with a message and asked again), reads it and prints 16 bytes per line as hex plus an ASCII column (`.` for non-printable). A sector is shown in **two pages** of 256 bytes because 32 lines would not fit the 25-line screen; any key advances/returns. LBAs above `0x0FFFFFFF` are refused (the ATA driver is LBA28 and would silently alias).
 
@@ -157,12 +157,12 @@ The kernel used to ignore the Multiboot2 command line (the `debug` word of the "
 
 ## Design for the remaining passes (approved)
 
-- **Counter** (implemented in pass 2, see above). `boot_fail_count` in the config sector. Incremented right after the disk is up, before anything that can fail (i.e. `ata_init()` moves to just after `sti`, before the PMM; today it is called exactly once, in `kmain`, so this is a relocation, not a second call). If the count is already >= N (N = 3) at boot, or the `safemode` flag is present, `kmain` branches to Safe Mode **without incrementing further**. Reset to 0 when the system is considered up: the first `SYS_READ` on fd 0 by any process (an interactive read only happens after the prompt is printed; with the GUI in Phase 26 the criterion becomes "compositor ready"). Safe Mode's "reboot normally" zeroes the counter first. Failures before the disk is initialized (GDT/IDT/PIC/PIT/keyboard) cannot be counted.
+- **Counter** (implemented in pass 2, see above). `boot_fail_count` in the config sector. Incremented right after the disk is up, before anything that can fail (i.e. `ata_init()` moves to just after `sti`, before the PMM; today it is called exactly once, in `kmain`, so this is a relocation, not a second call). If the count is already >= N (N = 3) at boot, or the `safemode` flag is present, `kmain` branches to Safe Mode **without incrementing further**. Reset to 0 when the system is considered up: the first `SYS_READ` on fd 0 by any process (an interactive read only happens after the prompt is printed; with the GUI in Phase 27 the criterion becomes "compositor ready"). Safe Mode's "reboot normally" zeroes the counter first. Failures before the disk is initialized (GDT/IDT/PIC/PIT/keyboard) cannot be counted.
 - **Two tiers** (both implemented). The decision is taken before the PMM, so:
   - *Tier 1* uses only what is ready: console, keyboard, block HAL, power, PCI — menu, counter reset, reboot submenu, disk info, sector hexdump. No heap.
   - *Tier 2* (restricted shell with files) initializes the PMM, VMM, heap and FAT16 **on demand** from a menu entry (`fat16_init()` calls `kmalloc` for the FAT cache). If that crashes, the counter is still >= N, so the next boot lands in Safe Mode again.
 - **TUI.** Numbered menu with submenus; destructive actions always go through their own confirmation screen; fsck-like operations split into verify-only vs verify-and-repair. Restricted shell: built-ins only, calling FAT16/HAL functions directly (no processes, no `run`), static `help` text.
-- **GRUB** (implemented in passes 2 and 5). Entries: Default, serial debug mode, Safe Mode (`multiboot2 /boot/nullos.elf safemode`), and a permanent "previous release" entry. The GUI-debug and Text-mode entries wait for the GUI (Phase 26). The previous-release entry needs **both** the old `nullos.elf` and the old `ramfs.img` (the userland ABI must match the kernel), kept in a tracked `tools/prev/` and refreshed by a `make snapshot` step after each release tag.
+- **GRUB** (implemented in passes 2 and 5). Entries: Default, serial debug mode, Safe Mode (`multiboot2 /boot/nullos.elf safemode`), and a permanent "previous release" entry. The GUI-debug and Text-mode entries wait for the GUI (Phase 27). The previous-release entry needs **both** the old `nullos.elf` and the old `ramfs.img` (the userland ABI must match the kernel), kept in a tracked `tools/prev/` and refreshed by a `make snapshot` step after each release tag.
 
 ## Files
 

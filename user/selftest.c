@@ -204,18 +204,18 @@ void _start(void) {
 
        ###################################################################
        # WARNING — THIS TEST WILL (EXPECTEDLY) BREAK IN PHASE 24 (AHCI). #
-       # Phase 24 switches QEMU to `-machine q35`, whose host bridge is  #
+       # Phase 25 switches QEMU to `-machine q35`, whose host bridge is  #
        # a different chip (Intel 82G33, 8086:29c0), so 8086:1237 is no   #
        # longer enumerated. That is NOT a kernel bug: whoever does       #
-       # Phase 24 must update the vendor/device IDs below (see also      #
-       # ROADMAP.md, Phase 24). The generic ">= 1 device" test above stays valid.#
+       # Phase 25 must update the vendor/device IDs below (see also      #
+       # ROADMAP.md, Phase 25). The generic ">= 1 device" test above stays valid.#
        ################################################################### */
     {
         if (nos_pci_find(0x8086, 0x1237))
             st_pass("PCI: Intel 440FX host bridge (8086:1237) present [QEMU -machine pc only]");
         else
             st_fail("PCI: Intel 440FX host bridge (8086:1237) present [QEMU -machine pc only]",
-                     "not found (expected if QEMU no longer runs -machine pc, e.g. Phase 24's q35)");
+                     "not found (expected if QEMU no longer runs -machine pc, e.g. Phase 25's q35)");
     }
 
     /* 8-11. Phase 15: FAT16 subdirectories. Everything below runs on

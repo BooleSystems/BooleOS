@@ -22,7 +22,7 @@ called out inline rather than silently "corrected", and `[0.11.0]`–
 Phase 10), not a version string that ever actually appeared in the repo
 at the time.
 
-## [Unreleased]
+## [0.20.0] - 2026-09-20 - Phase 20: Crash handler leads into Safe Mode
 
 ### Added
 
@@ -46,9 +46,27 @@ at the time.
   mid-command), a static buffer, no heap. New `bootcfg_buf_*` functions (the text
   store on an explicit buffer, hex numbers, `bootcfg_remove()`), `timer_poll_delay_ms()`,
   `power_reboot_request()`, `exception_name()`.
+- A temporary serial-only trace of every step of the ATA `probe()`
+  (`[ATADBG]`, marked `TEMP-DEBUG(ata-probe)` in `kernel/drivers/ata.c`) stays in
+  the kernel to catch the rare intermittent "no disk" at boot (see `PROGRESS.md`);
+  it writes to the serial port only.
 - **`crash <de|pf|gpf>` shell command**, a debug tool that faults on purpose
   (#DE, a read of `0xDEADBEEF`, #GP) so the whole pipeline can be tested repeatably
   with `make run-reboot-test`. Documented in `docs/safemode.md`.
+
+### Changed
+
+- **Roadmap renumbered:** the crash-handler phase took number 20, so every
+  planned phase after it moved up by one (copy-on-write `fork()` is now 21,
+  `unlink()` 22, memory release 23, `e1000` 24, AHCI 25, xHCI 26, framebuffer/GUI
+  27, syscall deprecation 28, audit pass 2 29, polish 30, the DOOM port 31).
+  References in `ROADMAP.md`, `PROGRESS.md`, the docs and code comments were
+  updated; older CHANGELOG entries keep the numbers of their time.
+- `power_reboot()` was split: `power_reboot_request()` only pulses the reset line.
+- Documentation: `docs/safemode.md` (the crash handler, the record format, the
+  flow, how to test), `docs/kernel.md`, `docs/hal.md` (the polled block I/O),
+  `docs/shell.md` (`crash`), `docs/testing.md` (the manual crash test),
+  `docs/setup.md` (`make run-reboot-test` for the crash test) and the README.
 
 ## [0.19.0] - 2026-09-20 - Phase 19: SDK / app-development experience
 
