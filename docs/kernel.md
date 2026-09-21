@@ -31,6 +31,10 @@
 - **String/memory helpers** (`user/lib/nullos.c/h`): `memcpy`/`memset`/`memmove`/`memcmp`/`strlen`/`strcmp`/`strncmp` with the standard libc names and signatures on purpose, because GCC may itself emit calls to `memcpy`/`memset`/`memmove` (struct copies, loop-idiom recognition) and those calls must resolve; `memcpy`/`memset`/`memmove` use `rep movsb`/`rep stosb` rather than C loops so GCC can't turn the implementation into a call to itself. `nos_uitoa(value, buf, size)` formats an unsigned number. The per-program copies of `strlen`/`uitoa`/`strcmp` were removed.
 - `nos_getcwd`, `nos_reboot`, `nos_shutdown`, `nos_pci_find` are the wrappers for `SYS_GETCWD` (30), `SYS_REBOOT` (31), `SYS_SHUTDOWN` (32), `SYS_PCI_FIND` (33).
 
+## Exceptions: the crash handler (Phase 20)
+
+An unhandled CPU exception is fatal (there is no per-process fault isolation yet). `exception_handler()` (`kernel/idt.c`) no longer just halts: with interrupts off it saves a crash record into the boot config sector through polling-only ATA I/O, prints the red screen, and resets the machine (8042 pulse, then a triple fault), after which Safe Mode shows the crash. If the record cannot be saved it halts with the screen readable instead. The full description, the record format and how to test it are in `docs/safemode.md`. Supporting pieces: `timer_poll_delay_ms()` (a delay that reads the PIT counter directly, usable with interrupts off) and `power_reboot_request()` (the reset pulse without the wait or the message).
+
 ## Power: reboot and shutdown (`kernel/power.c/h`)
 
 - `power_reboot()`: waits (bounded) for the 8042 input buffer to empty, then writes `0xFE` to port `0x64` (pulses the CPU reset line). If the machine is still running afterwards it prints "reboot failed: keyboard-controller reset had no effect" and returns -1.

@@ -1,8 +1,93 @@
-# Safe Mode and the boot configuration sector (Phase 18-B)
+# Safe Mode, the boot configuration sector and the crash handler (Phases 18-B and 20)
 
 Safe Mode is a recovery environment inside the **same kernel binary**, entered very early in `kmain()` when the previous boots kept failing (or when GRUB asks for it). It exists to survive bugs in exactly the subsystems it must not depend on, so it runs in ring 0 before the scheduler, `process_spawn_user`, `exec` and the syscall layer are initialized. This document holds the design as approved and what is implemented so far.
 
 **Status: complete (pass 5 of 5).** Failure counter and entry condition, tier-1 text UI, tier-2 restricted shell, and the GRUB entries (Safe Mode, previous release) with the release tooling are implemented. Phase 18-B is closed; the GUI-debug / Text-mode entries wait for the GUI (Phase 26).
+
+## Crash handler: a crash restarts into Safe Mode (Phase 20)
+
+Before this, an unhandled CPU exception ended in a red screen and a `hlt` loop: the machine needed a manual reset and the context of the error was lost as soon as it restarted. Now the exception handler **saves a crash record**, **resets the machine**, and the next boot lands in Safe Mode with the reason at the top and a screen with the full details.
+
+### The flow
+
+1. **`exception_handler()`** (`kernel/idt.c`) runs with interrupts off (exception gates are interrupt gates; it also executes `cli`). First it calls `crash_begin()`: if a crash is *already* being handled — a second exception while saving or printing — it skips the dump and goes straight to the reset, so a fault during the dump cannot loop.
+2. **`crash_save()`** (`kernel/crashdump.c`) runs **first**, before any output: it saves the record into the boot configuration sector (LBA 1, the same sector as `boot_fail_count`).
+3. The red screen is printed as before (also mirrored to serial), with "Crash information saved. Restarting into Safe Mode...".
+4. A 3-second pause (raw PIT polling) keeps the screen readable, then **`crash_reset()`**.
+5. On the next boot `kmain` sees `crash_pending=1` and goes straight to Safe Mode (reason *crash*, whatever the failure counter says).
+6. Safe Mode shows the crash banner and the new menu item **6. View last crash details**.
+
+If the record **could not be saved** (a crash before the disk came up, a disk without the reserved config sector, the disk not answering) the handler does **not** reset: it halts with the screen readable ("Not restarting... Reset the machine by hand"), as before. Resetting would throw away the only copy of the error, and a crash during boot would turn into a silent reboot loop.
+
+### Why the save is separate and minimal
+
+Inside the handler the normal disk path cannot work (`ata.c` blocks on the disk IRQ through the scheduler, which is unusable there), and the state may be corrupted, so the save depends on nothing that could be the thing that broke:
+
+- **Polling-only ATA I/O:** `ata_crash_read_sector()`/`ata_crash_write_sector()` (exposed as `block_read_sector_polled()`/`block_write_sector_polled()` in the HAL). They take no lock (not the ATA exclusion gate), use no IRQ (they set `nIEN`) and no scheduler, and every wait is a bounded spin count (the timer IRQ is off, so PIT ticks do not advance). If the channel was left mid-command (BSY or DRQ set by whatever crashed) they soft-reset it first.
+- **No heap, static buffer:** the sector is built in a static 512-byte buffer in `crashdump.c` (not on the stack — a stack overflow is one of the crashes it must survive) with the explicit-buffer text-store functions `bootcfg_buf_*` (no disk, no global state).
+- **Read-modify-write:** it first reads the sector as it is on disk so `boot_fail_count` and any other key survive; a sector without the magic line becomes a fresh config.
+
+### The reset
+
+`power_reboot_request()` (split out of `power_reboot()`; the 8042 command `0xFE`, the same pulse the `reboot` command uses) is sent, then `timer_poll_delay_ms(500)` waits about half a second **counting the PIT counter's wrap-arounds directly** (no IRQ, no tick counter, bounded). If the machine is still running, `triple_fault()` loads an empty IDT and executes `int3`: the CPU cannot deliver the interrupt, nor the fault that raises, nor the double fault, and resets.
+
+### The new keys in sector 1
+
+| Key | Meaning |
+|---|---|
+| `crash_pending` | `1` = crashed, Safe Mode not acknowledged yet; `2` = acknowledged; absent = no crash |
+| `crash_type` | the exception vector (decimal; `14` = page fault) |
+| `crash_eip` | instruction pointer at the fault (`0x...`) |
+| `crash_err` | the CPU's error code (`0x...`) |
+| `crash_cr2` | the faulting address; meaningful for `#PF` (`0x...`) |
+| `crash_ticks` | timer ticks since boot, 100 per second (decimal) |
+
+Numbers may be stored as decimal or `0x` hex; every `bootcfg_get_u32()` reads both. The page-fault *flags* are not stored separately: they are the error code's bits (present, write, user, reserved, instruction fetch) and Safe Mode decodes them. A full record takes ~150 of the 511 usable bytes. Example sector:
+
+```
+# nullos-config v1
+boot_fail_count=0
+crash_pending=1
+crash_type=14
+crash_eip=0x1001111
+crash_err=0x4
+crash_cr2=0xdeadbeef
+crash_ticks=48210
+```
+
+### When the record is cleared
+
+- `crash_pending=1` is **not** cleared by viewing it, nor by a boot: it keeps sending every boot to Safe Mode (so it cannot be missed), until the user chooses **"Reboot normally"** there, which acknowledges it (`1` -> `2`) together with resetting the failure counter.
+- With `crash_pending=2` the next boot is normal (no Safe Mode because of the crash), and the record is removed after that boot is **complete** — the first keyboard read, the same event that resets the failure counter. Entering and leaving Safe Mode without choosing "Reboot normally" (a power-off, a reset) therefore never loses the information.
+- A new crash overwrites the record and makes it pending again, so a crash during a "normal" boot after an acknowledgement goes back to Safe Mode.
+
+### Safe Mode changes
+
+- **Banner:** for a crash the header reads `Reason: the system crashed: #PF Page Fault at EIP 0x...` with "Press 6 for the details" instead of the failure-counter text (the two never mix). When Safe Mode is entered for another reason but a record is stored, one line says so.
+- **Menu item 6, "View last crash details":** exception name and vector, EIP, error code, for `#PF` also CR2 and the decoded flags (protection/not-present, write/read, user/kernel, instruction fetch, reserved bit), uptime (ticks and seconds) and whether the record is pending or acknowledged. "No crash is recorded." when there is none.
+
+### The `crash` shell command (a testing tool)
+
+`crash <de|pf|gpf>` in the shell makes the shell process itself fault on purpose, so the whole pipeline can be tested repeatably:
+
+| Command | Exception |
+|---|---|
+| `crash de` | divide by zero, `#DE` (vector 0) |
+| `crash pf` | read of the unmapped address `0xDEADBEEF`, `#PF` (vector 14, error code 4: not-present, read, user) |
+| `crash gpf` | load of the invalid segment selector `0xFFFF`, `#GP` (vector 13) |
+
+It is documented as a **debug tool** in `help`. The fault happens in ring 3, but NullOS has no per-process fault isolation yet, so a user-mode fault takes the same fatal path as a kernel one (which is what the handler is for).
+
+**How to test (`make run-reboot-test`, not `make run`):** the normal `make run` passes `-no-reboot` on purpose, which makes QEMU *exit* when the guest resets. `make run-reboot-test` lets the reset happen, so the whole cycle — crash, dump, reset, GRUB, kernel, Safe Mode with the banner — runs in one window:
+
+1. `cd tools && make run-reboot-test`, boot the default entry, at the prompt type `crash pf`.
+2. The red screen shows the exception and "Crash information saved. Restarting into Safe Mode..."; after ~3 s the machine resets, GRUB appears (pick the default), and the kernel boots into Safe Mode with the crash banner.
+3. Press `6` for the details (they must match the red screen: `#PF`, error code `0x4`, CR2 `0xdeadbeef`).
+4. Press `4` and read LBA 1 to see the raw keys in the sector.
+5. Choose "Reboot normally" (`1`): the next boot is normal; type any command (the first keyboard read completes the boot) and reboot again — Safe Mode does not appear, and LBA 1 no longer has the `crash_*` keys.
+6. Repeat with `crash de` and `crash gpf`.
+
+Not covered by this test: a crash *inside* the saving code (the re-entry guard), a crash before the disk is up (the halt path), and a kernel-mode fault.
 
 ## Implemented in pass 5: the "previous release" GRUB entry and release tooling
 
@@ -83,7 +168,8 @@ The kernel used to ignore the Multiboot2 command line (the `debug` word of the "
 
 ```
 kernel/bootcfg.h/.c     config sector (LBA 1), BOOTCFG_FAIL_THRESHOLD
-kernel/safemode.h/.c    Safe Mode (tier-1 TUI; menu item 5 initializes tier 2 on demand)
+kernel/safemode.h/.c    Safe Mode (tier-1 TUI; menu item 5 initializes tier 2 on demand, item 6 shows the last crash)
+kernel/crashdump.h/.c   the crash path: save the record, reset; load/acknowledge/clear on the boot side
 kernel/safeshell.h/.c   Safe Mode restricted shell (tier 2)
 kernel/hal.h/.c         boot_get_cmdline(), boot_has_flag()
 kernel/multiboot2.h     cmdline tag (type 1) parser

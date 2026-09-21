@@ -39,6 +39,10 @@ Deliberately not migrated:
 
 `boot_get_memory_map()` is consumed by `pmm_init()` (see `docs/memory.md`, "Where the map comes from"). The centralized text table `msg(ID)` is described below.
 
+### Polling-only block I/O for the crash path
+
+`block_read_sector_polled()` / `block_write_sector_polled()` are the same as the normal block functions but take no lock, use no IRQ and no scheduler, and give up after a bounded wait, so they work inside an exception handler (interrupts off, scheduler unusable). They exist only for `kernel/crashdump.c` (see `docs/safemode.md`); everything else uses `block_read_sector()`/`block_write_sector()`.
+
 ## Centralized text: `msg(ID)` (kernel, pass 1)
 
 `kernel/messages.h` declares `typedef enum { MSG_..., MSG_COUNT } msg_id_t` and `const char *msg(msg_id_t id)`; `kernel/messages.c` holds `static const char *const g_msgs[]`, one text per ID (C99 designated initializers, so table order can't drift from the enum). Kernel code prints with `console_puts(msg(MSG_PMM_TOTAL))`.

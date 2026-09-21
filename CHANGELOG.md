@@ -22,6 +22,34 @@ called out inline rather than silently "corrected", and `[0.11.0]`–
 Phase 10), not a version string that ever actually appeared in the repo
 at the time.
 
+## [Unreleased]
+
+### Added
+
+- **A crash restarts into Safe Mode.** An unhandled CPU exception used to end in
+  a red screen and a `hlt` loop; now `exception_handler()` saves a crash record in
+  the boot configuration sector (LBA 1, the same one as `boot_fail_count`), shows
+  the red screen for ~3 s, and resets the machine (the 8042 pulse, then a triple
+  fault if it does not answer within ~0.5 s counted on the raw PIT). The next
+  boot goes straight to Safe Mode with a crash banner (`system crashed: #PF Page
+  Fault at EIP 0x...`) and a new menu item "6. View last crash details" (exception,
+  EIP, error code, CR2 and decoded flags for a page fault, uptime). The record
+  (keys `crash_pending`, `crash_type`, `crash_eip`, `crash_err`, `crash_cr2`,
+  `crash_ticks`) is acknowledged by "Reboot normally" and removed after the next
+  complete normal boot, so entering and leaving Safe Mode never loses it. A crash
+  that could not be saved (no disk yet, no config sector) halts with the screen
+  readable, as before, instead of restarting. A second exception during the
+  handling skips the dump and goes straight to the reset.
+- The save path depends on nothing that may be broken: polling-only ATA I/O
+  (`ata_crash_read_sector`/`ata_crash_write_sector`, `block_*_polled()` in the HAL —
+  no lock, no IRQ, no scheduler, bounded waits, soft reset of a channel left
+  mid-command), a static buffer, no heap. New `bootcfg_buf_*` functions (the text
+  store on an explicit buffer, hex numbers, `bootcfg_remove()`), `timer_poll_delay_ms()`,
+  `power_reboot_request()`, `exception_name()`.
+- **`crash <de|pf|gpf>` shell command**, a debug tool that faults on purpose
+  (#DE, a read of `0xDEADBEEF`, #GP) so the whole pipeline can be tested repeatably
+  with `make run-reboot-test`. Documented in `docs/safemode.md`.
+
 ## [0.19.0] - 2026-09-20 - Phase 19: SDK / app-development experience
 
 ### Added
