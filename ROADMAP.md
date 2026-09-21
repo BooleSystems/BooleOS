@@ -2,7 +2,7 @@
 
 The table below is the granular phase table: one row per phase AND per
 sub-phase, for both completed work (Phases 0–16, detailed in `README.md`,
-`CHANGELOG.md` and `docs/`) and planned work (Phases 19–30, ending at the
+`CHANGELOG.md` and `docs/`) and planned work (Phases 20–30, ending at the
 v1.0.0 milestone, detailed in the section further down). Planned
 sub-phases become completed rows as they land.
 
@@ -45,7 +45,7 @@ restructuring after Phase 16) use a hyphen and an uppercase letter
 | **18** | Safety/portability foundation (HAL + Safe Mode) | ✅ Done | CHANGELOG `[0.18.0]`, `docs/hal.md`, `docs/safemode.md` |
 | **18-A** | HAL (hardware abstraction layer), `msg(ID)`, real memory map in the PMM | ✅ Done | CHANGELOG `[0.18.0]`, `docs/hal.md`, `docs/memory.md` |
 | **18-B** | Safe Mode (failure counter, text UI, restricted shell, previous-release GRUB entry) | ✅ Done | CHANGELOG `[0.18.0]`, `docs/safemode.md` |
-| **19** | SDK / app-development experience | 🔜 Planned | below |
+| **19** | SDK / app-development experience | ✅ Done | CHANGELOG `[0.19.0]`, `docs/sdk.md`, `docs/kernel.md` |
 | **20** | Copy-on-write `fork()` | 🔜 Planned | below |
 | **21** | `unlink()`/`rmdir()` | 🔜 Planned | below |
 | **22** | Memory/CR3 release in `process_exit()` | 🔜 Planned | below |
@@ -72,7 +72,7 @@ restructuring after Phase 16) use a hyphen and an uppercase letter
 | **30-C** | Full engine build/link, first menu screen | 🔜 Planned | below |
 | **30-D** | Playable without crashing (no audio) | 🔜 Planned | below |
 
-## Detailed planning (Phases 19–30)
+## Detailed planning (Phases 20–30)
 
 The table above gives the one-line summary of each planned phase. This section expands each one with its goal, intended approach, main risk, and dependencies on other phases, as of the current planning pass. No code has changed as part of this — this is a documentation-only update.
 
@@ -89,17 +89,13 @@ Done; see the table above, CHANGELOG `[0.18.0]`, `docs/hal.md` and `docs/safemod
 - Safe Mode's GRUB entries **GUI debug** and **Text mode**, and "reboot into GUI debug" in its reboot submenu — they need the GUI (Phase 26); for now the menu has Default, serial debug mode, Safe Mode and the previous release.
 - Safe Mode's **erase** action (needs `unlink`, Phase 21) and the **disk check with verify-only vs. verify-and-repair** submenu (an fsck-like feature; its own sub-phase, not scheduled yet). The restricted shell is read-only for now.
 
-### Phase 19 — SDK / app-development experience
+### Phase 19 — SDK / app-development experience (closed in 0.19.0)
 
-- **Goal:** stop requiring a full ISO rebuild to test a new program.
-- **Approach:** today `exec()` only loads from the ramfs (packaged at build time); extend it to the same pattern `vfs_open` already uses (look in the ramfs, then FAT16).
-- **Main risk:** the same area that has already produced three real bugs in this project (`cwd_cluster` in exec, dirent lookup in FAT16) — it deserves an approved approach before any code, with the same rigor as Phases 15/16.
-- **Depends on:** Phase 17 (libnos consolidated).
+Done; see the table above, CHANGELOG `[0.19.0]` and `docs/sdk.md`. `exec()` finds programs with `vfs_open()` (ramfs, then FAT16) — no second lookup — the ELF loader validates the file against its real size, libnos has a minimal `printf` family, and `sdk/` plus `docs/sdk.md` let someone write, build and run a program without rebuilding the ISO. Carried over, not done in this phase:
 
-- `exec()` loading programs from FAT16, not only from the ramfs
-- "Hello world" template + example Makefile
-- Development guide separate from the current technical docs (which are aimed at explaining the kernel, not at teaching an outsider to write a NullOS program)
-- Minimal `printf`/`sprintf` in libnos
+- Programs on FAT16 are limited to 192 KB and are read whole into a fixed 256 KB heap that cannot grow once processes exist (`PROGRESS.md`, Phase 22 fixes the underlying heap/identity-map design); a program bigger than that, such as the DOOM engine of Phase 30, needs that work first.
+- `run` passes no arguments to a program (`nos_exec()` can); there is no `argc`/`argv` convention yet.
+- The printf family has no floating point, no 64-bit integers and no `#` flag.
 
 ### Phase 20 — Copy-on-write `fork()`
 
@@ -179,8 +175,6 @@ Done; see the table above, CHANGELOG `[0.18.0]`, `docs/hal.md` and `docs/safemod
 
 - Per-process fault isolation in `idt.c` — today any exception (including a user process's page fault) hangs the whole kernel; it should kill only the offending process
 - Whole-operation lock in FAT16 — today only the individual sector is protected by the ATA gate, not the complete `fat16_write_file`/`fat16_create` operation against two processes writing at the same time
-- `elf.c`: `elf_load` never receives/validates the file's real `file_size` — actually thread it through `exec()→elf_load()`
-- `elf.c`: integer overflow in `page_end` near `UINT32_MAX`
 
 ### Phase 29 — General polish
 
@@ -227,11 +221,10 @@ Not in the table above and not in the priority order until it gets a number and 
 
 ## Recommended priority order
 
-**Phase 19 → 20 → 21 → 22 → 23 → 24 → 25 → 26 → 27 → 28 → 29 → 30 → v1.0.0.**
+**Phase 20 → 21 → 22 → 23 → 24 → 25 → 26 → 27 → 28 → 29 → 30 → v1.0.0.**
 
 Dependency notes:
 
-- Phase 19 depends on Phase 17 (libnos consolidated).
 - Phase 22-C depends on Phase 20 (COW fork) being closed.
 - Phase 28 depends on Phase 18 (HAL).
 - Phase 30 depends on Phase 26 (framebuffer) and on `lseek` from Phase 29.

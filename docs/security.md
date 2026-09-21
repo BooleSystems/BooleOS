@@ -26,10 +26,23 @@ See `PROGRESS.md` → "Architecture decisions" for the full narrative of how
 `copy_from_user()`/`copy_to_user()`, and CHANGELOG.md `[0.14.0]` for the
 release note.
 
+## The ELF loader does not trust the file (Phase 19)
+
+Once `exec()` could load programs from the disk, the image `elf_load()` sees became something a user can write. `elf_load(cr3, data, size, &entry)` therefore gets the file's real size and treats every number in the file as hostile:
+
+- the ELF header must fit, and be a 32-bit little-endian i386 `ET_EXEC`;
+- the program header table (`e_phoff` + `e_phnum` × `e_phentsize`, at most 64 entries, entry size at least that of a program header) must lie inside the file;
+- for each loadable segment: `p_filesz <= p_memsz`; the file data (`p_offset` + `p_filesz`) must lie inside the file — but only when there *is* file data, since a pure `.bss` segment has `p_filesz == 0` and an offset that the linker places at or past the end of the file; and the virtual range must lie in `[0x00800000, 0x02000000)` (below is the kernel's shared identity map, above is where `exec()` puts the user stack);
+- every sum and product is done in 64-bit arithmetic, so a 32-bit field cannot wrap around a check;
+- **all** headers are validated before the first page is mapped, so a bad header found half way cannot leave earlier segments mapped.
+
+Nothing is read outside `[data, data + size)`. This closes the old gap "`elf_load` never receives the file's real `file_size`" and the `page_end` overflow near `UINT32_MAX`. It is tested on the host against the real `elf.c` with truncation, header fuzzing and crafted hostile headers — see `make test-elf` in `docs/testing.md`.
+
 ## Relevant files
 
 ```
 kernel/
   syscall.c/h         user_ptr_valid(), copy_from_user(), copy_to_user(), user_kptr()
   memory/vmm.c        vmm_get_user_phys_from_dir()
+  elf.c/h             elf_load(): validates the program file against its size
 ```

@@ -13,8 +13,8 @@ Do not duplicate README/docs content here. `README.md` is a lean index
 
 ## Current status
 
-Current version: **0.18.0** (Phase 18 closed, merged to `main`; no tag yet).
-Last closed phase: **Phase 18** (Safety/portability foundation).
+Current version: **0.19.0** (Phase 19 closed, merged to `main`, tagged `v0.19.0`).
+Last closed phase: **Phase 19** (SDK / app-development experience).
 
 ### Closed phases (one line each; detail in CHANGELOG.md / README.md)
 
@@ -28,13 +28,17 @@ Last closed phase: **Phase 18** (Safety/portability foundation).
 - Phase 18 — Safety/portability foundation: HAL, `msg(ID)`, PMM on the real
   memory map, Safe Mode (counter, TUI, restricted shell, previous-release GRUB
   entry) — `0.18.0`.
+- Phase 19 — SDK / app-development experience: `exec()` from FAT16 (via
+  `vfs_open()`), size-checked ELF loader, `printf` family in libnos, `sdk/` +
+  `docs/sdk.md`, `make test-elf` — `0.19.0`.
 
-### Next: Phase 19 — SDK / app-development experience
+### Next: Phase 20 — Copy-on-write `fork()`
 
-See ROADMAP.md. Release routine reminder: after tagging a release, on the
-tagged tree run `make clean && make && make snapshot` and commit `tools/prev/`
-(the next release's "previous release" GRUB entry; kernel + ramfs together).
-Right now `tools/prev/` holds the v0.17.1 build, which is correct for 0.18.0.
+See ROADMAP.md. (A proposed, still unnumbered phase "Crash handler leads into
+Safe Mode" is recorded there too; it has no place in the sequence yet.) Release
+routine after tagging: `make clean && make && make snapshot` on the tagged tree,
+commit `tools/prev/` (now holds v0.18.0, correct for 0.19.0), and publish the
+GitHub Release with the zip (see the Definition of Done in CLAUDE.md).
 Deferred, not blocking: test `docs/setup.md` on Windows (Phase 29).
 
 ### Future roadmap
@@ -127,6 +131,8 @@ package manager phase was deliberately decided against — don't add one.
 
 ## Known technical debt
 
+- **A failed `exec()` leaks the page directory it already created** (the same
+  accepted leak as `process_exit()`, Phase 22); the selftest leaks two per run.
 - **The heap is virt == phys inside the process page pool (Phase 22).** The
   kernel heap (4–8 MB virtual) is the identity-mapped range that the PMM also
   hands to processes; `heap_expand()` takes the exact physical page at

@@ -36,8 +36,11 @@ Expected output shape (exact wording may evolve as tests are added):
 [PASS] two-process pipe (fork writer -> exec cat -> parent)
 [PASS] waitpid with 3 children: each pid collected with its own result
 [PASS] mkdir/cd 3 levels deep, file at the bottom, cd .. back to /
-[INFO] cleanup: no delete/unlink/rmdir syscall exists yet - st_root.txt, st_big.txt, selftest_dir/ and st_d1/ (with their files) left on disk (harmless)
-Selftest: 18/18 passed
+[PASS] exec() runs a program that exists only on FAT16
+[PASS] exec() rejects a FAT16 file that is not a valid program
+[PASS] printf family: %d %u %x %s %c %% and snprintf truncation
+[INFO] cleanup: no delete/unlink/rmdir syscall exists yet - st_root.txt, st_big.txt, st_cat.elf, st_bad.bin, st_trunc.elf, selftest_dir/ and st_d1/ (with their files) left on disk (harmless)
+Selftest: 21/21 passed
 ```
 
 A `[FAIL] <name>: <reason>` line pinpoints which subsystem broke without
@@ -45,7 +48,7 @@ needing to reproduce the bug by hand first.
 
 ## What each test checks
 
-**18 tests in total** (numbering below: the cleanup note is item 19).
+**21 tests in total** (numbering below: the cleanup note is item 22).
 
 1. **Memory** — calls `SYS_MEMINFO` and checks it returns a plausible
    process count. There is no userland-facing syscall that allocates a
@@ -154,11 +157,30 @@ needing to reproduce the bug by hand first.
     bottom, the file opened by its 3-component path from the root, and
     `cd ..` back to `/` one level at a time (cwd always restored to the
     root, even on failure).
-19. **Cleanup** — not a PASS/FAIL check: there's no delete/unlink/rmdir
-    syscall yet, so `st_root.txt`, `st_big.txt`, `selftest_dir/` and the
-    files inside it, and `st_d1/st_d2/st_d3/` with `st_deep.txt`, are left
-    on disk. Noted in the output as a known
-    limitation, not a failure.
+19. **`exec()` runs a program that exists only on FAT16** (Phase 19) —
+    copies the ramfs program `cat` to a FAT16 file (`st_cat.elf`) and
+    launches it from there with `SYS_EXEC_PIPE` (stdin ← pipe 1, stdout →
+    pipe 2); the parent feeds a known string in and checks the same string
+    comes back. Proves the whole path: `exec()` finds a program that is on
+    the disk only, reads it by its directory-entry size, loads it and runs
+    it. Runs from the root directory.
+20. **`exec()` rejects a FAT16 file that is not a valid program** (Phase 19)
+    — a file of garbage bytes, the first 100 bytes of a real ELF (valid
+    header, program headers pointing past the end of the file) and a name
+    that does not exist anywhere must all make `nos_exec()` return -1,
+    without crashing the kernel. (Each failed `exec()` after the page
+    directory was created leaks that page — see "Known limitations".)
+21. **The printf family** (Phase 19) — `snprintf`/`sprintf` with `%d %u %x
+    %X %s %c %%`, width, zero-padding, left-justify, precision, negative
+    numbers and `INT_MIN`, a NULL `%s`, bounded truncation with the C99
+    return value. During development the same code was also compared with a
+    host libc over ~9000 formats (a one-off harness that is not part of the
+    repository); this test runs it on the real i386 target.
+22. **Cleanup** — not a PASS/FAIL check: there's no delete/unlink/rmdir
+    syscall yet, so `st_root.txt`, `st_big.txt`, `st_cat.elf`, `st_bad.bin`,
+    `st_trunc.elf`, `selftest_dir/` and the files inside it, and
+    `st_d1/st_d2/st_d3/` with `st_deep.txt`, are left on disk. Noted in the
+    output as a known limitation, not a failure.
 
 ## Manual test: a real pipeline (`cmd1 | cmd2`)
 
@@ -200,10 +222,32 @@ see EOF and exit.
 - Tests 12-13 are single-process; test 16 covers the two-process case.
 - There is no exit-code syscall, so test 17 passes each child's result
   through a pipe.
+- A failed `exec()` does not free the page directory it already created
+  (the same accepted leak as `process_exit()`, Phase 22): test 20 leaks two
+  pages per run, out of ~1000 free at boot.
+
+## Host-side test of the ELF loader (`make test-elf`)
+
+The kernel's ELF loader (`kernel/elf.c`) is also tested on the host, without
+QEMU: `make test-elf` (in `tools/`) compiles the **real** `kernel/elf.c`
+against stand-in page-allocator/page-mapper functions
+(`tools/test_elf_load.c`) and runs it on every built user program. It checks
+that each program loads and that every loadable byte lands where it should;
+that a copy truncated at any length is rejected or still complete and is
+**never read past its end** (the image sits flush against an unmapped guard
+page, so an out-of-bounds read faults); that randomly corrupted headers never
+crash; that a dozen crafted hostile headers are rejected (segment bigger than
+its file data, offsets or addresses that wrap 32 bits, a segment reaching the
+user stack, a program header table past the end, ...); and a hand-built
+regression case: a pure `.bss` segment whose file offset is at or past the end
+of the file (what the linker produces) must load. Run it after changing
+`elf.c`, the linker script or the size of a user program. Linux only (it uses
+`MAP_32BIT`).
 
 ## Relevant files
 
 ```
 user/selftest.c    the test suite itself (see docs/shell.md for the file list)
+tools/test_elf_load.c  host-side test of kernel/elf.c (make test-elf)
 user/cat.c          minimal pipe sink, used for the manual pipeline test above
 ```

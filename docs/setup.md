@@ -249,6 +249,16 @@ host-side infrastructure only: the kernel still cannot `exec()` programs
 from FAT16 (that arrives with Phase 19), so it is for putting test files on
 the disk quickly. Don't run it while QEMU has the image open.
 
+`make test-elf` builds the kernel's ELF loader (`kernel/elf.c`) for the host and
+tests it on every built user program, plus truncated, corrupted and hostile images
+(`tools/test_elf_load.c`, see `docs/testing.md`); it needs the host `gcc` and a
+Linux host. Run it after changing `elf.c`, the linker script or the size of a
+user program.
+
+Every target that needs the user programs builds `user/` first: the ELF files
+have `user` as an *order-only* prerequisite, so `make clean && make run` works
+without a separate `make` first, while a second `make` still rebuilds nothing.
+
 `make snapshot` records the current build in `tools/prev/` as the "previous
 release" GRUB entry (see "Branches and versions"); it is never run by any
 other target.

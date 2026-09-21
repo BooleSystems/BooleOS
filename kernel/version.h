@@ -17,9 +17,9 @@
 #ifndef NULLOS_VERSION_H
 #define NULLOS_VERSION_H
 
-#define NULLOS_VERSION      "0.19.0-nightly"
-#define NULLOS_PHASE        "18"
-#define NULLOS_PHASE_DESC   "Safety/portability foundation"
+#define NULLOS_VERSION      "0.19.0"
+#define NULLOS_PHASE        "19"
+#define NULLOS_PHASE_DESC   "SDK / app-development experience"
 
 // Composed strings so callers don't have to concatenate these by hand.
 #define NULLOS_BANNER       "NullOS v" NULLOS_VERSION " - Phase " NULLOS_PHASE ": " NULLOS_PHASE_DESC

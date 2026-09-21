@@ -9,7 +9,7 @@
  | |\  | |_| | | | |_| |___) |
  |_| \_|\__,_|_|_|\___/|____/ 
 
- NullOS v0.18.0 - Phase 18: Safety/portability foundation
+ NullOS v0.19.0 - Phase 19: SDK / app-development experience
 ```
 
 ## Overview
@@ -41,8 +41,9 @@ See [CHANGELOG.md](CHANGELOG.md) for version history and [ROADMAP.md](ROADMAP.md
 | **16** | Inter-process pipes (`kernel/pipe.c`, fixed pool, `SYS_PIPE`/`SYS_EXEC_PIPE`) and a real blocking `waitpid()` (`process_t.waiting_for_pid`, woken by `process_exit()`); shell gains `cmd1 \| cmd2` (`user/cat.c` as a minimal pipe sink) | ✅ Done |
 | **17** | Cleanup A: audit fixes (`pmm_init` overflow, checked `vmm_map_page` returns, atomic pid/slot allocation, `fat16_init` validation), edit.c Shift and `process_spawn_user` race fixes, libnos string helpers, stream FAT16 writes (`fat16_write_at`), shell `>`/`<` redirection, `cat <file>`, `pwd`/`SYS_GETCWD`, `reboot`/`shutdown`, selftest expanded to 18 tests (`SYS_PCI_FIND`), `make inject` / `make run-reboot-test` | ✅ Done |
 | **18** | Safety/portability foundation: a hardware abstraction layer (`kernel/hal.*`: console, input, block I/O, power, boot info — [docs/hal.md](docs/hal.md)); `msg(ID)` centralized output text for the kernel and the userland; the exception handler and all disk access through the HAL; `pmm_init()` on the bootloader's real memory map (8 MB allocatable ceiling); and **Safe Mode** ([docs/safemode.md](docs/safemode.md)): boot failure counter in a raw config sector, automatic entry after 3 failed boots or from the GRUB menu, a text UI (reboot, disk info, sector hexdump) and a restricted read-only shell, plus a "previous release" GRUB entry (`tools/prev/`, `make snapshot`) | ✅ Done |
+| **19** | SDK / app-development experience: `exec()` loads programs from FAT16 as well as the ramfs (found by `vfs_open()`, read from disk by the directory-entry size), so a program no longer needs an ISO rebuild to be tested; the ELF loader validates the file against its real size; a minimal `printf` family in libnos (`printf`, `sprintf`, `snprintf`, `vsnprintf`); an SDK template and Makefile (`sdk/`, `make inject`) and a developer guide ([docs/sdk.md](docs/sdk.md)); `make test-elf` (host-side loader test); a kernel heap fix (its pages must be virt == phys) | ✅ Done |
 
-For planned Phases 19–30, see **[ROADMAP.md](ROADMAP.md)**.
+For planned Phases 20–30, see **[ROADMAP.md](ROADMAP.md)**.
 
 ## Documentation
 
@@ -61,6 +62,7 @@ Detailed, per-system documentation lives under `docs/`:
 - [docs/shell.md](docs/shell.md) — interactive shell and commands
 - [docs/testing.md](docs/testing.md) — `run selftest`, the automated regression suite
 - [docs/quickstart.md](docs/quickstart.md) — just run a release in QEMU, without compiling anything
+- [docs/sdk.md](docs/sdk.md) — writing your own NullOS program (template, build, run without rebuilding the ISO, libnos and printf)
 - [docs/setup.md](docs/setup.md) — building from source (developers): toolchain, Docker, make targets, debugging
 
 [PROGRESS.md](PROGRESS.md) (not end-user documentation) carries cross-session working
@@ -110,6 +112,7 @@ kernel/
     heap.c            kmalloc/kfree
 user/
   lib/messages.c/h    msg(ID): userland output-text table (shell, edit, cat) — see docs/hal.md
+  lib/nosstdio.c      printf family (printf/sprintf/snprintf/vsnprintf), linked only into programs that use it — see docs/sdk.md
   lib/nullos.c/h      Syscall wrapper library (libnos, "nos_*") — one thin wrapper per syscall, see docs/kernel.md
   init.c              simple user process: nos_write + nos_exit
   spintest.c          process without yield: validates IRQ0 preemption
@@ -124,6 +127,8 @@ tools/
   Makefile            Build system (i686-elf-gcc + NASM + grub2-mkrescue), `disk`, `run`, `run-reboot-test`, `inject` targets
   grub.cfg.in         GRUB configuration template (version substituted at build time from kernel/version.h → build/grub.cfg)
   make_disk.sh        generates build/disk.img (FAT16, 32 MB) if it doesn't already exist
+  test_elf_load.c     host-side test of kernel/elf.c (make test-elf) — see docs/testing.md
+sdk/                  SDK for writing programs from outside the kernel tree: hello.c template + Makefile — see docs/sdk.md
 build/                Build artifacts (git-ignored) — includes disk.img (persists across builds)
 docs/                 Per-system technical documentation (see "Documentation" above)
 ```
@@ -136,6 +141,7 @@ make          # generates build/nullos.iso and build/disk.img (only creates the 
 make disk     # forces creation of build/disk.img on its own
 make run      # launches in QEMU with the disk attached (-drive ...,if=ide); keeps -no-reboot (post-mortem state on a triple fault)
 make run-reboot-test   # same, but without -no-reboot, so the shell's `reboot` really restarts the guest
+make test-elf   # host-side test of the kernel's ELF loader on every built user program
 make snapshot   # records the current build in tools/prev/ as the "previous release" GRUB entry (run by hand after tagging a release)
 make inject FILE=path/to/file [NAME=name.ext]   # copies a file (e.g. a .elf) into build/disk.img with mcopy, no ISO rebuild (host-side only; the kernel can't exec() from FAT16 until Phase 19)
 make clean    # cleans build/ (⚠ also deletes disk.img — persisted data is lost)

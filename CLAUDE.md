@@ -66,6 +66,29 @@ Todos os itens abaixo, nenhum pulado silenciosamente:
 - [ ] `docs/syscalls.md` conferido contra `kernel/syscall.h` (ver seção de
   números de syscall).
 - [ ] Selftest 100% passando (o usuário roda no QEMU e cola a saída).
+- [ ] Depois do merge `nightly` -> `main`: tag anotada `vX.Y.Z` criada e enviada
+  ao `origin` (ver "Tag de release" em Convenções de fim de fase).
+- [ ] `make snapshot` rodado NA ÁRVORE DA TAG e o `tools/prev/` resultante
+  commitado em `nightly` (ver "Snapshot da release anterior").
+- [ ] **Release do GitHub publicado (`gh release create`) — bloqueante como os
+  outros: a versão NÃO está lançada só com a tag; o Release precisa existir no
+  GitHub.** Com:
+  - `nullos-X.Y.Z.zip` contendo: o ISO bootável (buildado da árvore da TAG, num
+    worktree limpo), uma imagem de disco **LIMPA em branco** (32 MB FAT16
+    regenerada do zero via `tools/make_disk.sh`, só com o `readme.txt`
+    padrão — NUNCA a `build/disk.img` que sobrou de rodar selftest, `make inject`
+    ou o SDK) e um `README.txt` dentro do zip com o comando exato de QEMU para
+    rodar sem compilar nada (sem `-display` e sem `-no-reboot`; nenhum texto
+    específico de um sistema operacional — o público é "quem não quer compilar").
+    Conferir com `mdir` que o disco do zip só tem o `readme.txt`.
+  - Título do Release: `NullOS X.Y.Z - <nome da fase>`. Descrição, nesta ordem: a
+    primeira linha em negrito `NullOS X.Y.Z - Phase N: <nome da fase>`, o parágrafo
+    "Don't want to compile?" com o nome do zip e o link do QEMU, a seção "Changes"
+    (cabeçalho `## Changes`, subseções `####`) puxada direto
+    da entrada `[X.Y.Z]` do CHANGELOG (Added/Changed/Fixed) e o link do CHANGELOG
+    completo. Seguir o formato do Release da versão anterior (`gh release view
+    vA.B.C`).
+  - Conferir depois com `gh release view vX.Y.Z` (asset presente, não é draft).
 
 **Antes de declarar qualquer fase fechada, releia esse checklist item por item
 contra o estado real dos arquivos, não contra a lembrança do que foi feito.**

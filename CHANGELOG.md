@@ -22,7 +22,7 @@ called out inline rather than silently "corrected", and `[0.11.0]`–
 Phase 10), not a version string that ever actually appeared in the repo
 at the time.
 
-## [Unreleased]
+## [0.19.0] - 2026-09-20 - Phase 19: SDK / app-development experience
 
 ### Added
 
@@ -47,9 +47,9 @@ at the time.
 - **`make test-elf`** (`tools/test_elf_load.c`): a host-side test of the real
   `kernel/elf.c` on every built user program, plus truncation, header fuzzing and
   crafted hostile headers.
-- selftest: four new tests (exec of a program that exists only on FAT16;
+- selftest: three new tests (exec of a program that exists only on FAT16;
   malformed, truncated and missing programs rejected; the printf family) —
-  22 tests.
+  21 tests.
 
 ### Changed
 
@@ -66,13 +66,26 @@ at the time.
   processes exist, a limit recorded in `PROGRESS.md` for Phase 22.
 - `tools/Makefile`: the user ELFs have the `user` target as an order-only
   prerequisite, so any target that needs them builds `user/` first.
-- `CLAUDE.md`: a "Definition of Done" checklist (literal, not prose) at the top:
+- `tools/prev/` holds the v0.18.0 build (the "previous release" GRUB entry of
+  this version).
+- Documentation brought up to date for this phase: `docs/testing.md` (the 21-test
+  selftest and `make test-elf`), `docs/filesystem.md` (`exec()` as a `vfs_open()`
+  consumer and the shared-buffer hazard), `docs/syscalls.md` (`SYS_EXEC` /
+  `SYS_EXEC_PIPE` name resolution), `docs/security.md` (the ELF loader does not
+  trust the file), `docs/shell.md` (`run` a FAT16 program), `docs/setup.md`
+  (`make test-elf`, the order-only rule) and the README (file list, docs list,
+  `make test-elf`).
+- `CLAUDE.md`: a "Definition of Done" checklist (literal, not prose) at the top —
   what must be done in every subtask commit (a `docs/TODO.md` trace, a
   `[Unreleased]` CHANGELOG entry) and in the closing commit of a phase (the
-  consolidated CHANGELOG entry as a blocking item, README, ROADMAP, `version.h`,
-  TODO resolved into real docs, PROGRESS, syscall table, selftest), ending with
-  "read this checklist item by item against the real state of the files".
-  `docs/TODO.md` now lists the documentation owed by Phase 19.
+  consolidated CHANGELOG entry as a blocking item, README, ROADMAP,
+  `version.h`, TODO resolved into real docs, PROGRESS, syscall table, selftest),
+  ending with "read this checklist item by item against the real state of the
+  files"; plus the release conventions: every version merged into `main` gets an
+  annotated `vX.Y.Z` tag, `make snapshot` is run on the tagged tree and
+  `tools/prev/` committed back to `nightly`, and a GitHub Release with a
+  ready-to-run zip (bootable ISO, a blank disk image, a README with the QEMU
+  command) is published — a version is not released with only the tag.
 - `ROADMAP.md`: a proposed phase "Crash handler leads into Safe Mode" is
   recorded (unnumbered, outside the priority order until it gets a place): a
   kernel crash saves its dump in the boot config sector, resets by itself and
@@ -99,11 +112,6 @@ at the time.
   conversion — general guidance, not verified by the project); and `setup.md` now
   explains how to switch to the `nightly` branch to build the development
   version.
-- `CLAUDE.md`: two release conventions made formal — every version closed and
-  merged into `main` gets an annotated `vX.Y.Z` tag at the same moment, and right
-  after the tag `make snapshot` is run on the tagged tree and `tools/prev/` is
-  committed back to `nightly` before the next phase starts.
-
 ### Fixed
 
 - A kernel page fault (`#PF` inside `vmm_get_user_phys_from_dir`) when the heap
