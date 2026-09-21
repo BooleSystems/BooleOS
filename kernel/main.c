@@ -8,6 +8,7 @@
 #include "hal.h"
 #include "bootcfg.h"
 #include "safemode.h"
+#include "crashdump.h"
 #include "serial.h"
 #include "gdt.h"
 #include "idt.h"
@@ -151,11 +152,15 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
         if (bootcfg_is_available()) {
             uint32_t fails = bootcfg_get_u32(BOOTCFG_KEY_FAIL_COUNT, 0);
             int requested = boot_has_flag("safemode");
+            // The previous run crashed and Safe Mode has not acknowledged it yet
+            // (crash_pending == 1): go straight there, whatever the counter says.
+            int crashed = (crash_record_load(0) == 1);
 
-            if (fails >= BOOTCFG_FAIL_THRESHOLD || requested) {
+            if (crashed || fails >= BOOTCFG_FAIL_THRESHOLD || requested) {
                 // Enter Safe Mode WITHOUT touching the counter.
                 enter_safemode = 1;
-                reason = requested ? SAFEMODE_REASON_REQUESTED : SAFEMODE_REASON_FAIL_COUNT;
+                reason = crashed ? SAFEMODE_REASON_CRASH
+                       : requested ? SAFEMODE_REASON_REQUESTED : SAFEMODE_REASON_FAIL_COUNT;
             } else {
                 // A failed write only means this boot is not counted.
                 bootcfg_set_u32(BOOTCFG_KEY_FAIL_COUNT, fails + 1);

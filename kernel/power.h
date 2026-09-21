@@ -12,6 +12,11 @@
 // printing why) if the reset had no effect.
 int power_reboot(void);
 
+// Only pulses the reset line (the 8042 command 0xFE) and returns immediately,
+// printing nothing and waiting for nothing — for callers that do their own
+// timing, like the crash path. If the request works the machine resets.
+void power_reboot_request(void);
+
 // Powers the machine off. Does not return on success; returns -1 (after
 // printing why) if the hardware isn't supported or the request had no
 // effect.

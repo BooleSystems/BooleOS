@@ -37,6 +37,9 @@ void input_flush(void)    { keyboard_flush(); }
 int block_read_sector(uint32_t lba, void *buf)        { return ata_read_sector(lba, buf); }
 int block_write_sector(uint32_t lba, const void *buf) { return ata_write_sector(lba, buf); }
 
+int block_read_sector_polled(uint32_t lba, void *buf)        { return ata_crash_read_sector(lba, buf); }
+int block_write_sector_polled(uint32_t lba, const void *buf) { return ata_crash_write_sector(lba, buf); }
+
 // ── boot information ─────────────────────────────────────────────────
 
 static uintptr_t g_boot_info = 0;   // 0 = not initialized / invalid

@@ -37,13 +37,17 @@ static void wait_for_request_to_take_effect(void) {
     for (volatile uint32_t i = 0; i < 20000000u; i++) { }
 }
 
-int power_reboot(void) {
+void power_reboot_request(void) {
     // wait until the 8042 can accept a command (bounded, in case there is
     // no controller at all and the port floats high)
     for (uint32_t i = 0; i < 100000u; i++) {
         if (!(inb(KBC_STATUS_PORT) & KBC_STATUS_IBF)) break;
     }
     outb(KBC_STATUS_PORT, KBC_CMD_RESET);
+}
+
+int power_reboot(void) {
+    power_reboot_request();
 
     wait_for_request_to_take_effect();
     console_puts(msg(MSG_POWER_REBOOT_FAILED));

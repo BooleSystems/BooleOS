@@ -418,3 +418,73 @@ int ata_write_sector(uint32_t lba, const void *buf) {
     ata_gate_release();
     return 0;
 }
+
+/* ── crash path: polling-only sector I/O ────────────────────────
+   Used ONLY from the exception handler (see ata.h). Deliberately does not use
+   ata_gate_acquire()/ata_wait_irq()/process_current(): inside an exception
+   interrupts are off and the scheduler cannot run, so the normal path would
+   block for ever. The waits count status reads instead of PIT ticks (the timer
+   IRQ is off too). */
+#define CRASH_SPIN 2000000u
+
+static int crash_wait_not_busy(void) {
+    for (uint32_t i = 0; i < CRASH_SPIN; i++)
+        if (!(inb(g_base + REG_STATUS) & ATA_SR_BSY)) return 0;
+    return -1;
+}
+
+static int crash_wait_drq(void) {
+    for (uint32_t i = 0; i < CRASH_SPIN; i++) {
+        uint8_t s = inb(g_base + REG_STATUS);
+        if (s & ATA_SR_ERR) return -1;
+        if (!(s & ATA_SR_BSY) && (s & ATA_SR_DRQ)) return 0;
+    }
+    return -1;
+}
+
+/* Brings the channel to idle and addresses `lba`. Whatever crashed may have
+   been in the middle of an ATA command (BSY or DRQ still set): a soft reset
+   gets the drive back to a known state. */
+static int crash_prepare(uint32_t lba) {
+    if (!g_present) return -1;
+    outb(g_ctrl, 0x02);                                  /* nIEN: no IRQs from the drive */
+    if (inb(g_base + REG_STATUS) & (ATA_SR_BSY | ATA_SR_DRQ)) {
+        outb(g_ctrl, 0x06);                              /* SRST (+nIEN) */
+        for (int i = 0; i < 8; i++) inb(g_ctrl);         /* >= 5us hold */
+        outb(g_ctrl, 0x02);
+        for (int i = 0; i < 8; i++) inb(g_ctrl);
+    }
+    if (crash_wait_not_busy() < 0) return -1;
+    outb(g_base + REG_DRIVE_HEAD, g_lba_sel | ((lba >> 24) & 0x0F));
+    ata_delay();
+    if (crash_wait_not_busy() < 0) return -1;
+    outb(g_base + REG_SECCOUNT, 1);
+    outb(g_base + REG_LBA_LO,   (uint8_t)(lba));
+    outb(g_base + REG_LBA_MID,  (uint8_t)(lba >> 8));
+    outb(g_base + REG_LBA_HI,   (uint8_t)(lba >> 16));
+    return 0;
+}
+
+int ata_crash_read_sector(uint32_t lba, void *buf) {
+    if (crash_prepare(lba) < 0) return -1;
+    outb(g_base + REG_CMD, CMD_READ);
+    ata_delay();
+    if (crash_wait_drq() < 0) return -1;
+    uint16_t *dst = (uint16_t *)buf;
+    for (int i = 0; i < 256; i++) dst[i] = inw(g_base + REG_DATA);
+    return 0;
+}
+
+int ata_crash_write_sector(uint32_t lba, const void *buf) {
+    if (crash_prepare(lba) < 0) return -1;
+    outb(g_base + REG_CMD, CMD_WRITE);
+    ata_delay();
+    if (crash_wait_drq() < 0) return -1;
+    const uint16_t *src = (const uint16_t *)buf;
+    for (int i = 0; i < 256; i++) outw(g_base + REG_DATA, src[i]);
+    if (crash_wait_not_busy() < 0) return -1;
+    if (inb(g_base + REG_STATUS) & ATA_SR_ERR) return -1;
+    outb(g_base + REG_CMD, CMD_FLUSH);                   /* best effort, like the normal path */
+    crash_wait_not_busy();
+    return 0;
+}

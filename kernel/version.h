@@ -17,7 +17,7 @@
 #ifndef NULLOS_VERSION_H
 #define NULLOS_VERSION_H
 
-#define NULLOS_VERSION      "0.19.0"
+#define NULLOS_VERSION      "0.20.0-nightly"
 #define NULLOS_PHASE        "19"
 #define NULLOS_PHASE_DESC   "SDK / app-development experience"
 

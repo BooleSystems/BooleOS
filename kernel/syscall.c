@@ -5,6 +5,7 @@
 #include "timer.h"
 #include "hal.h"
 #include "bootcfg.h"
+#include "crashdump.h"
 #include "messages.h"
 #include "memory/pmm.h"
 #include "memory/heap.h"
@@ -319,6 +320,7 @@ static uint32_t sys_read(uint32_t fd, char *buf, uint32_t len) {
         g_boot_considered_up = 1;
         if (bootcfg_is_available()) {
             bootcfg_set_u32(BOOTCFG_KEY_FAIL_COUNT, 0);
+            crash_record_clear_if_acknowledged();   /* a crash record seen in Safe Mode is done with */
             bootcfg_write();
         }
     }

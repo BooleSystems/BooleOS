@@ -51,6 +51,7 @@ C_SRCS   = $(ROOT)/kernel/main.c \
             $(ROOT)/kernel/hal.c \
             $(ROOT)/kernel/bootcfg.c \
             $(ROOT)/kernel/safemode.c \
+            $(ROOT)/kernel/crashdump.c \
             $(ROOT)/kernel/safeshell.c \
             $(ROOT)/kernel/messages.c \
             $(ROOT)/kernel/memory/pmm.c \

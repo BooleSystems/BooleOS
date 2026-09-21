@@ -16,6 +16,8 @@
 #include "bootcfg.h"
 #include "messages.h"
 #include "safeshell.h"
+#include "crashdump.h"
+#include "idt.h"
 #include "memory/pmm.h"
 #include "memory/vmm.h"
 #include "memory/heap.h"
@@ -77,6 +79,7 @@ static uint32_t le32(const uint8_t *p) {
 // (power_reboot() prints why).
 static void reboot_normally(void) {
     bootcfg_set_u32(BOOTCFG_KEY_FAIL_COUNT, 0);
+    crash_record_acknowledge();       // a pending crash is now acknowledged (cleared after the next full boot)
     if (bootcfg_write() < 0)
         console_puts(msg(MSG_SAFE_RESET_FAILED));
     console_puts(msg(MSG_SAFE_REBOOTING));
@@ -344,6 +347,47 @@ static void screen_shell(void) {
     safeshell_run();                   // returns on "back"
 }
 
+// ── last crash details ───────────────────────────────────────────────
+
+static void screen_crash(void) {
+    put_title(MSG_SAFE_CRASH_TITLE);
+
+    crash_record_t r;
+    if (crash_record_load(&r) == 0) {
+        console_puts(msg(MSG_SAFE_CRASH_NONE));
+        wait_any_key();
+        return;
+    }
+
+    console_puts(msg(MSG_SAFE_CRASH_EXC));
+    console_puts(exception_name(r.info.int_no));
+    console_puts(msg(MSG_SAFE_CRASH_VECTOR)); console_put_dec(r.info.int_no); console_puts(msg(MSG_SAFE_CRASH_VECTOR_END));
+
+    console_puts(msg(MSG_SAFE_CRASH_EIP)); console_put_hex(r.info.eip);      console_puts("\n");
+    console_puts(msg(MSG_SAFE_CRASH_ERR)); console_put_hex(r.info.err_code); console_puts("\n");
+
+    if (r.info.int_no == 14) {           // page fault: the address and what the access was
+        uint32_t e = r.info.err_code;
+        console_puts(msg(MSG_SAFE_CRASH_CR2)); console_put_hex(r.info.cr2); console_puts("\n");
+        console_puts(msg(MSG_SAFE_CRASH_PF));
+        console_puts((e & 1) ? msg(MSG_IDT_PROTECTION) : msg(MSG_IDT_NOT_PRESENT));
+        console_puts((e & 2) ? msg(MSG_IDT_WRITE)      : msg(MSG_IDT_READ));
+        console_puts((e & 4) ? msg(MSG_IDT_USER)        : msg(MSG_IDT_KERNEL));
+        if (e & 0x10) console_puts(msg(MSG_SAFE_CRASH_FETCH));
+        if (e & 0x08) console_puts(msg(MSG_SAFE_CRASH_RSVD));
+        console_puts("\n");
+    }
+
+    console_puts(msg(MSG_SAFE_CRASH_UPTIME)); console_put_dec(r.info.ticks);
+    console_puts(msg(MSG_SAFE_CRASH_TICKS));  console_put_dec(r.info.ticks / 100);
+    console_puts(msg(MSG_SAFE_CRASH_SECONDS));
+
+    console_puts(msg(MSG_SAFE_CRASH_STATE));
+    console_puts(msg(r.state == 1 ? MSG_SAFE_CRASH_PENDING : MSG_SAFE_CRASH_ACKED));
+
+    wait_any_key();
+}
+
 // ── main menu ────────────────────────────────────────────────────────
 
 static void draw_main_menu(void) {
@@ -352,7 +396,16 @@ static void draw_main_menu(void) {
     console_puts(msg(MSG_SAFE_TITLE));
     console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
 
-    if (g_reason == SAFEMODE_REASON_FAIL_COUNT) {
+    if (g_reason == SAFEMODE_REASON_CRASH) {
+        crash_record_t r;
+        crash_record_load(&r);
+        console_puts(msg(MSG_SAFE_REASON_CRASH_1));
+        console_puts(exception_name(r.info.int_no));
+        console_puts(msg(MSG_SAFE_REASON_CRASH_2));
+        console_put_hex(r.info.eip);
+        console_puts("\n");
+        console_puts(msg(MSG_SAFE_REASON_CRASH_HINT));
+    } else if (g_reason == SAFEMODE_REASON_FAIL_COUNT) {
         console_puts(msg(MSG_SAFE_REASON_COUNT_1));
         console_put_dec(g_entry_fail_count);
         console_puts(msg(MSG_SAFE_REASON_COUNT_2));
@@ -364,12 +417,16 @@ static void draw_main_menu(void) {
         console_puts("\n");
     }
 
+    if (g_reason != SAFEMODE_REASON_CRASH && crash_record_load(0) != 0)
+        console_puts(msg(MSG_SAFE_CRASH_STORED));
+
     console_puts("\n");
     console_puts(msg(MSG_SAFE_MENU_1));
     console_puts(msg(MSG_SAFE_MENU_2));
     console_puts(msg(MSG_SAFE_MENU_3));
     console_puts(msg(MSG_SAFE_MENU_4));
     console_puts(msg(MSG_SAFE_MENU_5));
+    console_puts(msg(MSG_SAFE_MENU_6));
     console_puts(msg(MSG_SAFE_MENU_PROMPT));
 }
 
@@ -386,6 +443,7 @@ void safemode_enter(safemode_reason_t reason, uint32_t fail_count) {
             case '3': screen_disk_info(); break;
             case '4': screen_hexdump();  break;
             case '5': screen_shell();    break;
+            case '6': screen_crash();    break;
             default: break;                       // invalid key: ignored, menu redrawn
         }
     }

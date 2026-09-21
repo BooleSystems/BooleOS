@@ -79,6 +79,10 @@ typedef enum {
     UMSG_SH_ERROR_CAT_NOT_FOUND,
     UMSG_SH_ERROR_EDIT_NOT_FOUND,
     UMSG_SH_HELP_TEXT,
+    UMSG_SH_CRASH_USAGE,
+    UMSG_SH_CRASH_DE,
+    UMSG_SH_CRASH_PF,
+    UMSG_SH_CRASH_GP,
 
     /* editor (edit.c) */
     UMSG_ED_HELP_BAR,

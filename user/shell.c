@@ -96,6 +96,31 @@ static void cmd_echo(const char *line) {
     }
 }
 
+/* DEBUG TOOL — `crash <de|pf|gpf>` makes this (user-mode) process raise a known
+   CPU exception on purpose, so the crash pipeline (the exception handler saving
+   the dump, the reset, Safe Mode showing it) can be tested repeatably without
+   waiting for a real bug. NullOS has no per-process fault isolation yet, so a
+   fault in ring 3 takes the same fatal path as one in the kernel. See
+   docs/safemode.md. */
+static void cmd_crash(const char *arg) {
+    if (strcmp(arg, "de") == 0) {
+        sh_puts(msg(UMSG_SH_CRASH_DE));
+        /* 1 / 0 with a real `div`, so the compiler cannot fold or drop it */
+        __asm__ volatile ("xor %%edx, %%edx\n\tmov $1, %%eax\n\txor %%ecx, %%ecx\n\tdiv %%ecx"
+                          : : : "eax", "ecx", "edx", "cc");
+    } else if (strcmp(arg, "pf") == 0) {
+        sh_puts(msg(UMSG_SH_CRASH_PF));
+        volatile uint32_t v = *(volatile uint32_t *)0xDEADBEEFu;   /* not mapped for anyone */
+        (void)v;
+    } else if (strcmp(arg, "gpf") == 0) {
+        sh_puts(msg(UMSG_SH_CRASH_GP));
+        /* 0xFFFF is far beyond the GDT: loading it into a segment register is a #GP */
+        __asm__ volatile ("mov $0xFFFF, %%ax\n\tmov %%ax, %%ds" : : : "ax", "memory");
+    } else {
+        sh_puts(msg(UMSG_SH_CRASH_USAGE));
+    }
+}
+
 static void cmd_kill(const char *arg) {
     if (!arg || !*arg) { sh_puts(msg(UMSG_SH_USAGE_KILL_PID)); return; }
 
@@ -360,6 +385,8 @@ static void run_command(char *line, int len) {
         cmd_echo(line);
     } else if (strncmp(line, "kill", 4) == 0 && (line[4] == ' ' || line[4] == '\0')) {
         cmd_kill(line[4] == ' ' ? line + 5 : "");
+    } else if (strncmp(line, "crash", 5) == 0 && (line[5] == ' ' || line[5] == '\0')) {
+        cmd_crash(sh_trim(line[5] == ' ' ? line + 6 : line + 5));
     } else if (strncmp(line, "run", 3) == 0 && (line[3] == ' ' || line[3] == '\0')) {
         cmd_run(line[3] == ' ' ? line + 4 : line + 3);
     } else if (strcmp(line, "clear") == 0) {

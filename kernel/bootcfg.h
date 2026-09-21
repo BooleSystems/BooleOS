@@ -58,7 +58,25 @@ int bootcfg_get(const char *key, char *out, int max);
 int bootcfg_set(const char *key, const char *value);
 int bootcfg_set_u32(const char *key, uint32_t value);
 
+// Removes `key` from memory (not written until bootcfg_write()). Returns 1 if it
+// was there, 0 if not, -1 for an invalid key.
+int bootcfg_remove(const char *key);
+
 // 1 if the last bootcfg_read() found the store usable (guard passed).
 int bootcfg_is_available(void);
+
+// The same text store on an EXPLICIT 512-byte buffer: no disk, no heap, no global
+// state. The crash path (crashdump.c) builds the config sector in its own static
+// buffer with these, so it never depends on the normal I/O path. Numbers may be
+// stored decimal (bootcfg_buf_set_u32) or as "0x..." hex (bootcfg_buf_set_hex32);
+// every u32 getter reads both.
+void     bootcfg_buf_init(char *buf);                 // magic line + NULs
+int      bootcfg_buf_valid(const char *buf);          // starts with the magic line?
+int      bootcfg_buf_get(const char *buf, const char *key, char *out, int max);
+uint32_t bootcfg_buf_get_u32(const char *buf, const char *key, uint32_t def);
+int      bootcfg_buf_set(char *buf, const char *key, const char *value);
+int      bootcfg_buf_set_u32(char *buf, const char *key, uint32_t value);
+int      bootcfg_buf_set_hex32(char *buf, const char *key, uint32_t value);
+int      bootcfg_buf_remove(char *buf, const char *key);
 
 #endif // BOOTCFG_H

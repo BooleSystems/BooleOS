@@ -76,6 +76,12 @@ void input_flush(void);      // drops everything buffered
 int block_read_sector(uint32_t lba, void *buf);
 int block_write_sector(uint32_t lba, const void *buf);
 
+// Polling-only, interrupt-independent variants for the crash path (an exception
+// handler: interrupts off, scheduler unusable). They take no lock, use no IRQ
+// and no heap, and give up after a bounded wait. Not for normal use.
+int block_read_sector_polled(uint32_t lba, void *buf);
+int block_write_sector_polled(uint32_t lba, const void *buf);
+
 // ── boot information ─────────────────────────────────────────────────
 
 #define BOOT_MEM_USABLE       1

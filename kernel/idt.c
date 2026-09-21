@@ -2,6 +2,8 @@
 #include "idt.h"
 #include "hal.h"
 #include "messages.h"
+#include "crashdump.h"
+#include "timer.h"
 #include <stdint.h>
 
 typedef struct {
@@ -87,19 +89,36 @@ static const msg_id_t exception_msgs[32] = {
     MSG_EXC_RESERVED, MSG_EXC_RESERVED,
 };
 
+const char *exception_name(uint32_t int_no) {
+    return msg(int_no < 32 ? exception_msgs[int_no] : MSG_IDT_UNKNOWN);
+}
+
+// An unhandled exception is fatal (there is no per-process fault isolation yet).
+// It used to end in a `hlt` loop. Now the record is SAVED first — while as little
+// as possible has run — then shown, then the machine is reset and the next boot
+// lands in Safe Mode (see crashdump.h). Everything here runs with interrupts off
+// and on the kernel stack, and must not depend on the heap, the scheduler or any
+// lock.
 void exception_handler(uint32_t int_no, uint32_t err_code, uint32_t eip) {
+    __asm__ volatile ("cli");
+
+    // A second exception while this one is being handled (a fault while saving
+    // or printing): skip the dump and reset at once — no crash-in-the-crash loop.
+    if (!crash_begin())
+        crash_reset();
+
     uint32_t cr2;
     __asm__ volatile ("mov %%cr2, %0" : "=r"(cr2));
+
+    crash_info_t info = { int_no, eip, err_code, cr2, timer_get_ticks() };
+    int saved = crash_save(&info);          // first: nothing else has run yet
 
     console_set_color(CONSOLE_WHITE, CONSOLE_RED);
     console_puts(msg(MSG_IDT_KERNEL_EXCEPTION));
 
     console_set_color(CONSOLE_LIGHT_RED, CONSOLE_BLACK);
     console_puts(msg(MSG_IDT_EXCEPTION));
-    if (int_no < 32)
-        console_puts(msg(exception_msgs[int_no]));
-    else
-        console_puts(msg(MSG_IDT_UNKNOWN));
+    console_puts(exception_name(int_no));
     console_puts("\n");
 
     console_puts(msg(MSG_IDT_EIP)); console_put_hex(eip);      console_puts("\n");
@@ -114,9 +133,24 @@ void exception_handler(uint32_t int_no, uint32_t err_code, uint32_t eip) {
         console_puts("\n");
     }
 
+    console_puts("\n");
+    console_puts(msg(saved ? MSG_CRASH_SAVED : MSG_CRASH_NOT_SAVED));
+
+    if (!saved) {
+        // Nothing was recorded (a crash before the disk came up, or a disk without
+        // the config sector): resetting would throw the only copy of the error
+        // away, and a crash during boot would become a silent reboot loop. Halt
+        // with the screen readable, as before.
+        console_puts(msg(MSG_CRASH_HALTED));
+        console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
+        for (;;) __asm__ volatile ("hlt");
+    }
+
+    console_puts(msg(MSG_CRASH_RESTARTING));
     console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
-    __asm__ volatile ("cli");
-    for (;;) __asm__ volatile ("hlt");
+
+    crash_pause_ms(3000);                   // leave the screen readable
+    crash_reset();
 }
 
 void irq_handler(uint32_t int_no) {

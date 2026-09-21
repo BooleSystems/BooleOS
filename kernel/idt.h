@@ -11,4 +11,8 @@ typedef void (*isr_handler_t)(uint32_t int_no);
 void idt_init(void);
 void idt_register_handler(uint8_t irq, isr_handler_t handler);
 
+/* Name of CPU exception `int_no` ("#PF Page Fault"), or "Unknown". A static
+   table lookup: safe to call from the crash path and from Safe Mode. */
+const char *exception_name(uint32_t int_no);
+
 #endif

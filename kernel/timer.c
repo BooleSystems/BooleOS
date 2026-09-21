@@ -54,3 +54,33 @@ void timer_sleep(uint32_t ms) {
         __asm__ volatile ("hlt");
     }
 }
+
+static inline uint8_t pit_inb(uint16_t port) {
+    uint8_t v;
+    __asm__ volatile ("inb %1, %0" : "=a"(v) : "Nd"(port));
+    return v;
+}
+
+/* Latches and reads channel 0's current count. */
+static uint32_t pit_read_count(void) {
+    outb(PIT_CMD, 0x00);
+    uint32_t lo = pit_inb(PIT_CH0);
+    uint32_t hi = pit_inb(PIT_CH0);
+    return lo | (hi << 8);
+}
+
+void timer_poll_delay_ms(uint32_t ms) {
+    uint32_t period_ms = tick_freq ? 1000u / tick_freq : 10u;   /* 10 ms at 100 Hz */
+    if (period_ms == 0) period_ms = 1;
+    uint32_t wraps = (ms + period_ms - 1) / period_ms;
+    uint32_t guard = wraps * 30000u + 100000u;                  /* reads per period, generously */
+    uint32_t prev = pit_read_count();
+
+    /* The counter counts DOWN and reloads at the end of each period: a value
+       larger than the previous one is one wrap = one period elapsed. */
+    while (wraps && guard--) {
+        uint32_t cur = pit_read_count();
+        if (cur > prev) wraps--;
+        prev = cur;
+    }
+}

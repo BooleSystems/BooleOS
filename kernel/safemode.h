@@ -21,6 +21,7 @@
 typedef enum {
     SAFEMODE_REASON_FAIL_COUNT,   // boot_fail_count reached the threshold
     SAFEMODE_REASON_REQUESTED,    // "safemode" on the boot command line
+    SAFEMODE_REASON_CRASH,        // the previous run crashed (crashdump.h)
 } safemode_reason_t;
 
 // Runs Safe Mode. Never returns. `fail_count` is the boot_fail_count at entry,
