@@ -9,3 +9,6 @@ build/
 .*.un~
 .DS_Store
 Thumbs.db
+
+# Serial logs captured by hand while testing (make run ... | tee boot_serial.log)
+*.log
