@@ -1,4 +1,4 @@
-// nullos/kernel/drivers/pci.c — PCI configuration space access and bus
+// booleos/kernel/drivers/pci.c — PCI configuration space access and bus
 // enumeration via the legacy Configuration Mechanism #1 (CONFIG_ADDRESS/
 // CONFIG_DATA at ports 0xCF8/0xCFC). This is the discovery path future
 // drivers (AHCI, xHCI, ...) will use instead of fixed I/O ports.

@@ -1,4 +1,4 @@
-// nullos/kernel/memory/pmm.c
+// booleos/kernel/memory/pmm.c
 #include "pmm.h"
 #include "../hal.h"
 #include "../messages.h"

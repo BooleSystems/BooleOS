@@ -1,20 +1,20 @@
-# NullOS
+# BooleOS
 
 > A bare-metal x86 (32-bit) operating system written from scratch in C99 and x86 Assembly.
 
 ```
-  _   _       _ _  ___  ____  
- | \ | |_   _| | |/ _ \/ ___| 
- |  \| | | | | | | | | \___ \ 
- | |\  | |_| | | | |_| |___) |
- |_| \_|\__,_|_|_|\___/|____/ 
+  ____                 _         ___   ____  
+ | __ )   ___    ___  | |  ___  / _ \ / ___| 
+ |  _ \  / _ \  / _ \ | | / _ \| | | |\___ \ 
+ | |_) || (_) || (_) || ||  __/| |_| | ___) |
+ |____/  \___/  \___/ |_| \___| \___/ |____/ 
 
- NullOS v0.20.0 - Phase 20: Crash handler leads into Safe Mode
+ BooleOS v0.20.0 - Phase 20: Crash handler leads into Safe Mode
 ```
 
 ## Overview
 
-NullOS is an experimental x86 OS written from scratch in C99 and NASM assembly. It boots via GRUB (Multiboot2), runs kernel and user processes with memory isolation, handles syscalls from ring 3 via `int 0x80`, and loads user programs from a flat ramfs image passed as a GRUB module.
+BooleOS is an experimental x86 OS written from scratch in C99 and NASM assembly. It boots via GRUB (Multiboot2), runs kernel and user processes with memory isolation, handles syscalls from ring 3 via `int 0x80`, and loads user programs from a flat ramfs image passed as a GRUB module.
 
 See [CHANGELOG.md](CHANGELOG.md) for version history and [ROADMAP.md](ROADMAP.md) for planned future phases.
 
@@ -63,7 +63,7 @@ Detailed, per-system documentation lives under `docs/`:
 - [docs/shell.md](docs/shell.md) — interactive shell and commands
 - [docs/testing.md](docs/testing.md) — `run selftest`, the automated regression suite
 - [docs/quickstart.md](docs/quickstart.md) — just run a release in QEMU, without compiling anything
-- [docs/sdk.md](docs/sdk.md) — writing your own NullOS program (template, build, run without rebuilding the ISO, libnos and printf)
+- [docs/sdk.md](docs/sdk.md) — writing your own BooleOS program (template, build, run without rebuilding the ISO, libnos and printf)
 - [docs/setup.md](docs/setup.md) — building from source (developers): toolchain, Docker, make targets, debugging
 
 [PROGRESS.md](PROGRESS.md) (not end-user documentation) carries cross-session working
@@ -115,7 +115,7 @@ kernel/
 user/
   lib/messages.c/h    msg(ID): userland output-text table (shell, edit, cat) — see docs/hal.md
   lib/nosstdio.c      printf family (printf/sprintf/snprintf/vsnprintf), linked only into programs that use it — see docs/sdk.md
-  lib/nullos.c/h      Syscall wrapper library (libnos, "nos_*") — one thin wrapper per syscall, see docs/kernel.md
+  lib/booleos.c/h      Syscall wrapper library (libnos, "nos_*") — one thin wrapper per syscall, see docs/kernel.md
   init.c              simple user process: nos_write + nos_exit
   spintest.c          process without yield: validates IRQ0 preemption
   shell.c             interactive shell: help/uname/fetch/ps/mem/ls/touch/mkdir/cd/pwd/echo/kill/run/edit/cat/redirects/reboot/shutdown/clear/exit
@@ -124,7 +124,7 @@ user/
   forktest.c          calls fork(), prints the parent/child paths and PIDs
   selftest.c          automated regression suite ("run selftest") — see docs/testing.md
   link.ld             user linker script (entry @ 0x01000000)
-  Makefile            builds lib/nullos.o and links init.elf, spintest.elf, shell.elf, edit.elf, forktest.elf, selftest.elf, and cat.elf against it
+  Makefile            builds lib/booleos.o and links init.elf, spintest.elf, shell.elf, edit.elf, forktest.elf, selftest.elf, and cat.elf against it
 tools/
   Makefile            Build system (i686-elf-gcc + NASM + grub2-mkrescue), `disk`, `run`, `run-reboot-test`, `inject` targets
   grub.cfg.in         GRUB configuration template (version substituted at build time from kernel/version.h → build/grub.cfg)
@@ -139,7 +139,7 @@ docs/                 Per-system technical documentation (see "Documentation" ab
 
 ```bash
 cd tools
-make          # generates build/nullos.iso and build/disk.img (only creates the disk if it doesn't exist)
+make          # generates build/booleos.iso and build/disk.img (only creates the disk if it doesn't exist)
 make disk     # forces creation of build/disk.img on its own
 make run      # launches in QEMU with the disk attached (-drive ...,if=ide); keeps -no-reboot (post-mortem state on a triple fault)
 make run-reboot-test   # same, but without -no-reboot, so the shell's `reboot` really restarts the guest

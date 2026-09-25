@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to NullOS are documented in this file, grouped by the
+All notable changes to BooleOS are documented in this file, grouped by the
 version/phase they shipped in. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
@@ -21,6 +21,22 @@ called out inline rather than silently "corrected", and `[0.11.0]`–
 (following the `Phase N → v0.N.0` pattern the project used through
 Phase 10), not a version string that ever actually appeared in the repo
 at the time.
+
+## [Unreleased]
+
+### Added
+- ROADMAP.md: new sub-phase 26-E (canonical `input_event_t` unifying PS/2 and USB HID input), closing Phase 26.
+
+### Changed
+- **Project renamed from NullOS to BooleOS.** The old name was too generic and already saturated on GitHub (several unrelated projects called "NullOS"). The new name references George Boole and Boolean algebra, the mathematical basis of every digital circuit.
+  - Prose and UI text (boot banner, ASCII logo, `fetch`, GRUB entries, README, ROADMAP, `docs/*.md`, `CLAUDE.md`) now say "BooleOS".
+  - Macros/prefixes `NULLOS_*` -> `BOOLEOS_*` (`kernel/version.h`, build env vars, `@BOOLEOS_VERSION@` in `tools/grub.cfg.in`).
+  - Build artifacts: `nullos.elf` -> `booleos.elf`, `nullos.iso` -> `booleos.iso`, `/boot/prev-booleos.elf`, release zip `booleos-X.Y.Z.zip`, FAT volume label `BOOLEOS`; `user/lib/nullos.{c,h}` -> `user/lib/booleos.{c,h}`; `tools/prev/nullos.elf` renamed only (the v0.20.0 snapshot content is untouched).
+  - Deliberately unchanged: the `nos_*`/`libnos`/`nosstdio` API prefix, the GitHub URLs and the `origin` remote (the remote repository has not been renamed yet), C `NULL` and "null-terminated" terminology, and the historical entries of this changelog.
+- `kernel/version.h` only had its macro names changed; no version bump (this is not a phase).
+
+### Removed
+- `kernel/main.c.save`: an editor backup file that had been committed by mistake.
 
 ## [0.20.0] - 2026-09-20 - Phase 20: Crash handler leads into Safe Mode
 

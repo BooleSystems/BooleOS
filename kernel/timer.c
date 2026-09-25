@@ -1,4 +1,4 @@
-// nullos/kernel/timer.c
+// booleos/kernel/timer.c
 #include "timer.h"
 #include "idt.h"
 #include "pic.h"

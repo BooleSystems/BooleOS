@@ -1,4 +1,4 @@
-# NullOS — Future roadmap
+# BooleOS — Future roadmap
 
 The table below is the granular phase table: one row per phase AND per
 sub-phase, for both completed work (Phases 0–20, detailed in `README.md`,
@@ -63,6 +63,7 @@ restructuring after Phase 16) use a hyphen and an uppercase letter
 | **26-B** | Port reset | 🔜 Planned | below |
 | **26-C** | Enumerate the connected device | 🔜 Planned | below |
 | **26-D** | Parse HID reports | 🔜 Planned | below |
+| **26-E** | Canonical input event (unifies PS/2 + USB HID) | 🔜 Planned | below |
 | **27** | Linear framebuffer + simple GUI | 🔜 Planned | below |
 | **28** | Syscall deprecation/compatibility strategy | 🔜 Planned | below |
 | **29** | Second pass of audit fixes | 🔜 Planned | below |
@@ -102,7 +103,7 @@ Done; see the table above, CHANGELOG `[0.19.0]` and `docs/sdk.md`. `exec()` find
 
 Done; see the table above, CHANGELOG `[0.20.0]` and `docs/safemode.md`. An unhandled CPU exception saves a crash record in the boot config sector through polling-only ATA I/O, shows the red screen, and resets the machine; the next boot goes to Safe Mode with the reason and a "view last crash details" screen; the `crash <de|pf|gpf>` shell command tests the whole pipeline (`make run-reboot-test`). Carried over, not done in this phase:
 
-- A crash *inside* the saving code (the re-entry guard), a crash before the disk is up (the halt path) and a fault in kernel mode were not exercised by the manual test; the `crash` command faults in ring 3 (NullOS has no per-process fault isolation yet, so it takes the same fatal path).
+- A crash *inside* the saving code (the re-entry guard), a crash before the disk is up (the halt path) and a fault in kernel mode were not exercised by the manual test; the `crash` command faults in ring 3 (BooleOS has no per-process fault isolation yet, so it takes the same fatal path).
 - Per-process fault isolation (a user-mode fault killing only that process instead of the machine) is Phase 29's item ("Per-process fault isolation in `idt.c`") and would change what a user-mode crash does.
 
 ### Phase 21 — Copy-on-write `fork()`
@@ -158,6 +159,13 @@ Done; see the table above, CHANGELOG `[0.20.0]` and `docs/safemode.md`. An unhan
 - 26-B: port reset
 - 26-C: enumerate the connected device
 - 26-D: parse HID reports (a real keyboard/mouse)
+- 26-E: canonical input event (unifies PS/2 + USB HID)
+  - **Why:** the PS/2 driver and the new USB HID driver each deliver data in their own raw format (PS/2 scancode vs. parsed HID report). This sub-phase unifies them before any app reads input, so no app needs to know whether the keyboard is PS/2 or USB.
+  - Define a single `input_event_t`: event type (key down / key up) + a BooleOS-own standardized keycode enum (neither raw PS/2 scancodes nor USB usage codes) + source `device_id`.
+  - The PS/2 driver and the USB HID driver (built in 26-A–26-D) translate their raw format into `input_event_t` and push it onto one kernel-wide queue.
+  - Apps read only from that single queue, never from a device driver directly.
+  - `device_id` will later allow telling apart several keyboards plugged in at once (e.g. per-device local multiplayer); no extra implementation now — the field just has to exist and be filled in correctly from the start.
+  - **Why here and not later:** every GUI app built from Phase 27 on (launcher, settings, DOOM) reads input through the standard queue from day one, avoiding rewrites when more input backends (Bluetooth, etc.) appear.
 
 ### Phase 27 — Linear framebuffer + simple GUI
 
@@ -200,13 +208,13 @@ Done; see the table above, CHANGELOG `[0.20.0]` and `docs/safemode.md`. An unhan
 
 ### Phase 31 — DOOM engine port (v1.0.0 milestone)
 
-- **Goal:** the first proof that NullOS runs real, complex third-party software, closing out pre-1.0. Scope explicitly cut: no audio, no performance target, just actually running.
+- **Goal:** the first proof that BooleOS runs real, complex third-party software, closing out pre-1.0. Scope explicitly cut: no audio, no performance target, just actually running.
 - **Licensing:** the engine (GPL since 1997) can go in the repo; the WAD NEVER goes in the repo — the user injects `doom1.wad` (shareware) or Freedoom on their own.
 - **Depends on:** Phase 27 (framebuffer/GUI). Also uses `lseek` from Phase 30 (general polish).
 
-- 31-A: portability layer (`i_video`/`i_system`/`i_input` in the original code) using NullOS's framebuffer, input and timer — reuse 100% of the original game logic (physics, AI, software rendering) untouched
+- 31-A: portability layer (`i_video`/`i_system`/`i_input` in the original code) using BooleOS's framebuffer, input and timer — reuse 100% of the original game logic (physics, AI, software rendering) untouched
 - 31-B: integrate the single-block memory reservation syscall (a one-shot "reserve N MB contiguous" call, `sbrk`-style but called once — DOOM's Z_Zone allocator requests one large block at startup and manages it itself, so no userland `malloc`/`free` is needed); `lseek` for WAD reading already comes from Phase 30
-- 31-C: build/link of the full engine running on NullOS, first menu screen appearing
+- 31-C: build/link of the full engine running on BooleOS, first menu screen appearing
 - 31-D: actually playing without crashing (functional level, no audio)
 
 **v1.0.0** closes right after Phase 31.

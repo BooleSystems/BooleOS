@@ -1,5 +1,5 @@
-## nullos/tools/grub.cfg.in
-## GRUB configuration TEMPLATE for NullOS. The menu entry's version
+## booleos/tools/grub.cfg.in
+## GRUB configuration TEMPLATE for BooleOS. The menu entry's version
 ## placeholder below is substituted with the version from
 ## kernel/version.h by the "GEN grub.cfg" rule in tools/Makefile — do
 ## not hardcode a version string here, and do not edit build/grub.cfg
@@ -11,27 +11,27 @@ set default=0
 insmod all_video
 insmod multiboot2
 
-menuentry "NullOS v@NULLOS_VERSION@" {
-    multiboot2 /boot/nullos.elf
+menuentry "BooleOS v@BOOLEOS_VERSION@" {
+    multiboot2 /boot/booleos.elf
     module2    /boot/ramfs.img
     boot
 }
 
-menuentry "NullOS (serial debug mode)" {
-    multiboot2 /boot/nullos.elf debug
+menuentry "BooleOS (serial debug mode)" {
+    multiboot2 /boot/booleos.elf debug
     module2    /boot/ramfs.img
     boot
 }
 
-menuentry "NullOS (Safe Mode)" {
-    multiboot2 /boot/nullos.elf safemode
+menuentry "BooleOS (Safe Mode)" {
+    multiboot2 /boot/booleos.elf safemode
     module2    /boot/ramfs.img
     boot
 }
 
 ## PREV-BEGIN (this whole entry is dropped at build time when tools/prev/ has no snapshot)
-menuentry "NullOS v@PREV_VERSION@ (previous release)" {
-    multiboot2 /boot/prev-nullos.elf
+menuentry "BooleOS v@PREV_VERSION@ (previous release)" {
+    multiboot2 /boot/prev-booleos.elf
     module2    /boot/prev-ramfs.img
     boot
 }

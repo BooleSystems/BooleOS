@@ -1,4 +1,4 @@
-/* nullos/user/cat.c — copies a file (or stdin) to stdout.
+/* booleos/user/cat.c — copies a file (or stdin) to stdout.
    With an argument ("cat notes.txt"): opens that file and prints it.
    Without one: reads all of stdin and writes it to stdout — which is what
    makes it a pipe sink (Phase 16): none of the other existing programs are
@@ -6,7 +6,7 @@
    write straight to VGA and never through fd 1, so they can't be
    redirected into a pipe's write end. "forktest | cat" is the manual test
    in docs/pipes.md; "cat < file" reads stdin from a file the same way. */
-#include "lib/nullos.h"
+#include "lib/booleos.h"
 #include "lib/messages.h"
 
 static void cat_puts(const char *s) {

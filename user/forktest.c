@@ -1,10 +1,10 @@
-/* nullos/user/forktest.c — exercises fork(): validates that both the
+/* booleos/user/forktest.c — exercises fork(): validates that both the
    parent and child execution paths actually happen, with correct PIDs,
    and (Phase 15) that the child inherits the parent's cwd_cluster —
    both processes create a relative-path marker file named after their
    own pid, so if both end up in the same directory when listed, the
    cwd was correctly shared at the moment of fork(). */
-#include "lib/nullos.h"
+#include "lib/booleos.h"
 
 static void ft_puts(const char *s) {
     nos_write(1, s, strlen(s));

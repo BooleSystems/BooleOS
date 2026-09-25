@@ -1,4 +1,4 @@
-// nullos/kernel/scheduler.c
+// booleos/kernel/scheduler.c
 #include "scheduler.h"
 #include "timer.h"
 #include "hal.h"

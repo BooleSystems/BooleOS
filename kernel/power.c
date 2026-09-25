@@ -1,4 +1,4 @@
-// nullos/kernel/power.c — reboot / shutdown (see power.h).
+// booleos/kernel/power.c — reboot / shutdown (see power.h).
 #include "power.h"
 #include "drivers/pci.h"
 #include "hal.h"

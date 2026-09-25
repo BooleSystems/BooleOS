@@ -1,4 +1,4 @@
-/* nullos/kernel/pipe.h — in-kernel pipe buffers for inter-process
+/* booleos/kernel/pipe.h — in-kernel pipe buffers for inter-process
    communication (Phase 16). See docs/pipes.md for the full design:
    the fixed static pool (no kmalloc, nothing to leak), the
    single-waiter-per-direction scope limit, and the symmetric

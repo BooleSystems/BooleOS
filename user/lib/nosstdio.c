@@ -1,7 +1,7 @@
-/* nullos/user/lib/nosstdio.c — a minimal printf family for user programs.
+/* booleos/user/lib/nosstdio.c — a minimal printf family for user programs.
  *
  * printf / vprintf / sprintf / snprintf / vsnprintf, with the standard libc
- * names and signatures on purpose (like memcpy/strlen in nullos.c): code written
+ * names and signatures on purpose (like memcpy/strlen in booleos.c): code written
  * for a normal libc, such as a port of an existing program, compiles and links
  * unchanged. There is no libc here — this is the whole implementation, C99,
  * using only <stdarg.h>/<stddef.h>/<stdint.h> (compiler headers, not libc).
@@ -19,7 +19,7 @@
  * Linked only into the programs that use it (see user/Makefile, LIBSTDIO): every
  * program that links this object carries it.
  */
-#include "nullos.h"
+#include "booleos.h"
 #include <stdarg.h>
 
 /* ── output sinks ─────────────────────────────────────────────────── */

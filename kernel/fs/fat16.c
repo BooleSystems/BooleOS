@@ -1,4 +1,4 @@
-/* nullos/kernel/fs/fat16.c — FAT16 read/write, subdirectories, over ATA PIO */
+/* booleos/kernel/fs/fat16.c — FAT16 read/write, subdirectories, over ATA PIO */
 #include "fat16.h"
 #include "../hal.h"
 #include "../messages.h"

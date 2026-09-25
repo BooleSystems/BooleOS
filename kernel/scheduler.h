@@ -1,4 +1,4 @@
-// nullos/kernel/scheduler.h
+// booleos/kernel/scheduler.h
 #ifndef SCHEDULER_H
 #define SCHEDULER_H
 

@@ -1,4 +1,4 @@
-// nullos/kernel/syscall.c
+// booleos/kernel/syscall.c
 #include "syscall.h"
 #include "process.h"
 #include "scheduler.h"

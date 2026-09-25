@@ -1,4 +1,4 @@
-Bem vindo ao NullOS!
+Bem vindo ao BooleOS!
 Digite help no shell.
 
 Comandos disponiveis:

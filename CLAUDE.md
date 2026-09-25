@@ -73,7 +73,7 @@ Todos os itens abaixo, nenhum pulado silenciosamente:
 - [ ] **Release do GitHub publicado (`gh release create`) — bloqueante como os
   outros: a versão NÃO está lançada só com a tag; o Release precisa existir no
   GitHub.** Com:
-  - `nullos-X.Y.Z.zip` contendo: o ISO bootável (buildado da árvore da TAG, num
+  - `booleos-X.Y.Z.zip` contendo: o ISO bootável (buildado da árvore da TAG, num
     worktree limpo), uma imagem de disco **LIMPA em branco** (32 MB FAT16
     regenerada do zero via `tools/make_disk.sh`, só com o `readme.txt`
     padrão — NUNCA a `build/disk.img` que sobrou de rodar selftest, `make inject`
@@ -81,8 +81,8 @@ Todos os itens abaixo, nenhum pulado silenciosamente:
     rodar sem compilar nada (sem `-display` e sem `-no-reboot`; nenhum texto
     específico de um sistema operacional — o público é "quem não quer compilar").
     Conferir com `mdir` que o disco do zip só tem o `readme.txt`.
-  - Título do Release: `NullOS X.Y.Z - <nome da fase>`. Descrição, nesta ordem: a
-    primeira linha em negrito `NullOS X.Y.Z - Phase N: <nome da fase>`, o parágrafo
+  - Título do Release: `BooleOS X.Y.Z - <nome da fase>`. Descrição, nesta ordem: a
+    primeira linha em negrito `BooleOS X.Y.Z - Phase N: <nome da fase>`, o parágrafo
     "Don't want to compile?" com o nome do zip e o link do QEMU, a seção "Changes"
     (cabeçalho `## Changes`, subseções `####`) puxada direto
     da entrada `[X.Y.Z]` do CHANGELOG (Added/Changed/Fixed) e o link do CHANGELOG
@@ -160,7 +160,7 @@ contra o estado real dos arquivos, não contra a lembrança do que foi feito.**
   stdout_redirect na Fase 16), threade-o explicitamente por toda a
   cadeia (syscall → exec()/fork() → scheduler_spawn_* →
   process_spawn_*) em vez de assumir herança implícita. exec() em
-  NullOS NÃO substitui a imagem do processo chamador como o exec()
+  BooleOS NÃO substitui a imagem do processo chamador como o exec()
   POSIX — ele cria um process_t inteiramente novo e independente via
   process_spawn_user(), então nenhum campo do processo chamador
   chega automaticamente lá; só fork() copia campos diretamente
@@ -226,7 +226,7 @@ contra o estado real dos arquivos, não contra a lembrança do que foi feito.**
   `msg(MSG_ID)`) em vez de string literal solta espalhada em
   printf/vga_puts direto no meio do código. Isso NÃO é um sistema de
   tradução — a tabela tem hoje uma coluna só, em inglês, que é o
-  idioma padrão e único do NullOS por tempo indeterminado (o sistema
+  idioma padrão e único do BooleOS por tempo indeterminado (o sistema
   já é 100% inglês, isso é só mover o texto que já existe pra dentro
   de uma tabela central, não traduzir nada). O único objetivo agora é
   ter um ponto único de saída, barato de fazer cedo (é puro
@@ -352,18 +352,18 @@ contra o estado real dos arquivos, não contra a lembrança do que foi feito.**
 ## Convenções de fim de fase (versionamento)
 
 - kernel/version.h é a ÚNICA fonte de verdade pro número de versão
-  do projeto (`NULLOS_VERSION`, `NULLOS_PHASE`, `NULLOS_PHASE_DESC`,
-  e as strings compostas `NULLOS_BANNER`/`NULLOS_SHORT_BANNER`).
+  do projeto (`BOOLEOS_VERSION`, `BOOLEOS_PHASE`, `BOOLEOS_PHASE_DESC`,
+  e as strings compostas `BOOLEOS_BANNER`/`BOOLEOS_SHORT_BANNER`).
 - Esquema `MAJOR.MINOR.PATCH` (a partir da v0.14.1): MINOR é
   reservado EXCLUSIVAMENTE pro número de fase concluída — nunca pule,
   nunca invente um MINOR que não corresponda a uma fase real
   concluída e documentada na tabela de fases concluídas do README
-  (`NULLOS_PHASE` segue o mesmo número). PATCH é pra trabalho
+  (`BOOLEOS_PHASE` segue o mesmo número). PATCH é pra trabalho
   intermediário que NÃO constitui uma fase nova — reorganização de
   documentação, ferramentas de teste, pequenas funções aditivas que
   não mudam comportamento visível do usuário, correções de
-  documentação — e NÃO toca em MINOR/`NULLOS_PHASE`/
-  `NULLOS_PHASE_DESC`.
+  documentação — e NÃO toca em MINOR/`BOOLEOS_PHASE`/
+  `BOOLEOS_PHASE_DESC`.
 - **Sufixo `-nightly` (substitui a ideia antiga, já descartada, de
   sufixo de letra `-a`/`-b`/`-c` por subfase):** enquanto uma versão
   está sendo trabalhada em `nightly`, o número em version.h é
@@ -393,8 +393,8 @@ contra o estado real dos arquivos, não contra a lembrança do que foi feito.**
   de fim de fase abaixo, incluindo o bump de version.h no mesmo
   commit.
 - NENHUM outro arquivo deve ter string de versão hardcoded a partir
-  de agora — nem kernel/main.c (usa `NULLOS_BANNER` de version.h),
-  nem user/shell.c (usa `NULLOS_SHORT_BANNER`, incluído via `-I` no
+  de agora — nem kernel/main.c (usa `BOOLEOS_BANNER` de version.h),
+  nem user/shell.c (usa `BOOLEOS_SHORT_BANNER`, incluído via `-I` no
   Makefile de user/, já que version.h só tem macros de texto, sem
   tipo/função de kernel — seguro de incluir em código de userland),
   nem tools/grub.cfg (gerado em build-time a partir de
@@ -419,7 +419,7 @@ contra o estado real dos arquivos, não contra a lembrança do que foi feito.**
   docs/syscalls.md (ver regra abaixo)? PROGRESS.md conferido como
   fonte primária do número de fase (ver regra abaixo)? bloco de
   banner ASCII hardcoded no README.md (o bloco de código logo no
-  topo, com "NullOS vX.Y.Z - Phase N: ...") conferido e atualizado
+  topo, com "BooleOS vX.Y.Z - Phase N: ...") conferido e atualizado
   pra versão nova — ele NÃO é gerado automaticamente a partir de
   version.h como o banner de boot real ou o grub.cfg, precisa ser
   editado manualmente toda vez (isso já causou o mesmo problema mais
@@ -441,7 +441,7 @@ contra o estado real dos arquivos, não contra a lembrança do que foi feito.**
   aconteceu no fechamento da 0.18.0: `tools/prev/` tinha um nightly de
   si mesmo e teve que ser refeito a partir da tag v0.17.1). Se o alvo
   `snapshot` ainda não existir na tag (releases anteriores à 0.18.0),
-  copiar `build/nullos.elf` e `build/ramfs.img` pro mesmo layout à mão.
+  copiar `build/booleos.elf` e `build/ramfs.img` pro mesmo layout à mão.
 - NUNCA invente um número de versão pra uma fase que não existe ou
   não foi pedida — se não tiver certeza do número de fase correto,
   pergunte antes de decidir, não assuma.
@@ -644,7 +644,7 @@ fecha sem a entrada consolidada existir no arquivo.)
 - **Fallback além do Safe Mode:** toda vez que `nightly` for
   mergeado em `main` (fechamento de versão), o binário de kernel
   anterior de `main` deve ser preservado e virar uma entrada extra e
-  permanente no GRUB ("NullOS vX.Y.Z (anterior)") — isso cobre o
+  permanente no GRUB ("BooleOS vX.Y.Z (anterior)") — isso cobre o
   cenário que o Safe Mode sozinho não cobre (bug no próprio código de
   boot/paginação/GDT/IDT, que roda antes de qualquer flag de Safe
   Mode ser lida).

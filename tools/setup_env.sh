@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# nullos/tools/setup_env.sh
-# Installs NullOS's build dependencies on Fedora
+# booleos/tools/setup_env.sh
+# Installs BooleOS's build dependencies on Fedora
 # Run with: bash setup_env.sh
 
 set -e
 
-echo "=== NullOS — Build environment setup ==="
+echo "=== BooleOS — Build environment setup ==="
 echo ""
 
 # Detect distro

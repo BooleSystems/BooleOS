@@ -1,4 +1,4 @@
-// nullos/kernel/messages.h — central table of user-visible kernel text.
+// booleos/kernel/messages.h — central table of user-visible kernel text.
 //
 // Every string the kernel prints for a human to read (boot log, errors,
 // dumps) lives in messages.c and is fetched by ID: console_puts(msg(MSG_X)).

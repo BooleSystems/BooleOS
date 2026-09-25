@@ -17,7 +17,7 @@ run selftest
 Expected output shape (exact wording may evolve as tests are added):
 
 ```
-=== NullOS selftest ===
+=== BooleOS selftest ===
 [PASS] memory: SYS_MEMINFO reports pmm/heap/process stats
 [PASS] fork() returns a valid child PID (> 0) to the parent
 [PASS] file create (st_root.txt)

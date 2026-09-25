@@ -1,5 +1,5 @@
-/* nullos/user/init.c — first user process */
-#include "lib/nullos.h"
+/* booleos/user/init.c — first user process */
+#include "lib/booleos.h"
 
 static const char msg[] = "init: hello from userland!\n";
 

@@ -1,4 +1,4 @@
-// nullos/kernel/safeshell.c — Safe Mode's restricted shell (see safeshell.h).
+// booleos/kernel/safeshell.c — Safe Mode's restricted shell (see safeshell.h).
 //
 // Fixed-size static buffers only; no allocation of its own (the FAT16 driver
 // uses the heap internally). Text goes through msg().

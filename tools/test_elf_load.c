@@ -1,4 +1,4 @@
-/* nullos/tools/test_elf_load.c — host-side test of the kernel's ELF loader.
+/* booleos/tools/test_elf_load.c — host-side test of the kernel's ELF loader.
  *
  * Compiles the REAL kernel/elf.c (no copy of its logic) against stand-ins for
  * the physical page allocator and the page mapper, then checks it on every ELF

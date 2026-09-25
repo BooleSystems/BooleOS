@@ -1,4 +1,4 @@
-// nullos/kernel/process.h
+// booleos/kernel/process.h
 #ifndef PROCESS_H
 #define PROCESS_H
 

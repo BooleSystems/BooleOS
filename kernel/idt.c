@@ -1,4 +1,4 @@
-// nullos/kernel/idt.c
+// booleos/kernel/idt.c
 #include "idt.h"
 #include "hal.h"
 #include "messages.h"

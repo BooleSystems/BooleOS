@@ -1,4 +1,4 @@
-// nullos/kernel/gdt.c
+// booleos/kernel/gdt.c
 // Global Descriptor Table
 // Defines the system's memory segments (code/data, ring 0/3)
 

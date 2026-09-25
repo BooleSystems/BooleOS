@@ -1,4 +1,4 @@
-// nullos/kernel/messages.c — the message table (see messages.h).
+// booleos/kernel/messages.c — the message table (see messages.h).
 
 #include "messages.h"
 
@@ -7,11 +7,11 @@
 static const char *const g_msgs[] = {
     // kmain boot log
     [MSG_BOOT_OK] = "OK\n",
-    [MSG_BOOT_LOGO_1] = "  _   _       _ _  ___  ____  \n",
-    [MSG_BOOT_LOGO_2] = " | \\ | |_   _| | |/ _ \\/ ___| \n",
-    [MSG_BOOT_LOGO_3] = " |  \\| | | | | | | | | \\___ \\ \n",
-    [MSG_BOOT_LOGO_4] = " | |\\  | |_| | | | |_| |___) |\n",
-    [MSG_BOOT_LOGO_5] = " |_| \\_|\\__,_|_|_|\\___/|____/ \n\n",
+    [MSG_BOOT_LOGO_1] = "  ____                 _         ___   ____  \n",
+    [MSG_BOOT_LOGO_2] = " | __ )   ___    ___  | |  ___  / _ \\ / ___| \n",
+    [MSG_BOOT_LOGO_3] = " |  _ \\  / _ \\  / _ \\ | | / _ \\| | | |\\___ \\ \n",
+    [MSG_BOOT_LOGO_4] = " | |_) || (_) || (_) || ||  __/| |_| | ___) |\n",
+    [MSG_BOOT_LOGO_5] = " |____/  \\___/  \\___/ |_| \\___| \\___/ |____/ \n\n",
     [MSG_BOOT_INVALID_MULTIBOOT2_MAGIC] = "Invalid Multiboot2 magic!\n",
     [MSG_BOOT_MULTIBOOT2_OK_PREFIX] = "Multiboot2: ",
     [MSG_TAG_BOOT] = "[BOOT] ",
@@ -190,7 +190,7 @@ static const char *const g_msgs[] = {
     [MSG_POWER_SHUTDOWN_FAILED_ACPI] = "shutdown failed: ACPI power-off had no effect\n",
 
     // Safe Mode (safemode.c)
-    [MSG_SAFE_TITLE] = "\n*** NullOS SAFE MODE ***\n\n",
+    [MSG_SAFE_TITLE] = "\n*** BooleOS SAFE MODE ***\n\n",
     [MSG_SAFE_REASON_COUNT_1] = "Reason: too many consecutive failed boots (boot_fail_count = ",
     [MSG_SAFE_REASON_COUNT_2] = ", limit ",
     [MSG_SAFE_REASON_COUNT_3] = ")\n",

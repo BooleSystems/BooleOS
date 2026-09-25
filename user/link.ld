@@ -1,4 +1,4 @@
-/* nullos/user/link.ld — user process linker script */
+/* booleos/user/link.ld — user process linker script */
 
 ENTRY(_start)
 

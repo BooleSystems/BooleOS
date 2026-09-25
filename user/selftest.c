@@ -1,10 +1,10 @@
-/* nullos/user/selftest.c — automated regression test suite. Run with
+/* booleos/user/selftest.c — automated regression test suite. Run with
    "run selftest" from the shell after any kernel change to get a quick
    PASS/FAIL readout instead of manually typing touch/edit/ls/fork by
    hand every time. Not a numbered phase — just a standalone diagnostic
    tool, and expected to grow as more subsystems get their own test. */
 
-#include "lib/nullos.h"
+#include "lib/booleos.h"
 
 /* ── tiny helpers (no libc) ───────────────────────────────────────── */
 
@@ -56,7 +56,7 @@ static unsigned int st_child_result(char *out, unsigned int idx, unsigned int pi
 /* ── the test suite itself ────────────────────────────────────────── */
 
 void _start(void) {
-    st_puts("=== NullOS selftest ===\n");
+    st_puts("=== BooleOS selftest ===\n");
 
     /* 1. Memory: there's no userland-facing syscall that allocates a
        raw heap block directly, so this exercises the closest available
@@ -93,7 +93,7 @@ void _start(void) {
        named so it can't collide with anything a real user created. */
     {
         const char *fname   = "st_root.txt";
-        const char *content = "NullOS selftest data 1234\n";
+        const char *content = "BooleOS selftest data 1234\n";
         unsigned int clen   = strlen(content);
         int file_ok = 1;
 
@@ -241,7 +241,7 @@ void _start(void) {
     {
         const char *dname     = "selftest_dir";
         const char *subfname  = "st_sub.txt";
-        const char *subcontent = "NullOS selftest subdir data 5678\n";
+        const char *subcontent = "BooleOS selftest subdir data 5678\n";
         unsigned int subclen  = strlen(subcontent);
         const char *markname  = "st_mark.txt";
         int dir_ok = 1;
@@ -490,7 +490,7 @@ void _start(void) {
        docs/pipes.md describes for the shell). */
     {
         const char *tname = "two-process pipe (fork writer -> exec cat -> parent)";
-        const char *msg   = "NullOS two-process pipe test 4242\n";
+        const char *msg   = "BooleOS two-process pipe test 4242\n";
         unsigned int mlen = strlen(msg);
         int p1[2] = { -1, -1 }, p2[2] = { -1, -1 };
         int wpid = -1, cpid = -1;
@@ -620,7 +620,7 @@ void _start(void) {
        Assumes the earlier tests left cwd at the root. */
     {
         const char *tname   = "mkdir/cd 3 levels deep, file at the bottom, cd .. back to /";
-        const char *content = "NullOS selftest deep data 9012\n";
+        const char *content = "BooleOS selftest deep data 9012\n";
         unsigned int clen   = strlen(content);
         const char *why     = 0;
         int depth = 0;   /* successful cd's below the root, for cleanup */
@@ -692,7 +692,7 @@ void _start(void) {
        Runs from the root (test 18 leaves cwd there). */
     {
         const char *tname = "exec() runs a program that exists only on FAT16";
-        const char *msg   = "NullOS exec-from-FAT16 test 7431\n";
+        const char *msg   = "BooleOS exec-from-FAT16 test 7431\n";
         unsigned int mlen = strlen(msg);
         static char chunk[512];
         const char *why = 0;

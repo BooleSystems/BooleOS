@@ -1,4 +1,4 @@
-// nullos/kernel/crashdump.c — the crash path (see crashdump.h).
+// booleos/kernel/crashdump.c — the crash path (see crashdump.h).
 
 #include "crashdump.h"
 #include "hal.h"

@@ -1,4 +1,4 @@
-// nullos/kernel/safemode.c — Safe Mode, tier 1 (see safemode.h).
+// booleos/kernel/safemode.c — Safe Mode, tier 1 (see safemode.h).
 //
 // Tier 1 runs with nothing but the HAL and bootcfg: NO kmalloc, PMM, VMM,
 // scheduler or anything that depends on them — it is entered before they

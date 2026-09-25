@@ -1,7 +1,7 @@
-/* nullos/user/shell.c — interactive shell */
+/* booleos/user/shell.c — interactive shell */
 
 #include "version.h"
-#include "lib/nullos.h"
+#include "lib/booleos.h"
 #include "lib/messages.h"
 
 /* ── string helpers ─────────────────────────────────────────────── */
@@ -13,7 +13,7 @@ static void sh_puts(const char *s) {
 /* ── commands ───────────────────────────────────────────────────── */
 
 static void cmd_uname(void) {
-    sh_puts(NULLOS_SHORT_BANNER " i686\n");
+    sh_puts(BOOLEOS_SHORT_BANNER " i686\n");
 }
 
 static void cmd_fetch(void) {
@@ -31,7 +31,7 @@ static void cmd_fetch(void) {
     char *n;
 
     /* line 0: logo + OS */
-    sh_puts(msg(logo[0])); sh_puts("  OS: " NULLOS_SHORT_BANNER " i686\n");
+    sh_puts(msg(logo[0])); sh_puts("  OS: " BOOLEOS_SHORT_BANNER " i686\n");
 
     /* line 1: logo + Arch */
     sh_puts(msg(logo[1])); sh_puts(msg(UMSG_SH_FETCH_ARCH));
@@ -99,7 +99,7 @@ static void cmd_echo(const char *line) {
 /* DEBUG TOOL — `crash <de|pf|gpf>` makes this (user-mode) process raise a known
    CPU exception on purpose, so the crash pipeline (the exception handler saving
    the dump, the reset, Safe Mode showing it) can be tested repeatably without
-   waiting for a real bug. NullOS has no per-process fault isolation yet, so a
+   waiting for a real bug. BooleOS has no per-process fault isolation yet, so a
    fault in ring 3 takes the same fatal path as one in the kernel. See
    docs/safemode.md. */
 static void cmd_crash(const char *arg) {

@@ -1,5 +1,5 @@
-/* nullos/user/lib/nullos.c — thin syscall wrapper library ("libnos").
- * See nullos.h for the rationale. Every function below does exactly
+/* booleos/user/lib/booleos.c — thin syscall wrapper library ("libnos").
+ * See booleos.h for the rationale. Every function below does exactly
  * one "int $0x80" with the matching syscall number from
  * kernel/syscall.h and returns whatever the kernel put in eax — no
  * added logic, no retries, no argument massaging.
@@ -11,7 +11,7 @@
  * subsequent syscall (the same convention user/edit.c's wrappers
  * already documented and relied on before this file existed).
  */
-#include "nullos.h"
+#include "booleos.h"
 #include "syscall.h"
 
 void nos_exit(int code) {
@@ -246,7 +246,7 @@ int nos_shutdown(void) {
     return ret;
 }
 
-/* ── string / memory helpers (see nullos.h) ───────────────────────
+/* ── string / memory helpers (see booleos.h) ───────────────────────
    memcpy/memset/memmove use rep movsb / rep stosb instead of C loops:
    a plain byte loop can be recognized by GCC's loop-idiom pass and
    turned back into a call to the very function being defined

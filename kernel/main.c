@@ -1,4 +1,4 @@
-// nullos/kernel/main.c
+// booleos/kernel/main.c
 // kmain() - Phase 5: ramfs + ELF loader + exec()
 
 #include <stdint.h>
@@ -59,7 +59,7 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     console_puts(msg(MSG_BOOT_LOGO_4));
     console_puts(msg(MSG_BOOT_LOGO_5));
     console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
-    console_puts(" " NULLOS_BANNER "\n\n");
+    console_puts(" " BOOLEOS_BANNER "\n\n");
 
     print_separator();
 

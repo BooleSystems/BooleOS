@@ -1,5 +1,5 @@
-/* nullos/boot/linker.ld
-   Linker script do NullOS — x86_64-elf
+/* booleos/boot/linker.ld
+   Linker script do BooleOS — x86_64-elf
    O kernel é linkado a partir de 1MB (0x100000), que é onde o GRUB carrega. */
 
 ENTRY(_start)

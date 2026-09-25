@@ -1,4 +1,4 @@
-// nullos/kernel/hal.h — hardware abstraction layer (Phase 18-A).
+// booleos/kernel/hal.h — hardware abstraction layer (Phase 18-A).
 //
 // Everything the rest of the kernel needs from "the machine" goes through
 // these functions: text output, key input, block I/O, power control and

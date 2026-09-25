@@ -1,4 +1,4 @@
-// nullos/kernel/tss.c
+// booleos/kernel/tss.c
 #include "tss.h"
 #include <stdint.h>
 

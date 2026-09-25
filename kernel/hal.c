@@ -1,4 +1,4 @@
-// nullos/kernel/hal.c — x86 implementation of the HAL (see hal.h).
+// booleos/kernel/hal.c — x86 implementation of the HAL (see hal.h).
 //
 // Thin forwarding layer: each function calls the driver that already
 // existed. No behavior of its own, so what a caller sees is unchanged from

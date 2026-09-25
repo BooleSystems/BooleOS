@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# nullos/tools/docker_build.sh
-# Builds NullOS inside the cross-compiler Docker image.
+# booleos/tools/docker_build.sh
+# Builds BooleOS inside the cross-compiler Docker image.
 
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-IMAGE="${NULLOS_DOCKER_IMAGE:-randomdude/gcc-cross-i686-elf}"
+IMAGE="${BOOLEOS_DOCKER_IMAGE:-randomdude/gcc-cross-i686-elf}"
 DOCKER_BIN="${DOCKER:-docker}"
 UID_OUT="$(id -u)"
 GID_OUT="$(id -g)"
@@ -20,16 +20,16 @@ if [ "${1:-}" = "clean" ]; then
     DOCKER_ARGS+=(clean)
 fi
 
-echo "=== NullOS Docker build ==="
+echo "=== BooleOS Docker build ==="
 echo "Image: $IMAGE"
 echo "Root:  $ROOT_DIR"
 echo ""
 
 "$DOCKER_BIN" run --rm -u root \
     --dns 8.8.8.8 \
-    -e NULLOS_UID="$UID_OUT" \
-    -e NULLOS_GID="$GID_OUT" \
-    -v "$ROOT_DIR":/nullos:z \
+    -e BOOLEOS_UID="$UID_OUT" \
+    -e BOOLEOS_GID="$GID_OUT" \
+    -v "$ROOT_DIR":/booleos:z \
     "$IMAGE" \
     bash -lc '
         set -euo pipefail
@@ -40,13 +40,13 @@ echo ""
             apt-get install -y -q nasm grub-pc-bin grub-common xorriso mtools
         fi
 
-        cd /nullos/tools
+        cd /booleos/tools
         if [ "${1:-}" = "clean" ]; then
             make clean
         fi
         make
-        chown -R "$NULLOS_UID:$NULLOS_GID" /nullos/build
+        chown -R "$BOOLEOS_UID:$BOOLEOS_GID" /booleos/build
     ' bash "${DOCKER_ARGS[@]}"
 
 echo ""
-echo "Build complete: $ROOT_DIR/build/nullos.iso"
+echo "Build complete: $ROOT_DIR/build/booleos.iso"

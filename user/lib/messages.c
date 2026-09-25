@@ -1,4 +1,4 @@
-/* nullos/user/lib/messages.c — the userland message table (see messages.h). */
+/* booleos/user/lib/messages.c — the userland message table (see messages.h). */
 
 #include "messages.h"
 
@@ -6,11 +6,11 @@
 
 static const char *const g_umsgs[] = {
     /* shell (shell.c) */
-    [UMSG_SH_LOGO_1] = "  _   _       _ _  ___  ____  ",
-    [UMSG_SH_LOGO_2] = " | \\ | |_   _| | |/ _ \\/ ___| ",
-    [UMSG_SH_LOGO_3] = " |  \\| | | | | | | | | \\___ \\ ",
-    [UMSG_SH_LOGO_4] = " | |\\  | |_| | | | |_| |___) |",
-    [UMSG_SH_LOGO_5] = " |_| \\_|\\__,_|_|_|\\___/|____/ ",
+    [UMSG_SH_LOGO_1] = "  ____                 _         ___   ____  ",
+    [UMSG_SH_LOGO_2] = " | __ )   ___    ___  | |  ___  / _ \\ / ___| ",
+    [UMSG_SH_LOGO_3] = " |  _ \\  / _ \\  / _ \\ | | / _ \\| | | |\\___ \\ ",
+    [UMSG_SH_LOGO_4] = " | |_) || (_) || (_) || ||  __/| |_| | ___) |",
+    [UMSG_SH_LOGO_5] = " |____/  \\___/  \\___/ |_| \\___| \\___/ |____/ ",
     [UMSG_SH_FETCH_ARCH] = "  Arch: i686\n",
     [UMSG_SH_FETCH_UPTIME] = "  Uptime: ",
     [UMSG_SH_FETCH_SECONDS_NL] = "s\n",
@@ -50,7 +50,7 @@ static const char *const g_umsgs[] = {
     [UMSG_SH_RUN_RUNNING] = "running: ",
     [UMSG_SH_BYE] = "bye!\n",
     [UMSG_SH_COMMAND_NOT_FOUND] = "command not found: ",
-    [UMSG_SH_WELCOME] = "NullOS shell — type 'help'\n",
+    [UMSG_SH_WELCOME] = "BooleOS shell — type 'help'\n",
     [UMSG_SH_PROMPT] = "> ",
     [UMSG_SH_REDIRECT_WITH_PIPE] = "redirection can't be combined with a pipe yet\n",
     [UMSG_SH_USAGE_CMD1_CMD2] = "usage: cmd1 | cmd2\n",

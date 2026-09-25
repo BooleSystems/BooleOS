@@ -1,4 +1,4 @@
-// nullos/kernel/safeshell.h — Safe Mode's restricted shell (Phase 18-B, tier 2).
+// booleos/kernel/safeshell.h — Safe Mode's restricted shell (Phase 18-B, tier 2).
 //
 // Built-in commands only (help, ls, cat, pwd, cd, back), each one calling the
 // FAT16 functions directly in ring 0: there are no processes here, never

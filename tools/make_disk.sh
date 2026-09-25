@@ -20,7 +20,7 @@ dd if=/dev/zero of="$IMG" bs=512 count=65536 status=none
 # keeps its boot config in sector 1 (kernel/bootcfg.c), outside FAT16, so it
 # stays readable when the filesystem itself is what is broken. The value is
 # explicit because mkfs.vfat's default varies by version.
-mkfs.vfat -F 16 -R 8 -n NULLOS "$IMG" >/dev/null
+mkfs.vfat -F 16 -R 8 -n BOOLEOS "$IMG" >/dev/null
 
 # Copy readme.txt to the root of the disk
 if [ -f "$README" ]; then

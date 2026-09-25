@@ -1,4 +1,4 @@
-// nullos/kernel/drivers/vga.c
+// booleos/kernel/drivers/vga.c
 // VGA text mode 80x25 driver
 // The VGA buffer lives at 0xB8000. Each cell = 2 bytes: [attribute | char]
 

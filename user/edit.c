@@ -1,5 +1,5 @@
-/* nullos/user/edit.c — minimal nano-style text editor */
-#include "lib/nullos.h"
+/* booleos/user/edit.c — minimal nano-style text editor */
+#include "lib/booleos.h"
 #include "lib/messages.h"
 
 /* ── VGA colors (subset) ──────────────────────────────────────────── */

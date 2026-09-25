@@ -1,5 +1,5 @@
-; nullos/boot/boot.asm
-; NullOS entry point — Multiboot2 header + initial setup before calling kmain()
+; booleos/boot/boot.asm
+; BooleOS entry point — Multiboot2 header + initial setup before calling kmain()
 
 bits 32
 

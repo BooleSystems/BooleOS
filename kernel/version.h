@@ -1,4 +1,4 @@
-// nullos/kernel/version.h
+// booleos/kernel/version.h
 //
 // Single source of truth for the OS version. Every place that shows a
 // version string — the kernel's boot banner (kernel/main.c), the
@@ -14,15 +14,15 @@
 // When a phase completes, THIS is the only file that needs editing for
 // the version to update everywhere. Do not hardcode the version string
 // anywhere else.
-#ifndef NULLOS_VERSION_H
-#define NULLOS_VERSION_H
+#ifndef BOOLEOS_VERSION_H
+#define BOOLEOS_VERSION_H
 
-#define NULLOS_VERSION      "0.20.0"
-#define NULLOS_PHASE        "20"
-#define NULLOS_PHASE_DESC   "Crash handler leads into Safe Mode"
+#define BOOLEOS_VERSION      "0.20.0"
+#define BOOLEOS_PHASE        "20"
+#define BOOLEOS_PHASE_DESC   "Crash handler leads into Safe Mode"
 
 // Composed strings so callers don't have to concatenate these by hand.
-#define NULLOS_BANNER       "NullOS v" NULLOS_VERSION " - Phase " NULLOS_PHASE ": " NULLOS_PHASE_DESC
-#define NULLOS_SHORT_BANNER "NullOS v" NULLOS_VERSION
+#define BOOLEOS_BANNER       "BooleOS v" BOOLEOS_VERSION " - Phase " BOOLEOS_PHASE ": " BOOLEOS_PHASE_DESC
+#define BOOLEOS_SHORT_BANNER "BooleOS v" BOOLEOS_VERSION
 
-#endif // NULLOS_VERSION_H
+#endif // BOOLEOS_VERSION_H

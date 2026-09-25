@@ -1,4 +1,4 @@
-// nullos/kernel/drivers/pci.h — PCI configuration space access (legacy
+// booleos/kernel/drivers/pci.h — PCI configuration space access (legacy
 // mechanism #1, ports 0xCF8/0xCFC) and bus enumeration.
 
 #ifndef PCI_H

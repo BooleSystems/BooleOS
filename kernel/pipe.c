@@ -1,4 +1,4 @@
-/* nullos/kernel/pipe.c — in-kernel pipe buffers (Phase 16). See
+/* booleos/kernel/pipe.c — in-kernel pipe buffers (Phase 16). See
    docs/pipes.md for the full design writeup this file implements:
    fixed static pool, single-waiter-per-direction, symmetric
    EOF/broken-pipe wakeups. The blocking pattern mirrors

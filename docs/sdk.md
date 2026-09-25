@@ -1,21 +1,21 @@
-# Writing programs for NullOS
+# Writing programs for BooleOS
 
-This guide is for **writing a NullOS program from the outside**: you do not need to know how the kernel works, only what a program looks like, how to build it, how to get it onto a disk and run it, and what the small user library offers. (For how the system itself is built, see [kernel.md](kernel.md), [syscalls.md](syscalls.md) and the other technical documents.)
+This guide is for **writing a BooleOS program from the outside**: you do not need to know how the kernel works, only what a program looks like, how to build it, how to get it onto a disk and run it, and what the small user library offers. (For how the system itself is built, see [kernel.md](kernel.md), [syscalls.md](syscalls.md) and the other technical documents.)
 
 ## What you need
 
-- The NullOS repository and the `i686-elf-gcc` cross-compiler (see [setup.md](setup.md)), plus QEMU and `mtools` to run and to copy files into the disk image.
-- A NullOS ISO built once (`make` in `tools/`): after that you can iterate on a program **without rebuilding the ISO**.
+- The BooleOS repository and the `i686-elf-gcc` cross-compiler (see [setup.md](setup.md)), plus QEMU and `mtools` to run and to copy files into the disk image.
+- A BooleOS ISO built once (`make` in `tools/`): after that you can iterate on a program **without rebuilding the ISO**.
 
 ## A program in 10 lines
 
 `sdk/hello.c` is the template:
 
 ```c
-#include "nullos.h"
+#include "booleos.h"
 
 void _start(void) {
-    printf("Hello from NullOS!\n");
+    printf("Hello from BooleOS!\n");
     printf("  my pid is %u\n", nos_getpid());
     nos_exit(0);
 }
@@ -41,16 +41,16 @@ To write your own program, add `myprog.c` next to `hello.c` and run `make` again
 
 ## Run it without rebuilding the ISO
 
-Put the program on the NullOS disk (`build/disk.img` at the repository root) and run it from the shell:
+Put the program on the BooleOS disk (`build/disk.img` at the repository root) and run it from the shell:
 
 ```
 cd sdk
 make inject PROG=hello          # copies build/hello.elf to the disk as hello.elf
 cd ../tools
-make run                        # boots NullOS with that disk (the ISO is not rebuilt)
+make run                        # boots BooleOS with that disk (the ISO is not rebuilt)
 ```
 
-then, at the NullOS prompt:
+then, at the BooleOS prompt:
 
 ```
 > run hello.elf
@@ -66,11 +66,11 @@ The edit-run loop is: change the `.c` file, `make inject PROG=...`, start QEMU, 
 - Programs launched with `run` get no arguments. (A program can start another one with an argument using `nos_exec(name, arg)` and read it with `nos_getarg()`.)
 - A program file can be at most 192 KB (the kernel reads it into a fixed-size buffer before loading it).
 
-If the shell says `[EXEC] not found: name`, the file is not on the disk (or the name is wrong). `[EXEC] elf_load failed: name` means the file is not a valid NullOS program (for example it was built with the wrong compiler or flags, or it is cut short).
+If the shell says `[EXEC] not found: name`, the file is not on the disk (or the name is wrong). `[EXEC] elf_load failed: name` means the file is not a valid BooleOS program (for example it was built with the wrong compiler or flags, or it is cut short).
 
-## The library (`sdk` programs include `nullos.h`)
+## The library (`sdk` programs include `booleos.h`)
 
-The header `user/lib/nullos.h` is the reference; what each system call does is described in [syscalls.md](syscalls.md). In short:
+The header `user/lib/booleos.h` is the reference; what each system call does is described in [syscalls.md](syscalls.md). In short:
 
 **Process and time:** `nos_exit(code)`, `nos_getpid()`, `nos_yield()`, `nos_uptime()` (ticks, 100 per second), `nos_fork()`, `nos_wait(pid)`, `nos_kill(pid)`, `nos_ps()`, `nos_meminfo(&pages, &heap, &procs)`.
 

@@ -1,11 +1,11 @@
-// nullos/kernel/bootcfg.c — boot configuration sector (see bootcfg.h).
+// booleos/kernel/bootcfg.c — boot configuration sector (see bootcfg.h).
 
 #include "bootcfg.h"
 #include "hal.h"
 
 #define SECTOR_SIZE 512
 
-static const char MAGIC[] = "# nullos-config v1\n";
+static const char MAGIC[] = "# booleos-config v1\n";
 #define MAGIC_LEN ((int)(sizeof(MAGIC) - 1))
 
 #define KEY_MAX 31

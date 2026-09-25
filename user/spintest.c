@@ -1,5 +1,5 @@
-/* nullos/user/spintest.c — tests preemption: never calls yield */
-#include "lib/nullos.h"
+/* booleos/user/spintest.c — tests preemption: never calls yield */
+#include "lib/booleos.h"
 
 static const char msg[] = "spintest: still spinning\n";
 

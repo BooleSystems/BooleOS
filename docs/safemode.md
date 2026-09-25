@@ -45,7 +45,7 @@ Inside the handler the normal disk path cannot work (`ata.c` blocks on the disk 
 Numbers may be stored as decimal or `0x` hex; every `bootcfg_get_u32()` reads both. The page-fault *flags* are not stored separately: they are the error code's bits (present, write, user, reserved, instruction fetch) and Safe Mode decodes them. A full record takes ~150 of the 511 usable bytes. Example sector:
 
 ```
-# nullos-config v1
+# booleos-config v1
 boot_fail_count=0
 crash_pending=1
 crash_type=14
@@ -76,7 +76,7 @@ crash_ticks=48210
 | `crash pf` | read of the unmapped address `0xDEADBEEF`, `#PF` (vector 14, error code 4: not-present, read, user) |
 | `crash gpf` | load of the invalid segment selector `0xFFFF`, `#GP` (vector 13) |
 
-It is documented as a **debug tool** in `help`. The fault happens in ring 3, but NullOS has no per-process fault isolation yet, so a user-mode fault takes the same fatal path as a kernel one (which is what the handler is for).
+It is documented as a **debug tool** in `help`. The fault happens in ring 3, but BooleOS has no per-process fault isolation yet, so a user-mode fault takes the same fatal path as a kernel one (which is what the handler is for).
 
 **How to test (`make run-reboot-test`, not `make run`):** the normal `make run` passes `-no-reboot` on purpose, which makes QEMU *exit* when the guest resets. `make run-reboot-test` lets the reset happen, so the whole cycle — crash, dump, reset, GRUB, kernel, Safe Mode with the banner — runs in one window:
 
@@ -93,9 +93,9 @@ Not covered by this test: a crash *inside* the saving code (the re-entry guard),
 
 The kernel of the last release stays bootable from the GRUB menu, covering what Safe Mode cannot: a bug in the boot code itself (paging, GDT/IDT, early init), which runs before any Safe Mode flag is even read.
 
-- **Menu** (`tools/grub.cfg.in`): Default, serial debug mode, Safe Mode (`safemode` flag, since pass 2) and **"NullOS v<version> (previous release)"**, booting `/boot/prev-nullos.elf` with `/boot/prev-ramfs.img`. The entry is a block between `## PREV-BEGIN` / `## PREV-END` marker lines; `tools/Makefile`'s "GEN grub.cfg" rule fills `@PREV_VERSION@` from `tools/prev/VERSION` and deletes the block (and the ISO gets no `prev-*` files) when `tools/prev/` doesn't hold a complete snapshot. The title says "previous release" (English UI text) plus the version.
-- **`tools/prev/`** (tracked in git on purpose, not ignored): `nullos.elf`, `ramfs.img` and a one-line `VERSION`. The kernel and the ramfs are kept **together** — the old kernel needs its own userland, because the syscall ABI must match.
-- **`make snapshot`** copies the current `build/nullos.elf` and `build/ramfs.img` there and writes the version from `kernel/version.h`. It is never run by `all`, `run` or any other target. **Release routine:** after a release is tagged, on the tagged tree run `make clean && make && make snapshot` and commit `tools/prev/`; the *next* release's ISO then offers that release as its "previous release". (`make clean` only removes `build/`, so `tools/prev/` survives.)
+- **Menu** (`tools/grub.cfg.in`): Default, serial debug mode, Safe Mode (`safemode` flag, since pass 2) and **"BooleOS v<version> (previous release)"**, booting `/boot/prev-booleos.elf` with `/boot/prev-ramfs.img`. The entry is a block between `## PREV-BEGIN` / `## PREV-END` marker lines; `tools/Makefile`'s "GEN grub.cfg" rule fills `@PREV_VERSION@` from `tools/prev/VERSION` and deletes the block (and the ISO gets no `prev-*` files) when `tools/prev/` doesn't hold a complete snapshot. The title says "previous release" (English UI text) plus the version.
+- **`tools/prev/`** (tracked in git on purpose, not ignored): `booleos.elf`, `ramfs.img` and a one-line `VERSION`. The kernel and the ramfs are kept **together** — the old kernel needs its own userland, because the syscall ABI must match.
+- **`make snapshot`** copies the current `build/booleos.elf` and `build/ramfs.img` there and writes the version from `kernel/version.h`. It is never run by `all`, `run` or any other target. **Release routine:** after a release is tagged, on the tagged tree run `make clean && make && make snapshot` and commit `tools/prev/`; the *next* release's ISO then offers that release as its "previous release". (`make clean` only removes `build/`, so `tools/prev/` survives.)
 - **Behavior to expect:** the old kernel does not know the failure counter, so booting it neither increments nor resets `boot_fail_count`. If you got there because of repeated failures the counter is still at the limit, and the next normal boot lands in Safe Mode again — from which "Reboot normally" resets it. That is the intended behavior.
 - **Bootstrap:** the first snapshot (`tools/prev/`) is the v0.17.1 build (the last release before this feature), built from its tag in a temporary worktree — `make snapshot` did not exist at that tag, so its two outputs were copied by hand with the same layout. After 0.18.0 is tagged, the routine above refreshes it.
 
@@ -141,7 +141,7 @@ The temporary `[BOOTCFG]` serial dump was removed from `kmain`; nothing extra is
 
 A tiny `key=value` store in **one raw sector, LBA 1**, outside the filesystem, accessed only through the HAL's `block_read_sector()`/`block_write_sector()`. It does not use FAT16, the VFS or the heap, so it works when those are broken. One sector also makes a write atomic (it lands whole or not at all); if the config ever outgrows a sector, that is the signal to solve atomic writes properly.
 
-- **Format** (text, NUL-padded to 512 bytes): the magic line `# nullos-config v1`, then `key=value` lines (`boot_fail_count=0`). Keys are `[a-z0-9_]{1,31}`; values cannot contain a newline. A sector that does not start with the magic line — a never-written disk, garbage, corruption — is read as an **empty config** (every get returns its default), never as an error; the terminator is forced so an unterminated sector can't be over-read.
+- **Format** (text, NUL-padded to 512 bytes): the magic line `# booleos-config v1`, then `key=value` lines (`boot_fail_count=0`). Keys are `[a-z0-9_]{1,31}`; values cannot contain a newline. A sector that does not start with the magic line — a never-written disk, garbage, corruption — is read as an **empty config** (every get returns its default), never as an error; the terminator is forced so an unterminated sector can't be over-read.
 - **API:** `bootcfg_read()` (1 valid / 0 empty-or-invalid / -1 unavailable), `bootcfg_write()`, `bootcfg_get_u32(key, default)`, `bootcfg_get()`, `bootcfg_set()`, `bootcfg_set_u32()`, `bootcfg_is_available()`. `set` only changes memory; nothing reaches the disk until `bootcfg_write()`. A `set` that would not fit in the sector fails and leaves the config untouched.
 - **Availability guard:** LBA 1 is used only if the disk's boot sector (LBA 0, bytes/sector at offset 11, reserved sectors at offset 14) says the FAT16 reserved region is at least 2 sectors, i.e. sector 1 belongs to no filesystem structure. Otherwise the store is *unavailable*: gets return defaults and writes fail, so a foreign or unformatted disk is never written to.
 - **Why LBA 1 works on existing disks:** FAT16's first FAT starts at LBA `reserved_sectors` (`fat16.c`: `g_fat_start_lba = bpb->reserved_sectors`). The disks made before this pass have 4 reserved sectors (the `mkfs.vfat` default here) and sector 1 is zero on them, so no disk needs to be recreated. `tools/make_disk.sh` now passes `-R 8` explicitly (the default varies by dosfstools version); `fsck.vfat` accepts the result.
@@ -162,7 +162,7 @@ The kernel used to ignore the Multiboot2 command line (the `debug` word of the "
   - *Tier 1* uses only what is ready: console, keyboard, block HAL, power, PCI — menu, counter reset, reboot submenu, disk info, sector hexdump. No heap.
   - *Tier 2* (restricted shell with files) initializes the PMM, VMM, heap and FAT16 **on demand** from a menu entry (`fat16_init()` calls `kmalloc` for the FAT cache). If that crashes, the counter is still >= N, so the next boot lands in Safe Mode again.
 - **TUI.** Numbered menu with submenus; destructive actions always go through their own confirmation screen; fsck-like operations split into verify-only vs verify-and-repair. Restricted shell: built-ins only, calling FAT16/HAL functions directly (no processes, no `run`), static `help` text.
-- **GRUB** (implemented in passes 2 and 5). Entries: Default, serial debug mode, Safe Mode (`multiboot2 /boot/nullos.elf safemode`), and a permanent "previous release" entry. The GUI-debug and Text-mode entries wait for the GUI (Phase 27). The previous-release entry needs **both** the old `nullos.elf` and the old `ramfs.img` (the userland ABI must match the kernel), kept in a tracked `tools/prev/` and refreshed by a `make snapshot` step after each release tag.
+- **GRUB** (implemented in passes 2 and 5). Entries: Default, serial debug mode, Safe Mode (`multiboot2 /boot/booleos.elf safemode`), and a permanent "previous release" entry. The GUI-debug and Text-mode entries wait for the GUI (Phase 27). The previous-release entry needs **both** the old `booleos.elf` and the old `ramfs.img` (the userland ABI must match the kernel), kept in a tracked `tools/prev/` and refreshed by a `make snapshot` step after each release tag.
 
 ## Files
 
@@ -175,5 +175,5 @@ kernel/hal.h/.c         boot_get_cmdline(), boot_has_flag()
 kernel/multiboot2.h     cmdline tag (type 1) parser
 tools/make_disk.sh      mkfs.vfat -R 8
 tools/grub.cfg.in       menu template (Default, serial debug, Safe Mode, previous release)
-tools/prev/             previous-release nullos.elf + ramfs.img + VERSION (make snapshot)
+tools/prev/             previous-release booleos.elf + ramfs.img + VERSION (make snapshot)
 ```

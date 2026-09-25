@@ -1,4 +1,4 @@
-/* nullos/kernel/fs/vfs.c — filesystem dispatcher */
+/* booleos/kernel/fs/vfs.c — filesystem dispatcher */
 #include "vfs.h"
 #include "fat16.h"
 #include "../ramfs.h"

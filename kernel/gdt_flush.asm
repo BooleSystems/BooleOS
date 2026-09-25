@@ -1,4 +1,4 @@
-; nullos/kernel/gdt_flush.asm
+; booleos/kernel/gdt_flush.asm
 ; Loads the GDT and reloads all segment registers
 ; Called by gdt_init() in gdt.c
 

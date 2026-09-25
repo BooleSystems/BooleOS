@@ -1,4 +1,4 @@
-# nullos/tools/Makefile - Phase 5
+# booleos/tools/Makefile - Phase 5
 
 CC  = i686-elf-gcc
 LD  = i686-elf-ld
@@ -67,8 +67,8 @@ ASM_OBJS = $(patsubst $(ROOT)/%.asm, $(BUILD)/%.o, $(ASM_SRCS))
 C_OBJS   = $(patsubst $(ROOT)/%.c,   $(BUILD)/%.o, $(C_SRCS))
 ALL_OBJS = $(ASM_OBJS) $(C_OBJS)
 
-KERNEL_ELF = $(BUILD)/nullos.elf
-KERNEL_ISO = $(BUILD)/nullos.iso
+KERNEL_ELF = $(BUILD)/booleos.elf
+KERNEL_ISO = $(BUILD)/booleos.iso
 INIT_ELF     = $(BUILD)/user/init.elf
 SPINTEST_ELF = $(BUILD)/user/spintest.elf
 SHELL_ELF    = $(BUILD)/user/shell.elf
@@ -84,10 +84,10 @@ GRUB_CFG_IN  = $(ROOT)/tools/grub.cfg.in
 # release" GRUB entry (see docs/safemode.md). It is the kernel AND the ramfs
 # of that release: the old kernel needs its own userland (syscall ABI).
 PREV_DIR          = $(ROOT)/tools/prev
-PREV_ELF          = $(PREV_DIR)/nullos.elf
+PREV_ELF          = $(PREV_DIR)/booleos.elf
 PREV_RAMFS        = $(PREV_DIR)/ramfs.img
 PREV_VERSION_FILE = $(PREV_DIR)/VERSION
-VERSION_STR       = $(shell sed -n 's/^\#define NULLOS_VERSION *"\(.*\)"/\1/p' $(VERSION_H))
+VERSION_STR       = $(shell sed -n 's/^\#define BOOLEOS_VERSION *"\(.*\)"/\1/p' $(VERSION_H))
 GRUB_CFG     = $(BUILD)/grub.cfg
 VERSION_H    = $(ROOT)/kernel/version.h
 
@@ -168,20 +168,20 @@ $(GRUB_CFG): $(GRUB_CFG_IN) $(VERSION_H) $(wildcard $(PREV_DIR)/*)
 	@V="$(VERSION_STR)"; \
 	if [ -f "$(PREV_ELF)" ] && [ -f "$(PREV_RAMFS)" ] && [ -f "$(PREV_VERSION_FILE)" ]; then \
 	    PV=$$(head -n 1 "$(PREV_VERSION_FILE)" | tr -d '\r\n'); \
-	    sed -e "s/@NULLOS_VERSION@/$$V/" -e "s/@PREV_VERSION@/$$PV/" -e '/^## PREV-\(BEGIN\|END\)/d' $(GRUB_CFG_IN) > $@; \
+	    sed -e "s/@BOOLEOS_VERSION@/$$V/" -e "s/@PREV_VERSION@/$$PV/" -e '/^## PREV-\(BEGIN\|END\)/d' $(GRUB_CFG_IN) > $@; \
 	else \
-	    sed -e "s/@NULLOS_VERSION@/$$V/" -e '/^## PREV-BEGIN/,/^## PREV-END/d' $(GRUB_CFG_IN) > $@; \
+	    sed -e "s/@BOOLEOS_VERSION@/$$V/" -e '/^## PREV-BEGIN/,/^## PREV-END/d' $(GRUB_CFG_IN) > $@; \
 	fi
 
 $(KERNEL_ISO): $(KERNEL_ELF) $(RAMFS_IMG) $(GRUB_CFG) $(wildcard $(PREV_DIR)/*)
 	@echo "  ISO  $@"
 	@mkdir -p $(ISO_DIR)/boot/grub
-	@cp $(KERNEL_ELF) $(ISO_DIR)/boot/nullos.elf
+	@cp $(KERNEL_ELF) $(ISO_DIR)/boot/booleos.elf
 	@cp $(RAMFS_IMG)  $(ISO_DIR)/boot/ramfs.img
 	@cp $(GRUB_CFG)   $(ISO_DIR)/boot/grub/grub.cfg
-	@rm -f $(ISO_DIR)/boot/prev-nullos.elf $(ISO_DIR)/boot/prev-ramfs.img
+	@rm -f $(ISO_DIR)/boot/prev-booleos.elf $(ISO_DIR)/boot/prev-ramfs.img
 	@if [ -f "$(PREV_ELF)" ] && [ -f "$(PREV_RAMFS)" ]; then \
-	    cp "$(PREV_ELF)"   $(ISO_DIR)/boot/prev-nullos.elf; \
+	    cp "$(PREV_ELF)"   $(ISO_DIR)/boot/prev-booleos.elf; \
 	    cp "$(PREV_RAMFS)" $(ISO_DIR)/boot/prev-ramfs.img; \
 	fi
 	grub2-mkrescue -o $@ $(ISO_DIR)
@@ -206,7 +206,7 @@ test-elf: user
 
 # make snapshot
 # Records the CURRENT build as the "previous release" for the GRUB menu:
-# copies build/nullos.elf and build/ramfs.img to tools/prev/ and writes the
+# copies build/booleos.elf and build/ramfs.img to tools/prev/ and writes the
 # version to tools/prev/VERSION. The three files are tracked in git on
 # purpose. Run it by hand, once, right after a release is tagged (on the
 # tagged tree, after `make clean && make`), and commit tools/prev/ — the NEXT

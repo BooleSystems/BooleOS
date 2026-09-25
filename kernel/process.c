@@ -1,4 +1,4 @@
-// nullos/kernel/process.c
+// booleos/kernel/process.c
 #include "process.h"
 #include "hal.h"
 #include "messages.h"

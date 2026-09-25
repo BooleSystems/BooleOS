@@ -1,4 +1,4 @@
-// nullos/kernel/drivers/vga.h
+// booleos/kernel/drivers/vga.h
 // VGA text mode 80x25 driver — public interface
 
 #ifndef VGA_H

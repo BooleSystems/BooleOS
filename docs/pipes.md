@@ -34,7 +34,7 @@ Both directions get identical treatment: wake the other side whenever *your* ref
 
 ## `SYS_EXEC_PIPE` — why launching a pipeline stage isn't `fork()` + `dup2()` + `exec()`
 
-The POSIX idiom for `cmd1 | cmd2` is: fork the shell, have the child remap its fd 0/1 and `exec()`. **That doesn't work in NullOS**, because `exec()` here does not replace the calling process's image the way POSIX `exec()` does — it spawns a **brand-new, independent process** via `process_spawn_user()`, while the calling process keeps running. Forking the shell and then calling `exec()` in the child would leave the forked child running as a third, superfluous process, with the real pipeline stage spawned as a fourth. This is the same category of wrong assumption that caused the Phase 15 `cwd_cluster`/`exec()` bug (`exec()` not inheriting the caller's state because it isn't a POSIX-style in-place replacement) — so the fix follows the exact same shape: **explicit, exec-time parameter threading**, not fork-based inheritance.
+The POSIX idiom for `cmd1 | cmd2` is: fork the shell, have the child remap its fd 0/1 and `exec()`. **That doesn't work in BooleOS**, because `exec()` here does not replace the calling process's image the way POSIX `exec()` does — it spawns a **brand-new, independent process** via `process_spawn_user()`, while the calling process keeps running. Forking the shell and then calling `exec()` in the child would leave the forked child running as a third, superfluous process, with the real pipeline stage spawned as a fourth. This is the same category of wrong assumption that caused the Phase 15 `cwd_cluster`/`exec()` bug (`exec()` not inheriting the caller's state because it isn't a POSIX-style in-place replacement) — so the fix follows the exact same shape: **explicit, exec-time parameter threading**, not fork-based inheritance.
 
 The shell instead calls `exec()` directly for each pipeline stage — exactly like `run`/`edit` already do today, no `fork()` involved — via a syscall dedicated to the redirected case:
 
@@ -88,7 +88,7 @@ kernel/
   process.c/h         stdin_redirect/stdout_redirect/waiting_for_pid fields,
                         process_spawn_user()'s start_blocked, process_make_ready()
 user/
-  lib/nullos.c/h      nos_pipe(), nos_exec_pipe()
+  lib/booleos.c/h      nos_pipe(), nos_exec_pipe()
   shell.c             "cmd1 | cmd2" parsing and launch (run_pipeline())
   cat.c               minimal pipe sink, used only to demonstrate/test pipes
 ```

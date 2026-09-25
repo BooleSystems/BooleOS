@@ -1,4 +1,4 @@
-// nullos/kernel/power.h — platform power control (reboot / shutdown).
+// booleos/kernel/power.h — platform power control (reboot / shutdown).
 //
 // Arch-neutral signatures on purpose: everything x86-specific (the 8042
 // keyboard controller, the PIIX4 power-management registers) stays inside

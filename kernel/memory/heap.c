@@ -1,4 +1,4 @@
-// nullos/kernel/memory/heap.c
+// booleos/kernel/memory/heap.c
 // Kernel heap — kmalloc/kfree
 // Simple implementation using a linked list of blocks
 // The heap starts at 0x400000 (4MB) and grows upward

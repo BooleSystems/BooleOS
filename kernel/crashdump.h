@@ -1,4 +1,4 @@
-// nullos/kernel/crashdump.h — the crash path (Phase 20).
+// booleos/kernel/crashdump.h — the crash path (Phase 20).
 //
 // An unhandled CPU exception used to end in a red screen and a `hlt` loop, so
 // the machine needed a manual reset and the context of the error was lost.

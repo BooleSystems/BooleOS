@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tools/make_ramfs.py — generates a flat ramfs image for NullOS.
+tools/make_ramfs.py — generates a flat ramfs image for BooleOS.
 
 Image format:
   [uint32_t  num_entries]

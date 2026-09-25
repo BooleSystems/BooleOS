@@ -1,4 +1,4 @@
-// nullos/kernel/keyboard.c
+// booleos/kernel/keyboard.c
 #include "keyboard.h"
 #include "idt.h"
 #include "pic.h"

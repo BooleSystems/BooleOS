@@ -1,4 +1,4 @@
-// nullos/kernel/tss.h
+// booleos/kernel/tss.h
 #ifndef TSS_H
 #define TSS_H
 

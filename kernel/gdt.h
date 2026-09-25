@@ -1,4 +1,4 @@
-// nullos/kernel/gdt.h
+// booleos/kernel/gdt.h
 // Global Descriptor Table — public interface
 
 #ifndef GDT_H

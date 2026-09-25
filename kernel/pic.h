@@ -1,4 +1,4 @@
-// nullos/kernel/pic.h
+// booleos/kernel/pic.h
 // Programmable Interrupt Controller (8259 PIC)
 // Remaps hardware IRQs so they don't conflict with CPU exceptions
 

@@ -1,4 +1,4 @@
-/* nullos/user/lib/nullos.h — thin syscall wrapper library ("libnos").
+/* booleos/user/lib/booleos.h — thin syscall wrapper library ("libnos").
  *
  * One function per syscall in kernel/syscall.h, doing nothing but the
  * "int $0x80" and returning the kernel's result — no added behavior,
@@ -11,13 +11,13 @@
  * rationale, and docs/syscalls.md for what each syscall actually does
  * (this header only gives the C signature, not the semantics).
  *
- * Naming: "nos_" (NullOS), chosen over "sys_" specifically to avoid
+ * Naming: "nos_" (BooleOS), chosen over "sys_" specifically to avoid
  * reading like the kernel's own internal sys_* handlers in
  * kernel/syscall.c (a different binary entirely — no actual linker
  * collision risk, just naming clarity).
  */
-#ifndef NULLOS_LIB_H
-#define NULLOS_LIB_H
+#ifndef BOOLEOS_LIB_H
+#define BOOLEOS_LIB_H
 
 #include <stdint.h>
 #include <stddef.h>

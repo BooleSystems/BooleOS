@@ -1,10 +1,10 @@
-# nullos/sdk/Makefile — builds NullOS programs from outside the kernel tree.
+# booleos/sdk/Makefile — builds BooleOS programs from outside the kernel tree.
 #
 #   make                  build every *.c in this directory to build/<name>.elf
 #   make hello.elf        build just one
-#   make inject PROG=hello   copy build/hello.elf into the NullOS disk image
+#   make inject PROG=hello   copy build/hello.elf into the BooleOS disk image
 #                         (build/disk.img at the repo root) without rebuilding
-#                         the ISO; then in NullOS:  run hello.elf
+#                         the ISO; then in BooleOS:  run hello.elf
 #   make clean
 #
 # It reuses the SAME compiler flags, linker script (user/link.ld) and library
@@ -27,7 +27,7 @@ CFLAGS = -m32 -std=c99 -ffreestanding -fno-stack-protector -fno-builtin \
 LINK   = $(USER)/link.ld
 # libnos: the syscall wrappers + string helpers (always linked); the printf
 # family (linked here because the samples use it — drop it if you don't).
-LIBNOS   = $(BUILD)/lib/nullos.o
+LIBNOS   = $(BUILD)/lib/booleos.o
 LIBSTDIO = $(BUILD)/lib/nosstdio.o
 
 SRCS  = $(wildcard *.c)
@@ -36,11 +36,11 @@ ELFS  = $(patsubst %.c,$(BUILD)/%.elf,$(SRCS))
 .PHONY: all clean inject
 all: $(ELFS)
 
-$(LIBNOS): $(USER)/lib/nullos.c $(USER)/lib/nullos.h
+$(LIBNOS): $(USER)/lib/booleos.c $(USER)/lib/booleos.h
 	@mkdir -p $(BUILD)/lib
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(LIBSTDIO): $(USER)/lib/nosstdio.c $(USER)/lib/nullos.h
+$(LIBSTDIO): $(USER)/lib/nosstdio.c $(USER)/lib/booleos.h
 	@mkdir -p $(BUILD)/lib
 	$(CC) $(CFLAGS) -c -o $@ $<
 
@@ -52,7 +52,7 @@ $(BUILD)/%.elf: %.c $(LINK) $(LIBNOS) $(LIBSTDIO)
 %.elf: $(BUILD)/%.elf
 	@true
 
-# Copies build/$(PROG).elf into the root of the NullOS disk image with mcopy
+# Copies build/$(PROG).elf into the root of the BooleOS disk image with mcopy
 # (the tools/ `inject` target). Host-side only; do not run while QEMU has the
 # image open. The kernel only understands 8.3 names: keep PROG at 8 characters
 # or fewer (hello -> hello.elf).

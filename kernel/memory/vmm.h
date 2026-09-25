@@ -1,4 +1,4 @@
-// nullos/kernel/memory/vmm.h
+// booleos/kernel/memory/vmm.h
 // Virtual Memory Manager — public interface
 
 #ifndef VMM_H

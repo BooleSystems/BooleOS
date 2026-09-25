@@ -1,4 +1,4 @@
-// nullos/kernel/safemode.h — Safe Mode (Phase 18-B).
+// booleos/kernel/safemode.h — Safe Mode (Phase 18-B).
 //
 // A recovery environment inside the same kernel binary, entered very early in
 // kmain(), before the PMM, VMM, heap, scheduler, syscall layer and exec are

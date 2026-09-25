@@ -1,4 +1,4 @@
-// nullos/kernel/bootcfg.h — the boot configuration sector.
+// booleos/kernel/bootcfg.h — the boot configuration sector.
 //
 // A tiny key=value store that lives in ONE raw sector outside the
 // filesystem (LBA 1, inside FAT16's reserved region), read and written only
@@ -9,7 +9,7 @@
 // that is the moment to solve atomic writes properly, not before.
 //
 // Format (text, NUL-padded to 512 bytes):
-//     # nullos-config v1
+//     # booleos-config v1
 //     boot_fail_count=0
 // A sector that does not start with the magic line (a never-written disk,
 // garbage, corruption) is read as an EMPTY config: every get returns its

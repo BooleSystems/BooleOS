@@ -1,4 +1,4 @@
-// nullos/kernel/pic.c
+// booleos/kernel/pic.c
 // Remaps the 8259 PIC so IRQs don't conflict with CPU exceptions
 
 #include "pic.h"

@@ -1,4 +1,4 @@
-// nullos/kernel/memory/pmm.h
+// booleos/kernel/memory/pmm.h
 // Physical Memory Manager — public interface
 
 #ifndef PMM_H

@@ -106,7 +106,7 @@ package manager phase was deliberately decided against — don't add one.
   `vmm_get_user_phys_from_dir()`, which requires `VMM_USER` on PDE and PTE
   (the shared kernel identity map is present but never USER). Every
   syscall touching a user address must use them. See `docs/security.md`.
-- **libnos (`user/lib/nullos.c/h`, `nos_*`)** is the single syscall wrapper
+- **libnos (`user/lib/booleos.c/h`, `nos_*`)** is the single syscall wrapper
   layer for all user programs (`0.15.1`), so changing a syscall's internals
   means recompiling one file. See `docs/kernel.md`.
 - **`msg(ID)`: fragments, not format strings; only OUTPUT text** (never

@@ -1,4 +1,4 @@
-/* nullos/user/lib/messages.h — central table of user-visible userland text.
+/* booleos/user/lib/messages.h — central table of user-visible userland text.
  *
  * The userland counterpart of kernel/messages.h (user programs cannot call
  * the kernel's msg(): separate address space, no shared code). Same idea:

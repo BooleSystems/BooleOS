@@ -1,4 +1,4 @@
-/* nullos/kernel/drivers/ata.c — ATA PIO, tries all 4 slots. Sector I/O
+/* booleos/kernel/drivers/ata.c — ATA PIO, tries all 4 slots. Sector I/O
    (ata_read_sector/ata_write_sector) waits for command completion via
    IRQ14/15 + the scheduler's block/wake primitive instead of busy-wait
    polling, whenever it's called from a scheduled process. probe() and

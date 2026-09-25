@@ -1,7 +1,7 @@
-# NullOS — Setup and Build
+# BooleOS — Setup and Build
 
 This document is for **developers**: how to set up the build environment,
-compile NullOS from source, run it in QEMU from the build tree and debug
+compile BooleOS from source, run it in QEMU from the build tree and debug
 it. (If you only want to run a released build without compiling anything,
 see [quickstart.md](quickstart.md).) The top-level `README.md` has the list
 of completed phases; this file only covers the current setup, not history.
@@ -78,10 +78,10 @@ tools/docker_build.sh clean   # or without "clean" to keep build/ around
 ```
 
 This pulls `randomdude/gcc-cross-i686-elf` (a prebuilt i686-elf
-toolchain image; override with the `NULLOS_DOCKER_IMAGE` env var if
+toolchain image; override with the `BOOLEOS_DOCKER_IMAGE` env var if
 you use a different one), installs `nasm`/`grub-pc-bin`/`grub-common`/
 `xorriso`/`mtools` inside the container if missing, and runs `make` in
-`tools/` — producing `build/nullos.iso` on the host (ownership fixed
+`tools/` — producing `build/booleos.iso` on the host (ownership fixed
 up to your UID/GID afterward). See `tools/docker_build.sh` for the
 exact steps.
 
@@ -161,7 +161,7 @@ Linux-native beyond that.
    bash tools/docker_build.sh clean
    ```
 
-In both cases, `build/nullos.iso` and `build/disk.img` end up on the
+In both cases, `build/booleos.iso` and `build/disk.img` end up on the
 host filesystem afterward, same as on Linux — see "Build and run"
 below for how to run them (note that QEMU itself still needs to be
 installed on the host to actually boot the resulting ISO; Docker only
@@ -179,7 +179,7 @@ handles the cross-compiled build).
   banner, the shell's `uname`/`fetch` and the GRUB entry title all come from
   it (the GRUB config is generated at build time from `tools/grub.cfg.in`).
 - The ISO also carries the *previous release* as an extra GRUB entry, kept in
-  `tools/prev/` (`nullos.elf` + `ramfs.img` + `VERSION`, tracked in git).
+  `tools/prev/` (`booleos.elf` + `ramfs.img` + `VERSION`, tracked in git).
   `make snapshot` refreshes it; run it by hand right after tagging a release,
   on the tagged tree (see `docs/safemode.md`).
 
@@ -191,7 +191,7 @@ instead, switch to the `nightly` branch first:
 
 ```bash
 git clone https://github.com/TheShannonDev/NullOS.git   # first time only
-cd NullOS
+cd BooleOS
 
 git fetch origin            # get the latest branches and tags
 git switch nightly          # or: git checkout nightly
@@ -217,9 +217,9 @@ reused.
 ## Build and run
 
 ```bash
-cd nullos/tools
+cd booleos/tools
 
-# Full build (generates nullos.iso and disk.img)
+# Full build (generates booleos.iso and disk.img)
 make
 
 # Create build/disk.img on its own (only if it doesn't exist yet)
@@ -233,7 +233,7 @@ make run
 make clean
 ```
 
-`make run` starts `qemu-system-x86_64` with `-boot d -cdrom build/nullos.iso
+`make run` starts `qemu-system-x86_64` with `-boot d -cdrom build/booleos.iso
 -drive file=build/disk.img,format=raw,if=ide -m 256M -serial stdio
 -no-shutdown -no-reboot -display sdl`. `-display sdl` needs a QEMU built with
 SDL support (edit `QEMU_FLAGS` in `tools/Makefile` if yours isn't).
@@ -288,7 +288,7 @@ terminals:
 make debug
 
 # Terminal 2 — from tools/, once QEMU is paused waiting for GDB
-gdb ../build/nullos.elf
+gdb ../build/booleos.elf
 (gdb) target remote :1234
 (gdb) break kmain
 (gdb) continue
@@ -299,18 +299,18 @@ gdb ../build/nullos.elf
 The banner and boot log include GDT/IDT/PIC/timer/keyboard/memory/
 scheduler/ATA/FAT16/PCI initialization steps — see `docs/kernel.md`
 for what's actually printed today, and `kernel/version.h` for the
-current version/phase strings (`NULLOS_BANNER`), rather than a
+current version/phase strings (`BOOLEOS_BANNER`), rather than a
 specific version number here that would just go stale at the next
 phase. Generically, the banner looks like:
 
 ```
-  _   _       _ _  ___  ____
- | \ | |_   _| | |/ _ \/ ___|
- |  \| | | | | | | | | \___ \
- | |\  | |_| | | | |_| |___) |
- |_| \_|\__,_|_|_|\___/|____/
+  ____                 _         ___   ____
+ | __ )   ___    ___  | |  ___  / _ \ / ___|
+ |  _ \  / _ \  / _ \ | | / _ \| | | |\___ \
+ | |_) || (_) || (_) || ||  __/| |_| | ___) |
+ |____/  \___/  \___/ |_| \___| \___/ |____/
 
- NullOS vX.Y.Z - Phase N: <phase description>
+ BooleOS vX.Y.Z - Phase N: <phase description>
 
 ------------------------------------------------------------
 [BOOT] Multiboot2: OK
@@ -326,8 +326,8 @@ phase. Generically, the banner looks like:
 ## The GRUB menu
 
 The generated menu (`tools/grub.cfg.in`) has four entries: the default boot,
-"NullOS (serial debug mode)", "NullOS (Safe Mode)" (boots with the `safemode`
-argument, see `docs/safemode.md`) and "NullOS v<version> (previous release)".
+"BooleOS (serial debug mode)", "BooleOS (Safe Mode)" (boots with the `safemode`
+argument, see `docs/safemode.md`) and "BooleOS v<version> (previous release)".
 Safe Mode also starts by itself after 3 boots in a row that never reached the
 shell prompt.
 
@@ -337,6 +337,6 @@ shell prompt.
 every `vga_putchar()` call already mirrors its character to serial
 automatically. `make run` passes `-serial stdio` to QEMU, so the same
 boot log VGA shows also appears in the terminal you ran `make run`
-from. The "NullOS (serial debug mode)" entry passes a `debug` boot argument;
+from. The "BooleOS (serial debug mode)" entry passes a `debug` boot argument;
 the kernel reads the command line (`boot_has_flag()`), but nothing acts on
 `debug` yet, so today it boots exactly like the default entry.

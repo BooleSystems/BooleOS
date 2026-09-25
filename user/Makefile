@@ -1,4 +1,4 @@
-# nullos/user/Makefile
+# booleos/user/Makefile
 
 CC     = i686-elf-gcc
 LD     = i686-elf-ld
@@ -15,7 +15,7 @@ CFLAGS = -m32 \
           -Wextra \
           -I../kernel
 
-LIBNOS = $(BUILD)/lib/nullos.o
+LIBNOS = $(BUILD)/lib/booleos.o
 # msg() table: linked only into the programs that print user-facing text
 # through it (shell, edit, cat) — every program that links it carries the whole table.
 LIBMSG = $(BUILD)/lib/messages.o
@@ -26,11 +26,11 @@ LIBSTDIO = $(BUILD)/lib/nosstdio.o
 
 all: $(BUILD)/init.elf $(BUILD)/spintest.elf $(BUILD)/shell.elf $(BUILD)/edit.elf $(BUILD)/forktest.elf $(BUILD)/selftest.elf $(BUILD)/cat.elf $(LIBSTDIO)
 
-$(LIBNOS): lib/nullos.c lib/nullos.h
+$(LIBNOS): lib/booleos.c lib/booleos.h
 	@mkdir -p $(BUILD)/lib
-	$(CC) $(CFLAGS) -c -o $@ lib/nullos.c
+	$(CC) $(CFLAGS) -c -o $@ lib/booleos.c
 
-$(LIBSTDIO): lib/nosstdio.c lib/nullos.h
+$(LIBSTDIO): lib/nosstdio.c lib/booleos.h
 	@mkdir -p $(BUILD)/lib
 	$(CC) $(CFLAGS) -c -o $@ lib/nosstdio.c
 
