@@ -24,6 +24,9 @@ at the time.
 
 ## [Unreleased]
 
+### Fixed
+- Repository links in `README.md`, `docs/quickstart.md` and `docs/setup.md` (releases page, source link, `git clone` URL) now point to `github.com/BooleSystems/BooleOS`; they still had the pre-relocation path.
+
 ## [0.20.1] - 2026-09-25 - Patch: the `debug` boot argument works; BooleOS rename and repository move
 
 ### Added

@@ -4,7 +4,7 @@ If you only want to see the system running, you do not need to compile anything:
 
 ## 1. Get a release
 
-Open the [Releases page](https://github.com/TheShannonDev/NullOS/releases) and download the zip attached to a release (named like `booleos-X.Y.Z.zip`). Releases without a zip attached only carry the source code.
+Open the [Releases page](https://github.com/BooleSystems/BooleOS/releases) and download the zip attached to a release (named like `booleos-X.Y.Z.zip`). Releases without a zip attached only carry the source code.
 
 The zip contains:
 
@@ -78,7 +78,7 @@ Safe Mode also starts by itself after 3 boots in a row that never reached the sh
 
 - `disk.img` keeps your files between runs. To start over, extract `disk.img` from the zip again.
 - `-serial stdio` shows the kernel's serial log in your terminal; if it gives you trouble on your platform you can drop it.
-- Source code and the rest of the documentation: <https://github.com/TheShannonDev/NullOS>. License: MIT.
+- Source code and the rest of the documentation: <https://github.com/BooleSystems/BooleOS>. License: MIT.
 
 ## Running it in other virtual machine programs
 

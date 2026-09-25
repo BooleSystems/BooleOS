@@ -151,7 +151,7 @@ make clean    # cleans build/ (⚠ also deletes disk.img — persisted data is l
 
 **Dependencies:** `i686-elf-gcc`, `i686-elf-ld`, `nasm`, `grub2-mkrescue`, `qemu-system-x86_64`, `mkfs.vfat`/`mcopy` (`dosfstools`/`mtools` packages, used by `tools/make_disk.sh`)
 
-**Just want to run it?** No compiler needed: download the zip from a [release](https://github.com/TheShannonDev/NullOS/releases) and follow [docs/quickstart.md](docs/quickstart.md).
+**Just want to run it?** No compiler needed: download the zip from a [release](https://github.com/BooleSystems/BooleOS/releases) and follow [docs/quickstart.md](docs/quickstart.md).
 
 **Want to build or contribute?** See [docs/setup.md](docs/setup.md) for the toolchain, Docker build and debugging.
 

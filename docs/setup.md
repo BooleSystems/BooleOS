@@ -190,7 +190,7 @@ right after cloning gives you that release. To build the development version
 instead, switch to the `nightly` branch first:
 
 ```bash
-git clone https://github.com/TheShannonDev/NullOS.git   # first time only
+git clone https://github.com/BooleSystems/BooleOS.git   # first time only
 cd BooleOS
 
 git fetch origin            # get the latest branches and tags
