@@ -24,6 +24,9 @@ at the time.
 
 ## [Unreleased]
 
+### Changed
+- `tools/prev/` now holds the v0.20.1 snapshot (kernel + ramfs built from the `v0.20.1` tag), so the "previous release" GRUB entry of the next version is a real release.
+
 ### Fixed
 - Repository links in `README.md`, `docs/quickstart.md` and `docs/setup.md` (releases page, source link, `git clone` URL) now point to `github.com/BooleSystems/BooleOS`; they still had the pre-relocation path.
 
