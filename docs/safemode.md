@@ -149,11 +149,12 @@ A tiny `key=value` store in **one raw sector, LBA 1**, outside the filesystem, a
 
 ### The boot command line (`kernel/multiboot2.h`, HAL)
 
-The kernel used to ignore the Multiboot2 command line (the `debug` word of the "serial debug mode" GRUB entry was never read). Now `multiboot2_find_cmdline()` parses tag type 1, and the HAL gained:
+The kernel used to ignore the Multiboot2 command line (the `debug` word of the "serial debug mode" GRUB entry was never read; since 0.20.1 it turns on extra serial-only boot detail, see `docs/setup.md`, "Debug via serial"). Now `multiboot2_find_cmdline()` parses tag type 1, and the HAL gained:
 
 - `boot_get_module()` / `boot_get_info_region()` (pass 4) — the ramfs module range and the boot-info block, so tier 2 can reserve them in the PMM;
 - `boot_get_cmdline(out, max)` — the text after the kernel path in the GRUB entry (length, or -1 if none);
-- `boot_has_flag("safemode")` — true if the word is one of the whitespace-separated words (exact match).
+- `boot_has_flag("safemode")` — true if the word is one of the whitespace-separated words (exact match);
+- `g_debug_boot` (0.20.1) — set by `hal_boot_init()` when the word `debug` is present.
 
 ## Design for the remaining passes (approved)
 

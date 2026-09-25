@@ -13,7 +13,7 @@ Do not duplicate README/docs content here. `README.md` is a lean index
 
 ## Current status
 
-Current version: **0.20.0** (Phase 20 closed, merged to `main`, tagged `v0.20.0`).
+Current version: **0.20.1** (Phase 20 closed as `0.20.0`, tagged `v0.20.0`; `0.20.1` is a PATCH: the `debug` boot argument now works).
 Last closed phase: **Phase 20** (Crash handler leads into Safe Mode).
 
 ### Closed phases (one line each; detail in CHANGELOG.md / README.md)

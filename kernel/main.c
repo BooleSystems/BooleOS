@@ -26,6 +26,64 @@
 #include "fs/fat16.h"
 #include "drivers/pci.h"
 
+// ── serial-only boot detail (the "debug" boot argument, g_debug_boot) ──────
+// These write straight to the serial port, never through console_*(): the
+// screen stays exactly as in a normal boot, and nothing gets mirrored twice.
+static void dbg_s(const char *s) { while (*s) serial_putchar(*s++); }
+
+// 8 hex digits, no prefix.
+static void dbg_hex_digits(uint32_t v) {
+    static const char digits[] = "0123456789abcdef";
+    for (int shift = 28; shift >= 0; shift -= 4)
+        serial_putchar(digits[(v >> shift) & 0xF]);
+}
+
+// "0x" + 16 hex digits: ONE prefix for the whole 64-bit value (calling a
+// prefixed 32-bit helper once per half printed "0x" twice).
+static void dbg_hex64(uint64_t v) {
+    dbg_s("0x");
+    dbg_hex_digits((uint32_t)(v >> 32));
+    dbg_hex_digits((uint32_t)v);
+}
+
+static void dbg_dec(uint32_t v) {
+    char buf[11];
+    int n = 0;
+    do { buf[n++] = (char)('0' + v % 10); v /= 10; } while (v);
+    while (n) serial_putchar(buf[--n]);
+}
+
+// "[DEBUG] <step> ticks=<PIT ticks since the timer started>"
+static void debug_step(const char *step) {
+    if (!g_debug_boot) return;
+    dbg_s("[DEBUG] "); dbg_s(step);
+    dbg_s(" ticks="); dbg_dec(timer_get_ticks());
+    dbg_s("\n");
+}
+
+// The bootloader's memory map and command line, region by region.
+static void debug_boot_info(void) {
+    if (!g_debug_boot) return;
+
+    char cmd[128];
+    int len = boot_get_cmdline(cmd, (int)sizeof(cmd));
+    dbg_s("[DEBUG] debug boot enabled, command line: \"");
+    if (len > 0) dbg_s(cmd);
+    dbg_s("\"\n");
+
+    boot_mem_region_t regions[64];
+    int n = boot_get_memory_map(regions, 64);
+    dbg_s("[DEBUG] memory map: ");
+    if (n < 0) { dbg_s("none from the bootloader\n"); return; }
+    dbg_dec((uint32_t)n); dbg_s(" region(s)\n");
+    for (int i = 0; i < n; i++) {
+        dbg_s("[DEBUG]   base=");   dbg_hex64(regions[i].base);
+        dbg_s(" length=");          dbg_hex64(regions[i].length);
+        dbg_s(" type=");            dbg_dec(regions[i].type);
+        dbg_s("\n");
+    }
+}
+
 
 static void print_ok(void) {
     console_set_color(CONSOLE_LIGHT_GREEN, CONSOLE_BLACK);
@@ -71,6 +129,7 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
         goto hang;
     }
     console_puts(msg(MSG_BOOT_MULTIBOOT2_OK_PREFIX)); print_ok();
+    debug_boot_info();
 
     // ramfs module (optional)
     uint32_t mod_start = 0, mod_end = 0;
@@ -141,6 +200,7 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
         console_puts(msg(MSG_BOOT_NO_DISK));
         console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
     }
+    debug_step(disk_ok ? "ATA disk found" : "ATA: no disk");
 
     {
         int enter_safemode = 0;
@@ -156,6 +216,14 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
             // (crash_pending == 1): go straight there, whatever the counter says.
             int crashed = (crash_record_load(0) == 1);
 
+            if (g_debug_boot) {
+                dbg_s("[DEBUG] boot config: fail_count="); dbg_dec(fails);
+                dbg_s(" threshold="); dbg_dec(BOOTCFG_FAIL_THRESHOLD);
+                dbg_s(" safemode_flag="); dbg_dec((uint32_t)requested);
+                dbg_s(" crash_pending="); dbg_dec((uint32_t)crashed);
+                dbg_s("\n");
+            }
+
             if (crashed || fails >= BOOTCFG_FAIL_THRESHOLD || requested) {
                 // Enter Safe Mode WITHOUT touching the counter.
                 enter_safemode = 1;
@@ -168,6 +236,9 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
             }
         }
 
+        if (g_debug_boot && !bootcfg_is_available())
+            dbg_s("[DEBUG] boot config: not available (no disk, or no reserved layout)\n");
+        debug_step(enter_safemode ? "entering Safe Mode" : "boot config done");
         if (enter_safemode)
             safemode_enter(reason, bootcfg_get_u32(BOOTCFG_KEY_FAIL_COUNT, 0));
     }
@@ -194,6 +265,7 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     print_tag("       ");
     print_ok();
     pmm_dump();
+    debug_step("PMM ready");
 
     // VMM
     print_tag(msg(MSG_TAG_VMM));
@@ -202,6 +274,7 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     print_tag("       ");
     print_ok();
     vmm_dump();
+    debug_step("paging enabled");
 
     // Heap
     print_tag(msg(MSG_TAG_HEAP));
@@ -209,6 +282,7 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     heap_init();
     print_tag("       ");
     print_ok();
+    debug_step("kernel heap ready");
 
     print_separator();
 
@@ -217,17 +291,20 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     console_puts(msg(MSG_BOOT_SCHED_INITIALIZING));
     scheduler_init();
     print_ok();
+    debug_step("scheduler ready");
 
     // FAT16
     print_tag(msg(MSG_TAG_FAT16));
     console_puts(msg(MSG_BOOT_FAT16_INITIALIZING));
-    if (fat16_init()) {
+    int fat_ok = fat16_init();
+    if (fat_ok) {
         print_ok();
     } else {
         console_set_color(CONSOLE_DARK_GREY, CONSOLE_BLACK);
         console_puts(msg(MSG_BOOT_NO_FAT16_DISK));
         console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
     }
+    debug_step(fat_ok ? "FAT16 mounted" : "FAT16: not mounted");
 
     // PCI (after ATA/FAT16: bus enumeration is independent hardware
     // discovery for future drivers, not on the disk-mount critical path)
@@ -235,6 +312,7 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     console_puts(msg(MSG_BOOT_SCANNING_BUS));
     pci_scan_bus();
     print_ok();
+    debug_step("PCI scan done");
     pci_print_list();
 
     print_separator();
@@ -247,6 +325,7 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
         print_tag("       ");
         print_ok();
 
+        debug_step("ramfs mounted, starting the shell");
         print_tag(msg(MSG_TAG_EXEC));
         console_puts(msg(MSG_BOOT_LOADING_SHELL));
         if (!exec("shell", 0, 0)) {   /* no launcher process at boot — starts at the root */

@@ -44,12 +44,15 @@ int block_write_sector_polled(uint32_t lba, const void *buf) { return ata_crash_
 
 static uintptr_t g_boot_info = 0;   // 0 = not initialized / invalid
 
+int g_debug_boot = 0;
+
 int hal_boot_init(uint32_t boot_magic, uintptr_t boot_info) {
     if (boot_magic != MULTIBOOT2_BOOT_MAGIC) {
         g_boot_info = 0;
         return -1;
     }
     g_boot_info = boot_info;
+    g_debug_boot = boot_has_flag("debug");   // needs g_boot_info, set just above
     return 0;
 }
 

@@ -24,6 +24,8 @@ at the time.
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-09-25 - Patch: the `debug` boot argument works; BooleOS rename and repository move
+
 ### Added
 - ROADMAP.md: new sub-phase 26-E (canonical `input_event_t` unifying PS/2 and USB HID input), closing Phase 26.
 - Release tags for every version in this changelog: `v0.2.0` through `v0.16.0` were created retroactively (annotated, at the commit that closed each version, with the original commit date), joining the existing `v0.0.1`, `v0.1.0` and `v0.17.0`–`v0.20.0`. All 26 tags `v0.0.1`–`v0.20.0` now exist.
@@ -35,11 +37,14 @@ at the time.
   - Macros/prefixes `NULLOS_*` -> `BOOLEOS_*` (`kernel/version.h`, build env vars, `@BOOLEOS_VERSION@` in `tools/grub.cfg.in`).
   - Build artifacts: `nullos.elf` -> `booleos.elf`, `nullos.iso` -> `booleos.iso`, `/boot/prev-booleos.elf`, release zip `booleos-X.Y.Z.zip`, FAT volume label `BOOLEOS`; `user/lib/nullos.{c,h}` -> `user/lib/booleos.{c,h}`; `tools/prev/nullos.elf` renamed only (the v0.20.0 snapshot content is untouched).
   - Deliberately unchanged: the `nos_*`/`libnos`/`nosstdio` API prefix, the repository links inside the docs (they still have to be pointed at the new repository location), C `NULL` and "null-terminated" terminology, and the historical entries of this changelog.
-- `kernel/version.h` only had its macro names changed; no version bump (this is not a phase).
 - Repository relocated to the BooleSystems organization (`github.com/BooleSystems/BooleOS`); project history and tags were carried over.
 - Copyright and license attribution updated to reflect the current maintainer.
 - Project renamed from NullOS to BooleOS across code, docs, build artifacts and macros (see the rename entry above).
 - Git history rewritten for the move: author, committer and tagger identity, the copyright holder in `LICENSE` and the repository links in the historical docs were normalized. Every commit hash changed, so hashes quoted in older notes or issues no longer resolve; the commit messages, dates and tag names are unchanged in substance.
+- `kernel/version.h` bumped to `0.20.1` (PATCH: no new phase, only the `debug` boot argument fix below); the README banner follows.
+
+### Fixed
+- **The `debug` boot argument of the "serial debug mode" GRUB entry did nothing.** GRUB passed it and the kernel could read the command line, but no code ever looked for it, so that entry booted exactly like the default one. `hal_boot_init()` now sets a global flag, `g_debug_boot`, when the word `debug` is on the command line. While it is set, `kmain` writes extra `[DEBUG]` detail to the serial port only (nothing changes on screen): the command line and the bootloader's memory map region by region, the boot configuration values that decide Safe Mode (`fail_count`, threshold, `safemode` flag, pending crash), and one line per boot step (ATA, boot config, PMM, paging, heap, scheduler, FAT16, PCI, ramfs/shell) with the PIT tick count. No new subsystem, no allocation. Without the argument the boot output is unchanged. Docs: `docs/setup.md` ("Debug via serial"), `docs/quickstart.md`, `docs/safemode.md`.
 
 ### Removed
 - `kernel/main.c.save`: an editor backup file that had been committed by mistake.

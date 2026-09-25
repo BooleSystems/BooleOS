@@ -9,7 +9,7 @@
  | |_) || (_) || (_) || ||  __/| |_| | ___) |
  |____/  \___/  \___/ |_| \___| \___/ |____/ 
 
- BooleOS v0.20.0 - Phase 20: Crash handler leads into Safe Mode
+ BooleOS v0.20.1 - Phase 20: Crash handler leads into Safe Mode
 ```
 
 ## Overview

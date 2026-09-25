@@ -337,6 +337,20 @@ shell prompt.
 every `vga_putchar()` call already mirrors its character to serial
 automatically. `make run` passes `-serial stdio` to QEMU, so the same
 boot log VGA shows also appears in the terminal you ran `make run`
-from. The "BooleOS (serial debug mode)" entry passes a `debug` boot argument;
-the kernel reads the command line (`boot_has_flag()`), but nothing acts on
-`debug` yet, so today it boots exactly like the default entry.
+from. The "BooleOS (serial debug mode)" entry passes a `debug` boot argument.
+The kernel reads it (`boot_has_flag("debug")` in `hal_boot_init()`, stored in
+the global `g_debug_boot`) and, while it is set, adds detail to the **serial
+port only** (the screen looks exactly like a normal boot). Each extra line
+starts with `[DEBUG]`:
+
+- right after the Multiboot2 check: the boot command line and the bootloader's
+  memory map, one line per region (base, length, type);
+- the boot configuration values that decide whether Safe Mode starts
+  (`fail_count`, the threshold, the `safemode` flag, a pending crash);
+- one line per boot step (ATA, boot config, PMM, paging, heap, scheduler,
+  FAT16, PCI, ramfs/shell) with the PIT tick count at that moment
+  (`ticks=`, 100 per second), which shows where boot time goes or where a
+  hang stopped.
+
+Without the argument none of this is printed. The `[ATADBG]` trace in
+`kernel/drivers/ata.c` is separate and always on (see `docs/TODO.md`).

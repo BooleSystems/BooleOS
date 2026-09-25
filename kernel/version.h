@@ -17,7 +17,7 @@
 #ifndef BOOLEOS_VERSION_H
 #define BOOLEOS_VERSION_H
 
-#define BOOLEOS_VERSION      "0.20.0"
+#define BOOLEOS_VERSION      "0.20.1"
 #define BOOLEOS_PHASE        "20"
 #define BOOLEOS_PHASE_DESC   "Crash handler leads into Safe Mode"
 

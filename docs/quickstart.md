@@ -60,7 +60,7 @@ A window shows the GRUB menu, then the boot log and a shell prompt (`> `). The t
 | Entry | What it does |
 |---|---|
 | `BooleOS vX.Y.Z` | normal boot (the default, after 3 seconds) |
-| `BooleOS (serial debug mode)` | the same boot, with the `debug` boot argument |
+| `BooleOS (serial debug mode)` | the same boot, with the `debug` boot argument: extra `[DEBUG]` detail on the serial port (the terminal you launched QEMU from) |
 | `BooleOS (Safe Mode)` | the recovery environment: menu, disk info, sector hexdump and a read-only shell (see [safemode.md](safemode.md)) |
 | `BooleOS vA.B.C (previous release)` | the previous release's kernel |
 

@@ -127,4 +127,9 @@ int boot_get_cmdline(char *out, int max);
 // line (exact match, e.g. "safemode"). False if there is no command line.
 int boot_has_flag(const char *flag);
 
+// Set by hal_boot_init() when the boot command line has the word "debug" (the
+// "serial debug mode" GRUB entry). While it is non-zero, the boot code writes
+// extra detail to the SERIAL port only (never to the screen). 0 otherwise.
+extern int g_debug_boot;
+
 #endif // HAL_H
