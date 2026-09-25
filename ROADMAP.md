@@ -63,8 +63,11 @@ restructuring after Phase 16) use a hyphen and an uppercase letter
 | **26-B** | Port reset | 🔜 Planned | below |
 | **26-C** | Enumerate the connected device | 🔜 Planned | below |
 | **26-D** | Parse HID reports | 🔜 Planned | below |
-| **26-E** | Canonical input event (unifies PS/2 + USB HID) | 🔜 Planned | below |
+| **26-E** | USB HID keyboard driver | 🔜 Planned | below |
+| **26-F** | Deflection — canonical input event (unifies PS/2 + USB HID) | 🔜 Planned | below |
 | **27** | Linear framebuffer + simple GUI | 🔜 Planned | below |
+| **27-A** | Cathode — graphics API / framebuffer driver | 🔜 Planned | below |
+| **27-B** | Raster — launcher/grid, the GUI delivered in this phase (on top of Cathode) | 🔜 Planned | below |
 | **28** | Syscall deprecation/compatibility strategy | 🔜 Planned | below |
 | **29** | Second pass of audit fixes | 🔜 Planned | below |
 | **30** | General polish | 🔜 Planned | below |
@@ -159,10 +162,11 @@ Done; see the table above, CHANGELOG `[0.20.0]` and `docs/safemode.md`. An unhan
 - 26-B: port reset
 - 26-C: enumerate the connected device
 - 26-D: parse HID reports (a real keyboard/mouse)
-- 26-E: canonical input event (unifies PS/2 + USB HID)
+- 26-E: USB HID keyboard driver (takes the parsed HID reports of 26-D and turns them into key events; the mouse side stays with 26-D)
+- 26-F: **Deflection**, the canonical input event (unifies PS/2 + USB HID)
   - **Why:** the PS/2 driver and the new USB HID driver each deliver data in their own raw format (PS/2 scancode vs. parsed HID report). This sub-phase unifies them before any app reads input, so no app needs to know whether the keyboard is PS/2 or USB.
   - Define a single `input_event_t`: event type (key down / key up) + a BooleOS-own standardized keycode enum (neither raw PS/2 scancodes nor USB usage codes) + source `device_id`.
-  - The PS/2 driver and the USB HID driver (built in 26-A–26-D) translate their raw format into `input_event_t` and push it onto one kernel-wide queue.
+  - The PS/2 driver and the USB HID driver (built in 26-A–26-E) translate their raw format into `input_event_t` and push it onto one kernel-wide queue.
   - Apps read only from that single queue, never from a device driver directly.
   - `device_id` will later allow telling apart several keyboards plugged in at once (e.g. per-device local multiplayer); no extra implementation now — the field just has to exist and be filled in correctly from the start.
   - **Why here and not later:** every GUI app built from Phase 27 on (launcher, settings, DOOM) reads input through the standard queue from day one, avoiding rewrites when more input backends (Bluetooth, etc.) appear.
@@ -173,6 +177,9 @@ Done; see the table above, CHANGELOG `[0.20.0]` and `docs/safemode.md`. An unhan
 - **Approach:** GRUB2/Multiboot2 can hand over a linear framebuffer directly via a Multiboot2 protocol tag (no need for a real GPU driver like VBE/BIOS calls, which don't work anymore once protected mode has been entered) — just request it in `grub.cfg` and read the physical address from the structure.
 - **Main risk / note:** without a working mouse (Phase 26), a "GUI" with no decent input has limited value — recommended after Phase 26, even though the framebuffer itself has no technical dependency on USB.
 - **Depends on:** none technically, but gains much more value after Phase 26 (mouse).
+
+- 27-A: **Cathode**, the graphics API / framebuffer driver (the linear framebuffer from the Multiboot2 tag and the drawing primitives on top of it)
+- 27-B: **Raster**, the launcher/grid: the GUI this phase delivers, built on top of Cathode
 
 ### Phase 28 — Syscall deprecation and compatibility strategy
 

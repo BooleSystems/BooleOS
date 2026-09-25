@@ -25,12 +25,15 @@ at the time.
 ## [Unreleased]
 
 ### Added
+- GitHub issue templates in `.github/ISSUE_TEMPLATE/` (bug report, feature request, boot/compatibility report).
 - `CONTRIBUTING.md`: contribution guide with the pull request policy. PRs must be AI-generated, and the commit must prove it with a `Co-Authored-By` trailer naming the AI tool (Claude Code adds it automatically); PRs without the trailer are closed, and code that reads as hand-written despite it is sent back to be redone. It also lists what to read before opening a PR (`CLAUDE.md`, `ROADMAP.md`), the local build-and-boot expectation, and what kinds of contributions are welcome.
 
 ### Changed
+- ROADMAP.md: Phase 26 gains sub-phase 26-E (USB HID keyboard driver) and the canonical input event, which was 26-E, becomes 26-F and is named **Deflection**; Phase 27 is split into 27-A **Cathode** (graphics API / framebuffer driver) and 27-B **Raster** (launcher/grid, the GUI delivered in the phase, on top of Cathode).
 - `tools/prev/` now holds the v0.20.1 snapshot (kernel + ramfs built from the `v0.20.1` tag), so the "previous release" GRUB entry of the next version is a real release.
 
 ### Fixed
+- `CONTRIBUTING.md`: removed a reference to a component (`cathode_host`, SDL2) that does not exist in the BooleOS kernel.
 - Repository links in `README.md`, `docs/quickstart.md` and `docs/setup.md` (releases page, source link, `git clone` URL) now point to `github.com/BooleSystems/BooleOS`; they still had the pre-relocation path.
 
 ## [0.20.1] - 2026-09-25 - Patch: the `debug` boot argument works; BooleOS rename and repository move

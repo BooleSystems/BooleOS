@@ -20,9 +20,8 @@ gets closed and you'll be asked to redo it properly.
 ## Before opening a PR
 
 - Read CLAUDE.md, it has the project's hard constraints (32-bit build gate,
-  no libc, no real threads, everything through the heap wrapper, SDL2 only
-  inside cathode_host). A PR that breaks these gets rejected regardless of
-  how it was written.
+  no libc, no real threads, everything through the heap wrapper). A PR that
+  breaks these gets rejected regardless of how it was written.
 - Check ROADMAP.md, if what you're building is a planned phase, say which
   one in the PR.
 - Build and test locally before opening the PR. `cd tools && make clean &&
