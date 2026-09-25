@@ -24,6 +24,9 @@ at the time.
 
 ## [Unreleased]
 
+### Added
+- `CONTRIBUTING.md`: contribution guide with the pull request policy. PRs must be AI-generated, and the commit must prove it with a `Co-Authored-By` trailer naming the AI tool (Claude Code adds it automatically); PRs without the trailer are closed, and code that reads as hand-written despite it is sent back to be redone. It also lists what to read before opening a PR (`CLAUDE.md`, `ROADMAP.md`), the local build-and-boot expectation, and what kinds of contributions are welcome.
+
 ### Changed
 - `tools/prev/` now holds the v0.20.1 snapshot (kernel + ramfs built from the `v0.20.1` tag), so the "previous release" GRUB entry of the next version is a real release.
 
