@@ -26,17 +26,24 @@ at the time.
 
 ### Added
 - ROADMAP.md: new sub-phase 26-E (canonical `input_event_t` unifying PS/2 and USB HID input), closing Phase 26.
+- Release tags for every version in this changelog: `v0.2.0` through `v0.16.0` were created retroactively (annotated, at the commit that closed each version, with the original commit date), joining the existing `v0.0.1`, `v0.1.0` and `v0.17.0`–`v0.20.0`. All 26 tags `v0.0.1`–`v0.20.0` now exist.
+- Retroactive release packages for `v0.0.1`–`v0.20.0`, each built from a clean checkout of its tag: the bootable ISO (named as the build produced it, `nullos.iso`), a blank FAT16 `disk.img` for the versions that have one (0.10.0 and later), a per-version `README.txt` that describes what that specific ISO does and how to run it in QEMU, the original docs of that version untouched, and an English translation of the docs of the Portuguese-language versions (0.0.1–0.10.0).
 
 ### Changed
 - **Project renamed from NullOS to BooleOS.** The old name was too generic and already saturated on GitHub (several unrelated projects called "NullOS"). The new name references George Boole and Boolean algebra, the mathematical basis of every digital circuit.
   - Prose and UI text (boot banner, ASCII logo, `fetch`, GRUB entries, README, ROADMAP, `docs/*.md`, `CLAUDE.md`) now say "BooleOS".
   - Macros/prefixes `NULLOS_*` -> `BOOLEOS_*` (`kernel/version.h`, build env vars, `@BOOLEOS_VERSION@` in `tools/grub.cfg.in`).
   - Build artifacts: `nullos.elf` -> `booleos.elf`, `nullos.iso` -> `booleos.iso`, `/boot/prev-booleos.elf`, release zip `booleos-X.Y.Z.zip`, FAT volume label `BOOLEOS`; `user/lib/nullos.{c,h}` -> `user/lib/booleos.{c,h}`; `tools/prev/nullos.elf` renamed only (the v0.20.0 snapshot content is untouched).
-  - Deliberately unchanged: the `nos_*`/`libnos`/`nosstdio` API prefix, the GitHub URLs and the `origin` remote (the remote repository has not been renamed yet), C `NULL` and "null-terminated" terminology, and the historical entries of this changelog.
+  - Deliberately unchanged: the `nos_*`/`libnos`/`nosstdio` API prefix, the repository links inside the docs (they still have to be pointed at the new repository location), C `NULL` and "null-terminated" terminology, and the historical entries of this changelog.
 - `kernel/version.h` only had its macro names changed; no version bump (this is not a phase).
+- Repository relocated to the BooleSystems organization (`github.com/BooleSystems/BooleOS`); project history and tags were carried over.
+- Copyright and license attribution updated to reflect the current maintainer.
+- Project renamed from NullOS to BooleOS across code, docs, build artifacts and macros (see the rename entry above).
+- Git history rewritten for the move: author, committer and tagger identity, the copyright holder in `LICENSE` and the repository links in the historical docs were normalized. Every commit hash changed, so hashes quoted in older notes or issues no longer resolve; the commit messages, dates and tag names are unchanged in substance.
 
 ### Removed
 - `kernel/main.c.save`: an editor backup file that had been committed by mistake.
+- A stray `Untagged` tag (left over from a draft release) that did not correspond to any version.
 
 ## [0.20.0] - 2026-09-20 - Phase 20: Crash handler leads into Safe Mode
 
