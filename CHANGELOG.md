@@ -25,6 +25,7 @@ at the time.
 ## [Unreleased]
 
 ### Added
+- `.claude/skills/de-ai-writing/`: project skill for rewriting text without the signs of AI writing catalogued in Wikipedia's "Signs of AI writing" guide (`SKILL.md` with the workflow, `references/signs.md` with the full catalogue and a fix for each sign). `CLAUDE.md` gains a section requiring public text (README, CHANGELOG, CONTRIBUTING, code comments, social posts, issue templates) to go through it; facts, numbers and claims stay unchanged. The optional `scripts/check_ai_signs.py` scanner was not added; the manual pass over `references/signs.md` is the fallback. Not yet run over the existing docs.
 - GitHub issue templates in `.github/ISSUE_TEMPLATE/` (bug report, feature request, boot/compatibility report).
 - `CONTRIBUTING.md`: contribution guide with the pull request policy. PRs must be AI-generated, and the commit must prove it with a `Co-Authored-By` trailer naming the AI tool (Claude Code adds it automatically); PRs without the trailer are closed, and code that reads as hand-written despite it is sent back to be redone. It also lists what to read before opening a PR (`CLAUDE.md`, `ROADMAP.md`), the local build-and-boot expectation, and what kinds of contributions are welcome.
 

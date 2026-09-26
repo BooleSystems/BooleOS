@@ -648,3 +648,13 @@ fecha sem a entrada consolidada existir no arquivo.)
   cenário que o Safe Mode sozinho não cobre (bug no próprio código de
   boot/paginação/GDT/IDT, que roda antes de qualquer flag de Safe
   Mode ser lida).
+## Disciplina de escrita: sem cara de texto gerado por IA
+
+Todo texto público do projeto (README, CHANGELOG, CONTRIBUTING,
+comentário de código, post em rede social, issue template) passa
+pela skill `.claude/skills/de-ai-writing/` antes de ser considerado
+finalizado. Isso não é sobre esconder que o projeto é feito por IA
+(o projeto é literalmente 100% IA e isso é público), é sobre o texto
+em si não regredir pra frase genérica e inflada que qualquer
+detector de "AI slop" pega de longe. Fatos, números e claims nunca
+mudam, só a forma como são ditos.
