@@ -52,8 +52,8 @@ at the time.
   - Deliberately unchanged: the `nos_*`/`libnos`/`nosstdio` API prefix, the repository links inside the docs (they still have to be pointed at the new repository location), C `NULL` and "null-terminated" terminology, and the historical entries of this changelog.
 - Repository relocated to the BooleSystems organization (`github.com/BooleSystems/BooleOS`); project history and tags were carried over.
 - Copyright and license attribution updated to reflect the current maintainer.
-- Project renamed from NullOS to BooleOS across code, docs, build artifacts and macros (see the rename entry above).
 - Git history rewritten for the move: author, committer and tagger identity, the copyright holder in `LICENSE` and the repository links in the historical docs were normalized. Every commit hash changed, so hashes quoted in older notes or issues no longer resolve; the commit messages, dates and tag names are unchanged in substance.
+- `.gitignore` gains `*.log` (serial logs captured by hand with `make run ... | tee boot_serial.log` shouldn't be tracked — see Removed).
 - `kernel/version.h` bumped to `0.20.1` (PATCH: no new phase, only the `debug` boot argument fix below); the README banner follows.
 
 ### Fixed
@@ -61,6 +61,7 @@ at the time.
 
 ### Removed
 - `kernel/main.c.save`: an editor backup file that had been committed by mistake.
+- `tools/boot_serial.log`: a 491-line hand-captured serial transcript from testing the v0.20.0 crash handler, committed by mistake in that version's polish; untracked now that `.gitignore` excludes `*.log`.
 - A stray `Untagged` tag (left over from a draft release) that did not correspond to any version.
 
 ## [0.20.0] - 2026-09-20 - Phase 20: Crash handler leads into Safe Mode
@@ -80,13 +81,15 @@ at the time.
   complete normal boot, so entering and leaving Safe Mode never loses it. A crash
   that could not be saved (no disk yet, no config sector) halts with the screen
   readable, as before, instead of restarting. A second exception during the
-  handling skips the dump and goes straight to the reset.
+  handling skips the dump and goes straight to the reset. New `kernel/crashdump.c/h`
+  hold the record format and the save/load/clear logic.
 - The save path depends on nothing that may be broken: polling-only ATA I/O
   (`ata_crash_read_sector`/`ata_crash_write_sector`, `block_*_polled()` in the HAL —
   no lock, no IRQ, no scheduler, bounded waits, soft reset of a channel left
   mid-command), a static buffer, no heap. New `bootcfg_buf_*` functions (the text
-  store on an explicit buffer, hex numbers, `bootcfg_remove()`), `timer_poll_delay_ms()`,
-  `power_reboot_request()`, `exception_name()`.
+  store on an explicit buffer, hex numbers, `bootcfg_remove()`), `timer_poll_delay_ms()`
+  (new `kernel/timer.c/h`), `power_reboot_request()` (split out of `power_reboot()`),
+  `exception_name()`.
 - A temporary serial-only trace of every step of the ATA `probe()`
   (`[ATADBG]`, marked `TEMP-DEBUG(ata-probe)` in `kernel/drivers/ata.c`) stays in
   the kernel to catch the rare intermittent "no disk" at boot (see `PROGRESS.md`);
@@ -94,6 +97,10 @@ at the time.
 - **`crash <de|pf|gpf>` shell command**, a debug tool that faults on purpose
   (#DE, a read of `0xDEADBEEF`, #GP) so the whole pipeline can be tested repeatably
   with `make run-reboot-test`. Documented in `docs/safemode.md`.
+- `tools/boot_serial.log`: a hand-captured serial transcript of the `crash`
+  command exercising all three fault types, added to the tree during this
+  phase's testing and later found to have been committed by mistake (removed
+  in 0.20.1).
 
 ### Changed
 
@@ -126,31 +133,34 @@ at the time.
   library sources, and `make inject PROG=<name>` to copy the result into
   `build/disk.img` without rebuilding the ISO. New guide `docs/sdk.md` for
   someone writing a program (rules, build, running it, the library, `printf`).
-- **`printf` family in libnos** (`user/lib/nosstdio.c`): `printf`, `vprintf`,
-  `sprintf`, `snprintf`, `vsnprintf` with the standard libc names — `%d %i %u %x
-  %X %c %s %p %%`, flags `- 0 + space`, width and precision (also `*`), `h`/`hh`/`l`.
-  No floating point, no 64-bit, no `#`. A separate object linked only into the
-  programs that use it.
-- **`make test-elf`** (`tools/test_elf_load.c`): a host-side test of the real
-  `kernel/elf.c` on every built user program, plus truncation, header fuzzing and
-  crafted hostile headers.
+- **`printf` family in libnos** (`user/lib/nosstdio.c`, 253 new lines):
+  `printf`, `vprintf`, `sprintf`, `snprintf`, `vsnprintf` with the standard libc
+  names — `%d %i %u %x %X %c %s %p %%`, flags `- 0 + space`, width and
+  precision (also `*`), `h`/`hh`/`l`. No floating point, no 64-bit, no `#`. A
+  separate object linked only into the programs that use it.
+- **`make test-elf`** (`tools/test_elf_load.c`, 151 new lines): a host-side test
+  of the real `kernel/elf.c` on every built user program, plus truncation,
+  header fuzzing and crafted hostile headers.
 - selftest: three new tests (exec of a program that exists only on FAT16;
-  malformed, truncated and missing programs rejected; the printf family) —
-  21 tests.
+  malformed, truncated and missing programs rejected; the printf family),
+  154 new lines in `user/selftest.c` — 21 tests total.
+- `docs/quickstart.md` (124 new lines) and `docs/sdk.md` (103 new lines).
 
 ### Changed
 
-- `elf_load()` takes the file size and no longer trusts the image: the program
-  header table and every segment's file data are checked against it, segments
-  must lie in `[0x00800000, 0x02000000)`, and all checks use 64-bit arithmetic so
-  a 32-bit field cannot wrap. All headers are validated before anything is
-  mapped. This also closes the "`elf_load` never receives the file size / `page_end`
-  overflow" item of the Phase 28 plan.
+- `elf_load()` (`kernel/elf.c`/`elf.h`) takes the file size and no longer trusts
+  the image: the program header table and every segment's file data are
+  checked against it, segments must lie in `[0x00800000, 0x02000000)`, and all
+  checks use 64-bit arithmetic so a 32-bit field cannot wrap. All headers are
+  validated before anything is mapped. This also closes the "`elf_load` never
+  receives the file size / `page_end` overflow" item of the Phase 28 plan.
+  `exec()`/`exec.h` thread the size through.
 - The kernel heap is grown to 256 KB when it is initialized, and `heap_expand()`
-  takes exactly the physical page at `heap_end` (`pmm_alloc_page_at()`, new)
-  instead of the lowest free one — the heap's virtual addresses are the
-  identity-mapped physical ones (see Fixed). The heap can no longer grow once
-  processes exist, a limit recorded in `PROGRESS.md` for Phase 22.
+  takes exactly the physical page at `heap_end` (`pmm_alloc_page_at()`, new in
+  `kernel/memory/pmm.c/h`) instead of the lowest free one — the heap's virtual
+  addresses are the identity-mapped physical ones (see Fixed). The heap can no
+  longer grow once processes exist, a limit recorded in `PROGRESS.md` for
+  Phase 22.
 - `tools/Makefile`: the user ELFs have the `user` target as an order-only
   prerequisite, so any target that needs them builds `user/` first.
 - `tools/prev/` holds the v0.18.0 build (the "previous release" GRUB entry of
@@ -177,7 +187,6 @@ at the time.
   recorded (unnumbered, outside the priority order until it gets a place): a
   kernel crash saves its dump in the boot config sector, resets by itself and
   lands in Safe Mode with the reason and a "view last crash" item.
-
 - Documentation split by audience: the new `docs/quickstart.md` covers only
   "download a release zip, install QEMU, run one command" (no toolchain, no
   Docker, no compiling), and `docs/setup.md` is now developer-only. `setup.md`
@@ -199,6 +208,7 @@ at the time.
   conversion — general guidance, not verified by the project); and `setup.md` now
   explains how to switch to the `nightly` branch to build the development
   version.
+
 ### Fixed
 
 - A kernel page fault (`#PF` inside `vmm_get_user_phys_from_dir`) when the heap
@@ -216,7 +226,6 @@ at the time.
 ## [0.18.0] - Phase 18: Safety/portability foundation (HAL, msg(ID), Safe Mode)
 
 ### Added
-
 - **Hardware abstraction layer** (`kernel/hal.h`, `kernel/hal.c`,
   `docs/hal.md`): an arch-neutral interface over the existing drivers, as thin
   forwarding wrappers (the drivers were not rewritten).
@@ -232,30 +241,32 @@ at the time.
     The kernel used to ignore the command line entirely (the `debug` word of the
     "serial debug mode" GRUB entry was never read).
 - **`msg(ID)`**, a central table for all user-visible text (one English
-  column; not a translation system): `kernel/messages.h/.c` for the kernel
-  (boot log, errors, dumps, exception names, `ps` states) and
-  `user/lib/messages.h/.c` for the shell, editor and `cat` (`umsg_id_t`,
-  `UMSG_*`, linked only into those programs). `msg()` never returns NULL
-  (`"(?)"` for a bad ID) and works from the exception handler. Output is
-  unchanged. `selftest`/`forktest` and `init`/`spintest` are not migrated.
+  column; not a translation system): `kernel/messages.h/.c` (279/288 new
+  lines) for the kernel (boot log, errors, dumps, exception names, `ps`
+  states) and `user/lib/messages.h/.c` (85/98 new lines) for the shell,
+  editor and `cat` (`umsg_id_t`, `UMSG_*`, linked only into those programs).
+  `msg()` never returns NULL (`"(?)"` for a bad ID) and works from the
+  exception handler. Output is unchanged. `selftest`/`forktest` and
+  `init`/`spintest` are not migrated.
 - **Safe Mode** (`docs/safemode.md`), a recovery environment inside the same
   kernel binary that runs in ring 0 before the PMM, VMM, heap, scheduler,
   `exec` and syscalls exist:
   - a boot configuration store in one raw sector (LBA 1, inside FAT16's
     reserved region, read and written only through the HAL block I/O, magic
     line `# nullos-config v1`, empty defaults when the sector is invalid,
-    guarded by the boot sector's `reserved_sectors`) — `kernel/bootcfg.h/.c`;
+    guarded by the boot sector's `reserved_sectors`) — `kernel/bootcfg.h/.c`
+    (64/175 new lines);
   - a boot failure counter (`boot_fail_count`): incremented right after the
     disk is up, reset on the first keyboard read; at
     `BOOTCFG_FAIL_THRESHOLD` (3) failed boots in a row, or with `safemode` on
     the boot command line, the kernel enters Safe Mode instead of booting;
-  - a text UI (`kernel/safemode.c`, static buffers, no heap): reboot normally
-    (resets the counter), a reboot submenu, disk info from the raw boot
-    sector, and a sector hexdump; Safe Mode is left only by rebooting;
-  - a restricted read-only shell (menu item 5, `kernel/safeshell.c`) that
-    initializes the PMM, VMM, heap and FAT16 on demand, once per session, and
-    offers `help`, `ls`, `cat`, `pwd`, `cd`, `back` calling FAT16 directly —
-    no processes, no `exec`;
+  - a text UI (`kernel/safemode.c`, 392 new lines, static buffers, no heap):
+    reboot normally (resets the counter), a reboot submenu, disk info from the
+    raw boot sector, and a sector hexdump; Safe Mode is left only by rebooting;
+  - a restricted read-only shell (menu item 5, `kernel/safeshell.c`, 180 new
+    lines) that initializes the PMM, VMM, heap and FAT16 on demand, once per
+    session, and offers `help`, `ls`, `cat`, `pwd`, `cd`, `back` calling FAT16
+    directly — no processes, no `exec`;
   - GRUB entries "NullOS (Safe Mode)" (`safemode` flag) and "NullOS
     v<version> (previous release)", which boots the last release's kernel and
     ramfs kept together in the tracked `tools/prev/`; `make snapshot` records
@@ -263,7 +274,6 @@ at the time.
     automatically). `tools/prev/` holds the v0.17.1 build.
 
 ### Changed
-
 - Everything outside the drivers goes through the HAL: `kmain`, `syscall.c`,
   `process.c`, `scheduler.c`, `exec.c`, `power.c`, `memory/{pmm,vmm,heap}.c`,
   `drivers/pci.c`, all disk access in `fs/fat16.c`, and `idt.c`'s exception
@@ -291,7 +301,6 @@ at the time.
 - `kernel/version.h`: `0.18.0`, phase `18`, "Safety/portability foundation".
 
 ### Fixed
-
 - `pmm_free_pages()` over-reported by the total page count since Phase 2:
   `pmm_used` started at 0 while the bitmap started all-used, so releasing a
   region drove it negative (the old boot log showed `Free: 61440KB` for
@@ -300,474 +309,111 @@ at the time.
 
 ## [0.17.1] - Documentation patch: v0.17.0 closing gaps + ROADMAP restructuring
 
-Documentation only; no behavior change (`kernel/version.h` is 0.17.1, phase
-still 17 / "Cleanup A").
+### Fixed
+- README.md/PROGRESS.md: "For planned Phases 17–31" corrected to "17–30" (ROADMAP was restructured to end at Phase 30, the DOOM port, with v1.0.0 closing right after it).
+- README.md: `make run` documented as keeping `-no-reboot`; the new `make run-reboot-test`/`make inject` targets from `[0.17.0]` documented in the "Build and run" section.
+- docs/testing.md: expected selftest output block updated to the real 18/18-test output introduced in `[0.17.0]` (it still showed the old 13/13 block).
 
 ### Changed
-
-- `docs/testing.md`: the example selftest output still showed the old
-  `13/13` with 13 `[PASS]` lines and the old cleanup note; it now shows the
-  real 18/18 output (including the Intel 440FX check, the two-process pipe,
-  the 3-child `waitpid` and the 3-level `mkdir`/`cd`) and the current
-  `[INFO] cleanup` text.
-- `README.md`: the "Build" section now lists `make run-reboot-test` (`make
-  run` without `-no-reboot`, so `reboot` really restarts the guest) and
-  `make inject` (copies a file into `build/disk.img` with `mcopy` without
-  rebuilding the ISO; host-side only). The planned-phases range is 17–30.
-- `ROADMAP.md`: restructured the end of the plan. The separate "technical
-  prerequisites for DOOM" phase (old Phase 30) is gone: `lseek` moved into
-  Phase 29 (general polish, next to `mv`/`cp`), the deferred Windows test of
-  `docs/setup.md` was added there too, and the DOOM engine port (old Phase
-  31) is now Phase 30 (sub-phases 30-A..D). It needs only Phase 26 and a
-  one-shot single-block memory reservation syscall (DOOM's Z_Zone allocator
-  asks for one big block at startup), not a full userland `malloc`/`free`.
-  The plan now covers Phases 17–30, with v1.0.0 right after Phase 30.
-  `PROGRESS.md` range updated to match. Phase 23's "Independent of Phases
-  17–22" now reads "Independent of the other planned phases".
-- Not part of this patch: the permanent "NullOS vX.Y.Z (anterior)" GRUB
-  entry that CLAUDE.md requires at every merge into `main` was never
-  implemented (neither in v0.16.0 nor v0.17.0). It is tracked for Phase
-  18-B (Safe Mode and the 4-entry GRUB menu).
+- PROGRESS.md: noted the permanent "NullOS vX.Y.Z (anterior)" GRUB fallback entry CLAUDE.md requires at every merge into `main` was never actually implemented for the `v0.16.0`/`v0.17.0` merges, and is owed to ROADMAP's Phase 18-B.
 
 ## [0.17.0] - Phase 17: Cleanup A (audit fixes, libnos/shell tools, test/build infrastructure)
 
 ### Added
-
-- `ROADMAP.md`: granular phase table — one row per phase and
-  sub-phase for completed Phases 0–16 (names taken from the README's
-  completed-phases table, links to CHANGELOG versions and `docs/`
-  files) and for planned Phases 17–31 including their sub-phases.
-- `docs/TODO.md`: header-only file for minimal "WIP: document X"
-  stubs left during `nightly` development, resolved at each version's
-  final polish (per the new CLAUDE.md documentation rule).
-- `user/lib/nullos.c/h`, `user/shell.c`, `forktest.c`, `selftest.c`,
-  `edit.c`: libnos gained `memcpy`/`memset`/`memmove`/`memcmp`/`strlen`/
-  `strcmp`/`strncmp` (standard libc names and signatures, so a call GCC
-  emits by itself resolves) and `nos_uitoa`; the four per-program copies
-  of `strlen`/`uitoa`, shell's `strcmp`/`strncmp`, selftest's `st_bufeq`
-  and the inline zero/shift/copy loops in selftest and edit now call them.
-- `user/selftest.c`: new test "SYS_WRITE >128 bytes accumulates in a FAT16
-  file" — writes 2100 bytes as two `nos_write()` calls (crossing the first
-  2048-byte cluster) and reads them all back; the regression test for the
-  chunked-write data loss. Suite is now 14 tests (`st_big.txt` is left on
-  disk like the other test files).
-- `pwd` / `SYS_GETCWD` (30): `fat16_get_path()` rebuilds a cwd path from the
-  cwd's cluster by walking up through `..` (names in 8.3 uppercase).
-  `nos_getcwd()`, shell `pwd`.
-- `cat <file>`: `user/cat.c` opens the file named by its argument and prints
-  it; with no argument it still copies stdin (pipe sink). The shell's `cat
-  <file>` launches it and waits. `sys_exec_pipe()` clears the global
-  `exec_arg` so a piped/redirected `cat` never reads the argument left by an
-  earlier plain `exec()`.
-- `cmd < file` and `cmd > file` in the shell (`run_redirected()`): file fds
-  through the existing `SYS_EXEC_PIPE`; `>` creates + truncates. External
-  programs only, launched by name without arguments, not combinable with `|`.
-- `kernel/power.c/h`: `power_reboot()` (8042 reset, port 0x64 <- 0xFE) and
-  `power_shutdown()` (PIIX4 PM base from PCI config 0x40, `outw(base+4,
-  0x2000)`; prints "shutdown not supported on this hardware" when the PIIX4
-  isn't in the PCI table). `pci_find_device()`. Syscalls `SYS_REBOOT` (31) and
-  `SYS_SHUTDOWN` (32), `nos_reboot()`/`nos_shutdown()`, shell `reboot`/
-  `shutdown`.
-- `user/selftest.c`: four new tests (18 total): a two-process pipeline
-  (a `fork()`ed writer and `cat` launched with `SYS_EXEC_PIPE`, parent
-  compares the output), `waitpid` with three children (each pid collected
-  with the result that child reported, and gone afterwards), `mkdir`/`cd`
-  three levels deep (pwd at every level, a file at the bottom, `cd ..` back
-  to `/`), and a check for the Intel 440FX host bridge (`8086:1237`) next to
-  the generic PCI count. The 440FX test is expected to fail once Phase 24
-  moves QEMU to `-machine q35` (see `docs/TODO.md`).
-- `SYS_PCI_FIND` (33) / `nos_pci_find(vendor, device)`: 1 if a device with
-  that ID is in the PCI table, 0 if not (`pci_find_device()` for userland).
-- `tools/Makefile`: `make inject FILE=... [NAME=...]` copies a file into the
-  root of `build/disk.img` with `mcopy`, without rebuilding the ISO.
-  Host-side only — the kernel still can't `exec()` from FAT16 (Phase 19).
-- `tools/Makefile`: `make run-reboot-test` runs QEMU without `-no-reboot`, so
-  `reboot` really restarts the guest. `run` and `debug` keep `-no-reboot` on
-  purpose (post-mortem state on a triple fault; it also turns a guest reset
-  into a shutdown).
-
-### Changed
-
-- `kernel/version.h`: `NULLOS_VERSION` `"0.17.0"`, `NULLOS_PHASE` `"17"`,
-  `NULLOS_PHASE_DESC` `"Cleanup A"`.
-- `user/shell.c`: `run` has a single implementation, `cmd_run()`, shared by
-  the foreground path and `run_command()`; it trims and validates the name.
-- `ROADMAP.md`: replaced the Phases 17–22 plan with the restructured
-  Phases 17–31 sequence (Cleanup A, HAL + Safe Mode, SDK, COW fork,
-  `unlink`/`rmdir`, `process_exit()` memory release, `e1000`, AHCI,
-  xHCI, framebuffer/GUI, syscall deprecation, audit pass 2, polish,
-  DOOM prerequisites, DOOM port / v1.0.0). Old Phases 17–22 renumbered
-  to 20, 23, 24, 25, 26, 27, with a granular one-row-per-phase/sub-phase
-  table (historical lettered phases as parent + child rows). No
-  package-manager phase, by decision.
-- `README.md`: "Completed phases" table shows only whole phases (the old
-  rows 2/2b and 3a/3b merged into one row each); the "planned phases" range
-  is 17–31.
-- `CLAUDE.md`: new sections/rules for the `nightly`/`main` branch strategy,
-  `-nightly` version suffix, sub-phases, HAL, centralized `msg()` text
-  output, key=value system config file, and Safe Mode; serial-mirroring,
-  exec()/fork() threading and docs-verification rules extended; Safe Mode
-  rules name `process_spawn_user`.
-- `PROGRESS.md`: consolidated from 411 to ~150 lines (closed phases one
-  line each, decisions tightened with links to `docs/`).
-- `docs/`: `memory.md`, `filesystem.md`, `scheduler.md`, `pci.md`,
-  `kernel.md`, `shell.md`, `pipes.md`, `testing.md`, `syscalls.md` updated
-  for everything above; `docs/scheduler.md` no longer describes the removed
-  `process_spawn()`.
+- **Power management** (`kernel/power.c/h`): `power_reboot()` pulses the 8042 controller (`0xFE` → port `0x64`) after draining its input buffer, printing a failure message if the machine is still running afterward; `power_shutdown()` finds the PIIX4 power-management function (8086:7113) via `pci_find_device()` and writes SLP_EN/SLP_TYP=0 to its `PM1a_CNT` I/O register (ACPI S5, works under QEMU). `SYS_REBOOT (31)`/`SYS_SHUTDOWN (32)` and shell `reboot`/`shutdown` commands.
+- `pci_find_device(vendor, device, &bus, &dev, &fn)` and `SYS_PCI_FIND (33)` / `nos_pci_find()`, so `selftest` can check for a specific device (Intel 440FX, 8086:1237) instead of only "found ≥ 1"; noted as expected to break once Phase 24 moves QEMU to `-machine q35`. PCI BAR reads are now per header type (type 0: 6 BARs, type 1 bridge: 2, type 2 CardBus: 1).
+- `fat16_get_path(cluster, out, size)` / `SYS_GETCWD (30)` / `nos_getcwd()` / shell `pwd`: rebuilds a directory's absolute path by walking `..` entries and looking up each child's name in its parent, capped at `FAT16_PATH_MAX_DEPTH` (16) against a corrupted chain.
+- `vfs_write_all()` (whole-file replace, backs `SYS_WRITE_FILE`) is now distinct from `vfs_write()` (stream write at `fd->pos`, backs `SYS_WRITE`); `fat16_write_at(parent_cluster, name, pos, ...)` does the positional write, growing the cluster chain as needed, re-looking-up the dirent fresh every call, writing data → FAT → dirent in that order so an I/O failure can't leave a dirent claiming more than was written.
+- Shell: `cat [file]` (`user/cat.c` extended to print a named file, or copy stdin when given none), `cmd < file` / `cmd > file` (`run_redirected()`) — the file is opened by the shell and passed as an fd through the same `SYS_EXEC_PIPE` the pipe operator uses (external programs only, not combinable with `|`, builtins can't be redirected).
+- `user/lib/nullos.c/h` gains standard-named string/memory helpers (`memcpy`/`memset`/`memmove`/`memcmp`/`strlen`/`strcmp`/`strncmp`, plus `nos_uitoa`) — needed because GCC itself can emit calls to `memcpy`/`memset`/`memmove` (struct copies, loop-idiom recognition); the `mem*` ones use `rep movsb`/`rep stosb` so GCC can't turn the implementation into a call to itself. Per-program copies of these helpers were removed.
+- `tools/Makefile`: `make run-reboot-test` (same as `make run` but without `-no-reboot`, so `reboot` actually restarts the guest instead of looking like a shutdown); `make inject FILE=... [NAME=...]` copies a file onto `build/disk.img` via `mcopy` without rebuilding the ISO (host-side only — `exec()` still can't load from FAT16, that's Phase 19).
+- `docs/TODO.md`: a running stub file for documentation owed but not yet written, to be emptied at each version's polish (per the new CLAUDE.md "Definition of Done" convention).
+- `user/selftest.c`: 6 more tests (18 total) — `SYS_WRITE` accumulating past 128 bytes across a cluster boundary, the 440FX PCI check, a real two-process pipeline (`fork()` + `SYS_EXEC_PIPE` cat), `waitpid` correctness across 3 concurrently-exiting children, and 3-level-deep `mkdir`/`cd`/`pwd`.
 
 ### Fixed
-
-- `kernel/memory/pmm.c`: `pmm_init()` computed the page count as
-  `(1024 + mem_upper) * 1024 / PAGE_SIZE`, which overflows `uint32_t`
-  for a huge `mem_upper` and wraps to a tiny `total_pages`, underflowing
-  `total_pages - 256`. Now `256 + mem_upper / 4` (same value, no
-  overflow), and freeing high memory is skipped with a warning when
-  `total_pages <= 256`.
-- `kernel/fs/fat16.c`: `fat16_init()` now rejects a BPB with
-  `sectors_per_cluster == 0` (printing the reason) before it is used as
-  a divisor, instead of dividing by zero.
-- `kernel/process.c`: `next_pid++` (three places) now goes through
-  `alloc_pid()`, which saves/restores EFLAGS around the increment
-  instead of a bare cli/sti, since `process_fork()` calls it from
-  inside its own cli section.
-- `kernel/drivers/pci.c`/`pci.h`: only the BARs a header type really
-  has are read and printed (type 0: 6, type 1 PCI-PCI bridge: 2,
-  type 2 CardBus: 1), with the multi-function bit (0x80) masked off
-  first; the rest of `bar[]` stays 0.
-
-- `kernel/memory/vmm.c`/`vmm.h`: `vmm_map_page()` and
-  `vmm_map_user_page()` now return `int` (0 = success, `VMM_ERR_RANGE`
-  / `VMM_ERR_NOMEM` on failure) instead of failing silently as `void`;
-  `map_page_early()` reports an exhausted page-table pool.
-  `vmm_map_user_page()` also rejects `virt < 0x800000` (the kernel's
-  shared identity map) and frees a page-table page it can't use.
-  Every call site checks the result: `heap_expand()` frees the page and
-  returns 0; `exec()`'s user-stack loop prints an error and returns 0;
-  `elf_load()` returns -1; `process_fork()` unwinds via its existing
-  `failed` path. The three `vmm_map_user_page` sites also free the
-  just-allocated physical page instead of leaking it.
-
-- `kernel/keyboard.c`, `user/edit.c`: Shift in the editor.
-  The raw scancode path (`SYS_READ_RAW`) now carries a Shift bit
-  (bit 9, next to Ctrl's bit 8), because the kernel consumes the Shift
-  make/break scancodes itself and `edit.c` could never see them; the
-  editor selects a new `sc_map_shift[]` table from it, so Shift+5 gives
-  `%`, Shift+\ gives `|` and Shift+letter gives the capital.
-
-- `kernel/fs/fat16.c`: `fat16_write_file()` again refuses
-  a directory entry (`ATTR_DIRECTORY`) — the Phase 15 switch to the
-  shared `dir_lookup()` had dropped the old loop's directory skip — and
-  no longer re-reads the dirent sector `dir_lookup()` just left in
-  `dir_buf`. (The "duplicated dirent lookup" tech-debt item was already
-  resolved by Phase 15; only these two leftovers remained.)
-- `kernel/process.c`, `kernel/scheduler.c/h`, `kernel/process.h`
- : `process_spawn_user()` now reserves its slot atomically
-  (interrupts off via saved EFLAGS, slot marked `PROCESS_BLOCKED`, pid
-  and `waiting_for_pid` reset in the same section), fills in every
-  field, and only then publishes `PROCESS_READY` (or leaves it
-  `PROCESS_BLOCKED` for `start_blocked`). This closes two races: two
-  spawns picking the same free slot, and the scheduler running a slot
-  whose `esp`/`cr3` weren't built yet. New `irq_save()`/`irq_restore()`
-  helpers, also used by `alloc_pid()`.
-
-- `kernel/fs/fat16.c`, `fat16.h`, `vfs.c`, `vfs.h`, `kernel/syscall.c`:
-  `SYS_WRITE` on a FAT16 fd lost data. `sys_write()` staged writes in
-  128-byte chunks and each `vfs_write()` replaced the WHOLE file, so only
-  the last chunk survived a write over 128 bytes. New `fat16_write_at()`
-  (positional write: grows the chain, updates the dirent, data -> FAT ->
-  dirent order) backs a stream `vfs_write()` that writes at `fd->pos` and
-  advances it; the whole-file replace `SYS_WRITE_FILE` needs moved to
-  `vfs_write_all()`, so the editor's save is unchanged.
-- `user/shell.c`: a bare `edit` or `cat` (no argument) printed `command not
-  found`. `nos_read()` returns the line with its trailing newline, and the
-  branches only match "name followed by a space or end of string". The
-  shell now strips the trailing `\n`/`\r` right after reading the line.
-- Line editing echo (pre-existing): erasing a typed character did not
-  erase it on the serial console. `vga_putchar('\b')` blanks the cell on
-  screen, but its serial mirror sent a raw `\b`, which only moves a
-  terminal's cursor left — retyping `shutdown` as `reboot` showed
-  `rebootdows`. `kernel/drivers/vga.c` now mirrors an erasing backspace as
-  `\b \b` (nothing if VGA erased nothing). Also `sys_read()` no longer
-  echoes a backspace on an empty line, which used to blank the shell's own
-  `> ` prompt. The typed buffer itself was always right (a backspace just
-  decrements the count).
+- **`vmm_map_page()`/`vmm_map_user_page()` used to return `void`, silently swallowing an out-of-range address or an exhausted page-table pool.** They now return `int` (0 success, `VMM_ERR_RANGE`/`VMM_ERR_NOMEM`); every caller (`heap_expand()`, `exec()`'s user-stack loop, `elf_load()`, `process_fork()`) checks the result, and the three `vmm_map_user_page` call sites now free the physical page they'd already allocated instead of leaking it on failure.
+- `vmm_map_user_page()` now rejects `virt < 0x800000`: the first 8 MB is the kernel identity map shared by every process's page directory, so a user mapping there would have altered it for every process.
+- **`pmm_init(mem_upper)`'s page-count formula, `(1024 + mem_upper) * 1024 / PAGE_SIZE`, overflowed `uint32_t` for a large `mem_upper` and wrapped to a tiny page count.** Replaced with `256 + mem_upper / 4`; freeing memory above 1 MB is now skipped with a warning if `total_pages <= 256`.
+- `alloc_pid()` used a bare `cli`/`sti`, which would re-enable interrupts too early when called from inside `process_fork()`'s own `cli` section; switched to `irq_save()`/`irq_restore()` (saves/restores EFLAGS).
+- `process_spawn_user()` now reserves its process-table slot atomically (`cli`/EFLAGS-save, pick slot, mark `PROCESS_BLOCKED`, assign pid) the same way `process_fork()` already did, closing the previously-documented race between two concurrent spawns and the scheduler running a slot whose `esp`/`cr3` weren't built yet.
+- `fat16_init()` now rejects a BPB with `sectors_per_cluster == 0` before using it as a divisor.
+- `fat16_write_file()` refuses a directory entry and no longer re-reads the dirent sector `dir_lookup()` just left in `dir_buf`.
+- `sys_read()` no longer echoes a backspace on an empty line, which used to blank the shell's own `> ` prompt.
+- `SYS_READ_RAW` now packs a Shift bit (bit 9) alongside Ctrl's (bit 8), since the kernel consumes the Shift make/break scancodes itself before `user/edit.c` ever sees them; `edit.c` gains its own `sc_map_shift[]` table.
+- `sys_exec_pipe()` clears the global `exec_arg`, since it carries no argument of its own — without this, a leftover `arg` from an earlier plain `exec()` could reach the new process's `SYS_GETARG` (e.g. a piped `cat` seeing a stale filename instead of just reading its redirected stdin).
 
 ### Removed
+- The dead kernel-task spawn path, `process_spawn()`/`scheduler_spawn()` and `scheduler_task_bootstrap()` (unused since real user processes replaced it), was removed.
+- `tools/run_qemu.sh`, the older standalone script that booted the ISO without attaching the disk, was removed in favor of `cd tools && make run`; `tools/setup_env.sh`'s printed next-steps updated to match.
+- `-no-reboot` was removed from the base `QEMU_FLAGS` (kept only in the new `QEMU_FLAGS_RUN` used by `run`/`debug`) so `run-reboot-test` can omit it.
 
-- `tools/run_qemu.sh`: it booted the ISO without attaching `disk.img` and had
-  no users besides one hint in `tools/setup_env.sh` (now points at `make
-  run`); its mentions in `docs/setup.md` and `docs/filesystem.md` are gone.
-- `process_spawn()`, `scheduler_spawn()` and the now-unused
-  `scheduler_task_bootstrap()`: dead code (no callers anywhere, no
-  future roadmap phase depends on them).
+### Changed
+- `docs/setup.md`/`docs/kernel.md`/`docs/pipes.md`/`docs/filesystem.md`/`docs/scheduler.md`/`docs/syscalls.md`/`docs/shell.md`/`docs/testing.md`/`docs/pci.md`/`docs/memory.md` all updated for the above; `PROGRESS.md` reorganized/condensed per its own >200-300-line maintenance rule (closed-phase detail moved out into one line each, referring to CHANGELOG.md/README.md).
 
 ## [0.16.0] - Phase 16: pipes and real waitpid
 
-Confirmed via manual QEMU testing (`forktest | cat`), including
-serial-only temporary instrumentation (removed once confirmed) in
-`sys_wait()`/`pipe_read()`/`pipe_write()`/`sys_exec_pipe()`: both
-`stdin_redirect`/`stdout_redirect` were set on the two spawned
-processes (not left at `-1`), real bytes flowed through
-`pipe_write()`/`pipe_read()` (not a VGA bypass), `sys_wait()` genuinely
-blocked on each pid until it exited, and the shell's `> ` prompt only
-reappeared after both children had actually exited.
-
 ### Added
-- **Inter-process pipes and a real `waitpid()`, with the shell gaining
-  `cmd1 | cmd2`.**
-  - `kernel/pipe.c/h` (new): a fixed pool of `PIPE_MAX=8` pipes, each a
-    static 512-byte circular buffer (no `kmalloc`, nothing to leak —
-    matches `process_table`/`g_gate_waiters`'s existing static-pool
-    style), with the same `PROCESS_BLOCKED`/`scheduler_block_current()`
-    blocking pattern `kernel/drivers/ata.c`'s `ata_wait_irq()` already
-    established, applied symmetrically to both directions, plus
-    refcounted ends so a writer/reader exiting or closing wakes the
-    other side into EOF / broken-pipe instead of a permanent block.
-    Single waiter per direction, deliberately (matches `ata.c`'s own
-    `g_irq_waiter` precedent — `cmd1 | cmd2` never needs more than
-    one reader/one writer per pipe). See `docs/pipes.md` for the full
-    design.
-  - `kernel/fs/vfs.h/.c`: two new backends, `VFS_PIPE_READ`/
-    `VFS_PIPE_WRITE`, plus a new `vfs_dup()` (bumps a pipe's refcount
-    when its fd is duplicated by `fork()` or `SYS_EXEC_PIPE` — a
-    no-op for ramfs/FAT16, which were never refcounted).
-  - New syscalls `SYS_PIPE (28)` and `SYS_EXEC_PIPE (29)`. Launching a
-    pipeline stage deliberately does **not** use `fork()` +
-    `dup2()` + `exec()` (the POSIX idiom) — NullOS's `exec()` spawns a
-    brand-new process rather than replacing the caller's image, so
-    that idiom would leave a stray extra process per stage, the same
-    wrong assumption that caused the Phase 15 `cwd_cluster` bug.
-    `SYS_EXEC_PIPE(name, stdin_fd, stdout_fd)` threads the redirect
-    through `exec()`'s existing parameter chain instead (the same
-    shape `cwd_cluster` was threaded through in Phase 15), seeding the
-    new process's `fd_table` directly since `exec()` doesn't copy it
-    the way `fork()` does.
-  - `process_spawn_user()` gained a `start_blocked` parameter (also
-    threaded through `scheduler_spawn_user()`/`exec()`): `SYS_EXEC_PIPE`
-    spawns the new process `PROCESS_BLOCKED`, seeds its `fd_table`, and
-    only then calls the new `process_make_ready()` — closing a real
-    race window (a preemptive tick between spawn and seeding could
-    otherwise run the process with a redirect pointing at nothing),
-    the same discipline `process_fork()` already uses for its own
-    child.
-  - `process_t` gained `stdin_redirect`/`stdout_redirect` (`-1` =
-    default keyboard/VGA, unchanged behavior for everything but
-    `SYS_EXEC_PIPE`-launched processes) — `sys_read()`/`sys_write()`
-    resolve fd 0/1/2 through these before doing anything else, so a
-    piped program needs zero pipe-awareness of its own (see
-    `user/cat.c`).
-  - **`SYS_WAIT`'s interface didn't change** (it already took a
-    specific pid) — its implementation did: real blocking
-    (`process_t.waiting_for_pid` + `PROCESS_BLOCKED`, woken by
-    `process_exit()`) instead of polling every 100ms
-    (`scheduler_sleep_current(10)`).
-  - **Fixed**: `sys_exit()`'s fd cleanup used to zero
-    `fd_table[slot][j].used` directly, bypassing `vfs_close()` —
-    harmless before (ramfs/FAT16 had nothing to release), but the only
-    path that would ever release a pipe end on process exit. Now calls
-    `vfs_close()` per used fd. `sys_fork()`'s fd-table duplication now
-    also calls `vfs_dup()` on each copied entry, for the same
-    refcounting reason.
-  - `user/lib/nullos.h/.c`: `nos_pipe()`, `nos_exec_pipe()`.
-  - `user/shell.c`: `cmd1 | cmd2` (`run_pipeline()`) — creates the
-    pipe, launches both stages via `nos_exec_pipe()`, and (critically)
-    closes the shell's own copies of both raw pipe fds before waiting
-    on either child, since nothing else would ever drop their
-    refcounts to 0 otherwise (see `docs/pipes.md`).
-  - `user/cat.c` (new): minimal pipe sink (reads stdin, writes
-    stdout) — added because no existing program could meaningfully
-    sit on either end of a real pipe (the shell's builtins write
-    straight to VGA, never through fd 1). Used for the manual
-    `forktest | cat` test (`docs/testing.md`).
-  - `user/selftest.c`: two new tests (pipe write/read roundtrip; EOF
-    after the writer closes), both exercised within the single
-    selftest process itself (`nos_pipe()` hands both ends to the same
-    process, so no `fork()`/`SYS_EXEC_PIPE` is needed for these) —
-    `run selftest` now reports 13/13 instead of 11/11. A real
-    two-process pipeline is covered by the manual test above instead.
+- **Inter-process pipes** (`kernel/pipe.c/h`): a fixed static pool, `pipe_table[PIPE_MAX]` (`PIPE_MAX=8`, `PIPE_BUF_SIZE=512` bytes each), never `kmalloc()`'d — following the same fixed-array style as `process_table`/`g_gate_waiters`, and deliberately avoiding a second unreclaimed heap allocation on top of the known `process_exit()` leak. Single reader/single writer per pipe, mirroring `ata.c`'s `g_irq_waiter` precedent.
+- `vfs_fd_t` gains two backend tags, `VFS_PIPE_READ`/`VFS_PIPE_WRITE`, and a new `vfs_dup()` that bumps a pipe's refcount on duplication (`fork()`, `SYS_EXEC_PIPE`) — needed because a raw struct copy without it would let one holder's `close()` drop the pipe's refcount below the number of copies still genuinely open.
+- Blocking read/write on pipes, reusing `PROCESS_BLOCKED`/`scheduler_block_current()`: a full-buffer write blocks on `pipe->write_waiter`, an empty-buffer read blocks on `pipe->read_waiter` (unless `write_refs == 0`, in which case it returns EOF immediately); each side wakes the other under `cli`/`sti` when it frees space/produces data. Writer exit propagates EOF to a blocked reader; reader exit propagates a broken-pipe error (-1) to a blocked writer.
+- `SYS_PIPE (28)` / `nos_pipe(fds)`: creates a pipe, returns a read fd and a write fd usable with `SYS_READ`/`SYS_WRITE` like any other fd.
+- `SYS_EXEC_PIPE (29)` / `nos_exec_pipe(name, stdin_fd, stdout_fd)`: launches a pipeline stage without `fork()`+`dup2()`+`exec()` (which doesn't apply here — NullOS's `exec()` spawns a brand-new process rather than replacing the caller's image, the same reason the Phase 15 `cwd_cluster` bug existed). `process_spawn_user()` gains a `start_blocked` parameter, threaded through `scheduler_spawn_user()`/`exec()` the same way `cwd_cluster` was in Phase 15: the new process is left `PROCESS_BLOCKED` until `sys_exec_pipe()` seeds its `fd_table` with the redirected end(s) and sets `stdin_redirect`/`stdout_redirect` (new `process_t` fields, default `-1`), then calls the new `process_make_ready()` to flip it to `PROCESS_READY`.
+- `sys_read()`/`sys_write()` transparently resolve fd 0/1/2 through `stdin_redirect`/`stdout_redirect` when set, so a program (e.g. `user/cat.c`, a minimal pipe sink reading stdin and writing stdout) needs zero pipe-awareness.
+- Shell: `cmd1 | cmd2` (`run_pipeline()` in `user/shell.c`) — both sides must be real ramfs programs, not builtins (builtins write straight to VGA, never through fd 1). The shell closes its own copies of the pipe's read/write fds after launching both stages (skipping this would leave the write end's refcount above 0 even after the real writer exits, hanging the reader forever) and calls `nos_wait()` on both pids.
+- Real blocking `waitpid`: `process_t.waiting_for_pid` set right before blocking and cleared right after waking (inside one `cli`/`sti` section, same discipline as `ata_wait_irq()`); `process_exit()` scans for any `PROCESS_BLOCKED` process whose `waiting_for_pid` matches and wakes only those. `SYS_WAIT`'s interface (already a specific pid, not "any child") is unchanged — only the previous 100ms-polling implementation (`scheduler_sleep_current(10)`) is replaced.
+- `docs/pipes.md`: new file with the full pipe design (storage, blocking protocol, refcounting/EOF, `SYS_EXEC_PIPE`, manual test).
+- `user/cat.c`: minimal pipe sink, added specifically to have a real second endpoint to test `forktest | cat` against (existing builtins like `ps`/`echo` bypass fd 1 entirely).
 
 ### Fixed
-- **`kernel/keyboard.c` had no Shift key handling at all**, discovered
-  because it blocked typing Phase 16's own `cmd1 | cmd2` in the shell
-  (`Shift+\` never produced `|`) — also affected `Shift+5` never
-  producing `%`. Not a wrong entry in an existing shifted table: there
-  was no shifted table and no Shift press/release tracking at all
-  (only `ctrl_pressed` existed), so every character always came from
-  the single unshifted `scancode_map` regardless of Shift. Fixed by
-  tracking Shift (scancodes `0x2A`/`0x36` press, `0xAA`/`0xB6`
-  release) and adding a second, index-matched `scancode_map_shift`
-  table (standard US QWERTY). The raw-scancode path used by
-  `user/edit.c`'s own separate `sc_map` table has the identical gap
-  and was deliberately left unfixed here (out of scope — this fix
-  targeted the shell's `SYS_READ`/ASCII path specifically); see
-  `PROGRESS.md`'s "Known technical debt".
+- **`kernel/keyboard.c` had no Shift handling at all** — found because it blocked typing `cmd1 | cmd2` in the shell (`Shift+\` never produced `|`, `Shift+5` never produced `%`). There was no shifted scancode table and no Shift press/release tracking (only `ctrl_pressed` existed); every character came from the single unshifted `scancode_map`. Fixed by tracking Shift (`0x2A`/`0x36` press, `0xAA`/`0xB6` release) and adding a second, index-matched `scancode_map_shift` table. The raw-scancode path used by `user/edit.c`'s own `sc_map` table has the identical gap and was deliberately left unfixed (out of scope — see below).
+- `sys_exit()`'s fd cleanup used to zero `fd_table[slot][j].used` directly, bypassing `vfs_close()` — harmless for ramfs/FAT16 (no-op beyond that flag) but for pipes this was the only place a process's pipe-end references were ever released on exit. `sys_exit()` now calls `vfs_close()` per used fd.
+
+### Changed
+- `SYS_FORK`'s existing raw `fd_table` copy is now followed by `vfs_dup()` on every duplicated entry, so a forked child's pipe-end reference is properly counted (no-op for ramfs/FAT16 entries).
+- `process_fork()` also copies the new `stdin_redirect`/`stdout_redirect` fields parent→child.
+
+### Removed / known limitations
+- `user/edit.c`'s raw-scancode input still has no Shift support (typing an uppercase letter or a shifted symbol inside the editor is unaffected by this phase's keyboard fix) — tracked as known technical debt, needs its own fix in both `keyboard.c`'s raw path and `edit.c`'s `sc_map` table.
+- `SYS_EXEC_PIPE` has no `arg` parameter — all 3 syscall registers are spent on `name`+`stdin_fd`+`stdout_fd`, so a piped command can't take a `SYS_EXEC`-style filename argument in this first cut.
 
 ## [0.15.1] - libnos: shared user-space syscall wrapper library
 
-Not a new phase — same PATCH convention as 0.14.1/0.14.2 (see
-CLAUDE.md, "Convenções de fim de fase (versionamento)"): infrastructure
-work done after Phase 15 without starting Phase 16, and doesn't change
-the completed-phases count (still 15) or any user-visible kernel
-behavior — `run selftest` (11/11), `run forktest`, and the manual
-`touch`/`edit`/`mkdir`/`cd` flow all behave identically to before.
-
 ### Added
-- **`user/lib/nullos.c/h`: a shared syscall wrapper library ("libnos",
-  `nos_*`)** — one thin `int $0x80` wrapper per syscall in
-  `kernel/syscall.h`, replacing six independent, hand-written copies
-  of the same wrappers previously duplicated across `shell.c`,
-  `edit.c`, `forktest.c`, `selftest.c`, `init.c`, and `spintest.c`.
-  Motivation: before v1.0.0 the syscall interface can still change
-  freely, but changing how a syscall behaves *underneath* an
-  unchanged interface used to mean editing every program that called
-  it; now it means recompiling this one file. `user/Makefile` builds
-  `lib/nullos.c` once to `$(BUILD)/lib/nullos.o` and links every
-  program against it. Migration was a mechanical 1:1 rename for most
-  syscalls, with two deliberate exceptions: `nos_write`/`nos_read`
-  gained an explicit `fd` argument (matching the syscalls' real
-  signatures — two of the six programs already used this fuller form)
-  instead of each program hardcoding `fd=1`/`fd=0` inside its own
-  wrapper, and `nos_exec(name, arg)` replaces `shell.c`'s old
-  `sys_exec(name)`/`sys_exec_arg(name, arg)` split with the syscall's
-  real 2-argument signature — incidentally fixing a latent bug where
-  the single-argument form never constrained `ecx`, leaving the
-  kernel's `sys_exec` to read register garbage as the argument pointer
-  (harmless in practice, but not intentional). See `docs/kernel.md` →
-  "User-space syscall library (libnos)" and `PROGRESS.md` for the full
-  design rationale.
+- `user/lib/nullos.c/h` ("libnos"): one thin `nos_*` wrapper per syscall (`nos_write`, `nos_open`, `nos_fork`, `nos_mkdir`, etc.), doing `int $0x80` with the matching `SYS_*` number included straight from `kernel/syscall.h` and returning whatever the kernel put in `eax` — no added logic, no retries. Replaces six independent, hand-written copies of the same wrappers previously duplicated across `shell.c`, `edit.c`, `forktest.c`, `selftest.c`, `init.c`, `spintest.c`.
+- `user/Makefile`: `lib/nullos.c` compiles once to `$(BUILD)/lib/nullos.o`, which every program's link line now includes alongside its own `.c` file.
+- `docs/kernel.md`: new "User-space syscall library (libnos)" section documenting the design and the steps to add a syscall wrapper for a new syscall (one function in `nullos.c`/`nullos.h`, no changes to programs that don't need it).
+
+### Changed
+- `nos_write`/`nos_read` take an explicit `fd` argument. The wrappers they replaced had `fd` hardcoded inline (`1` for write, `0` for read) in some programs even though the real `SYS_WRITE`/`SYS_READ` syscalls always took `(fd, buf, len)`; `edit.c` and `selftest.c` had already independently converged on the explicit form, so this standardizes on that.
+- `nos_exec(name, arg)` replaces `shell.c`'s old `sys_exec(name)` / `sys_exec_arg(name, arg)` split with the syscall's real 2-argument signature (`arg` may be `NULL`).
+
+### Fixed
+- The old single-argument `sys_exec(name)` inline asm never constrained `ecx`, so the kernel's `sys_exec` read whatever garbage was in `ecx` as the argument pointer. Harmless in practice (an invalid address just made `copy_user_str` fail silently), but fixed by `nos_exec`'s unified 2-argument form rather than preserved.
 
 ## [0.15.0] - Phase 15: FAT16 subdirectories
 
-FAT16 subdirectories (`mkdir`/`cd`, path-aware `touch`/`edit`/`ls`),
-plus a real bug found and fixed during this phase's own manual QEMU
-testing (`exec()` not inheriting the caller's cwd). Originally planned
-and numbered "Phase 17" in `ROADMAP.md`, but implemented ahead of the
-two process-related phases that preceded it in that list (pipes,
-copy-on-write fork) — it took the next real completed-phase slot, 15,
-and the roadmap was renumbered accordingly: pipes/COW-fork are now
-Phases 16/17 (previously 15/16); every phase from the networking one
-onward kept its original number. See `ROADMAP.md`'s own note on this.
+### Added
+- **FAT16 subdirectories**: `mkdir`/`cd`, and path-aware `touch`/`edit`/`ls` (e.g. `edit docs/notes.txt`). A subdirectory is an ordinary dirent with `ATTR_DIRECTORY` whose `first_cluster` starts a regular FAT chain (grows like file data); its first sector holds `.`/`..` entries. The root stays the old fixed-size region with no chain and no `.`/`..`.
+- Shared lookup/insert/path-walk core in `kernel/fs/fat16.c`, replacing the old root-only scan, so every FAT16 code path goes through the same logic instead of duplicating it: `dir_iter_t`/`dir_iter_next_sector()` (steps through a directory's sectors, root or chain), `dir_lookup()` (the one place that builds the 11-byte name and compares it), `dir_insert()` (the one place that finds a free/deleted slot and writes a dirent, extending a subdirectory's chain via `fat16_alloc_cluster()` when full), `resolve_path()` (walks a `"/"`-separated path via `dir_lookup()`, stopping right before the final component), `fat16_flush_fat()`, `fat16_free_chain()`. `fat16_find`, `fat16_create`, `fat16_mkdir`, `fat16_readdir`, `fat16_resolve_dir` are now thin wrappers over this core.
+- `process_t.cwd_cluster` (`kernel/process.h`): the process's current directory (0 = root). Copied parent→child in `process_fork()`. `exec()` gained an explicit `cwd_cluster` parameter (`kernel/exec.c/.h`), threaded through `scheduler_spawn_user()`/`process_spawn_user()`, so `run`/`edit` (which spawn a brand-new process, not a fork of the caller) also inherit the launching process's cwd instead of always starting at the root.
+- `SYS_CHDIR (26)` / `chdir(path)`: changes the caller's `cwd_cluster`, only on confirmed success (`fat16_resolve_dir()` returning 1) — every failure path leaves it untouched.
+- `SYS_MKDIR (27)` / `mkdir(path)`: creates a directory; idempotent if a directory of that name exists, fails if a file does.
+- `SYS_READDIR`'s signature changed to take an optional path argument (NULL/empty = caller's cwd); a given path is resolved via `fat16_resolve_dir()` before anything is printed, and an unresolvable path is reported without falling back to the cwd. `ls` output now marks directories with `<DIR>` instead of a byte size.
+- `user/selftest.c`: four new tests (`mkdir`, file write/read roundtrip inside a subdirectory, `fork()` inheriting `cwd_cluster`, subdirectory files not leaking into the root), bringing the suite to 11/11. Test filenames were deliberately renamed to have distinct FAT 8.3 encodings (`st_root.txt`/`st_sub.txt`/`st_mark.txt`) after an earlier revision using `selftest_*.txt` names collided (see Fixed).
+- `docs/setup.md`: Arch Linux manual package list, and a Windows/macOS section documenting the `tools/docker_build.sh` path (untested on either platform, flagged as such).
 
 ### Fixed
-- **`exec()` (`run`/`edit` in the shell) now inherits the calling
-  process's `cwd_cluster` instead of always starting at the root**
-  (`kernel/exec.c/h`, `kernel/scheduler.c/h`, `kernel/process.c/h`,
-  `kernel/syscall.c`, `kernel/main.c`) — found during Phase 15's own
-  manual QEMU test: `mkdir doc; cd doc; touch notes.txt; edit
-  notes.txt` silently created and wrote a **second, independent**
-  `notes.txt` in the root instead of editing the one inside `doc`,
-  because `edit`'s process was spawned fresh via `process_spawn_user()`
-  (hardcoded to `cwd_cluster = 0`), not forked from the shell — only
-  `process_fork()` had cwd inheritance wired in. `exec()`/
-  `scheduler_spawn_user()`/`process_spawn_user()` all now take an
-  explicit `cwd_cluster` parameter; `SYS_EXEC` passes the caller's own
-  `cwd_cluster`, and the one call site with no calling process
-  (`kmain` spawning the initial shell at boot) passes `0` explicitly.
-  See `docs/scheduler.md` → "Current working directory" for the design
-  rationale (deliberately more `posix_spawn()`-like than POSIX `exec()`
-  here, matching the intuitive "run a program from where I am").
-  **Anyone who ran the pre-fix Phase 15 test script needs a clean disk**
-  (`rm -f build/disk.img && make disk`, or just `make clean && make`)
-  before retesting — the leftover `disk.img` has stray root-level files
-  from this bug (a duplicate `NOTES.TXT`, and `fk*.txt` markers from
-  `forktest` that landed in the root instead of the subdirectory it was
-  run from) that would otherwise be mistaken for new bugs.
-- **A stale `g_irq_fired` flag from ATA's IRQ-driven wait
-  (`kernel/drivers/ata.c`, Phase 12) could make a second
-  `ata_read_sector()`/`ata_write_sector()` call skip waiting for its
-  own command's real completion**, intermittently (timing-dependent —
-  found via 6 rounds of manual testing, some passing, some not). Root
-  cause: `ata_init()` unmasks IRQ14/15 before `fat16_init()`'s ~65
-  boot-time polling reads (BPB + FAT cache) run, while
-  `process_current()` is still `NULL` — every one of those still
-  raises a real completion IRQ from the drive, but the polling path
-  never calls `ata_wait_irq()` (the only place that used to reset
-  `g_irq_fired`), leaving the flag dirty. The first later IRQ-driven
-  wait could then see this leftover "already fired" and skip its own
-  wait, checking `DRQ` before the drive was actually ready — and could
-  cascade, since a skipped wait never registers a waiter for its own
-  real (later) completion IRQ either. Fixed by resetting `g_irq_fired`
-  right after issuing each new command, not just when a wait finishes,
-  so no leftover signal from any prior command (polled or IRQ-driven)
-  can be mistaken for the one just issued.
-- **`to_8_3()` (`kernel/fs/fat16.c`) silently dropped the extension for
-  any base name longer than 8 characters** instead of finding the real
-  `.` first — e.g. `to_8_3("selftest_tmp.txt")` produced `"SELFTEST"`
-  with no extension at all, not `"SELFTEST.TXT"`. This made unrelated
-  names that only differed after their 8th character collide on the
-  same on-disk 8.3 entry (`"selftest_dir"` and `"selftest_tmp.txt"`
-  both truncated to `"SELFTEST"`), causing spurious create/mkdir
-  conflicts. Fixed by locating the actual `.` before splitting into
-  base/extension, instead of stopping wherever the 8-char cap for the
-  base happened to land.
-- **`user/selftest.c`'s own test filenames were themselves 8.3-
-  colliding**, revealed (not caused) by the `to_8_3()` fix above:
-  `selftest_tmp.txt` (root), `selftest_sub.txt`, and
-  `selftest_fork_marker.txt` (both in `selftest_dir`) all share the
-  first-8-chars prefix `"selftest"` and the `"txt"` extension, so they
-  all pack to the identical `SELFTESTTXT` — making test 11
-  ("subdirectory files don't leak into the root") falsely fail against
-  test 3's unrelated root-level file, and making test 10 ("fork
-  inherits cwd") silently reuse test 9's own dirent instead of
-  creating a genuinely separate one. Renamed to `st_root.txt`/
-  `st_sub.txt`/`st_mark.txt` — verified pairwise-distinct 8.3
-  encodings, not just visually different names. See `docs/testing.md`.
+- **`to_8_3()` dropped the extension of any base name longer than 8 characters** (e.g. `"selftest_tmp.txt"` → `"SELFTEST"` instead of `"SELFTEST.TXT"`): the base-name loop stopped scanning at the 8-char cap without checking further ahead for a real `.`. It now keeps scanning (without writing) past the cap until it finds the `.` or the end of the string. This had already produced a real collision: `selftest_tmp.txt`/`selftest_sub.txt`/`selftest_fork_marker.txt` all packed to the identical on-disk name `SELFTESTTXT`, causing a false test failure in `user/selftest.c`'s subdirectory-isolation check (fixed by renaming the test files, not by changing the truncation rule further — an inherent 8.3 limitation).
+- `to_8_3(".")`/`to_8_3("..")` now special-cased up front instead of going through the normal name/extension split, which treated the leading `.` as the extension separator and produced the wrong bytes for both — without this, `resolve_path()` could never match the `.`/`..` entries `fat16_mkdir` writes, breaking `cd .`/`cd ..` in every subdirectory.
+- **`g_irq_fired` (`kernel/drivers/ata.c`) is now reset the moment a new ATA command is issued** (`ata_read_sector`/`ata_write_sector`, for `CMD_READ`/`CMD_WRITE`/`CMD_FLUSH`), not only when a wait for one finishes. Found via an intermittent bug during this phase's testing: `fat16_init()`'s ~65 boot-time reads go through the polling fallback (no current process yet) and never consume `g_irq_fired`, so a real completion IRQ from one of them could sit stale until a later, genuinely IRQ-driven wait mistook it for its own command's completion and returned without actually waiting.
+- `run`/`edit` (`exec()`/`SYS_EXEC`) previously always started the new process at the root regardless of the caller's cwd, unlike `fork()`, which already inherited it — found during this phase's own manual testing.
+- A freshly allocated directory cluster is now explicitly zeroed sector-by-sector before `.`/`..` are written into it, so leftover data from a reused cluster can't be misread as real dirents on the first scan.
 
 ### Changed
-- `kernel/fs/fat16.c`: internally reorganized around one shared
-  directory-scan/lookup/insert core (`dir_iter_t`, `dir_lookup()`,
-  `dir_insert()`, `resolve_path()`) instead of each function walking a
-  directory's dirents independently — resolves the "duplicated dirent
-  lookup" tech debt between `fat16_find` and `fat16_write_file` tracked
-  in `PROGRESS.md` since Phase 10, ahead of extending both to
-  subdirectories. `fat16_find`/`fat16_create`/`fat16_write_file`/
-  `fat16_readdir` signatures changed accordingly (all now take a
-  directory cluster and/or a full path instead of assuming the root).
-- `kernel/fs/vfs.c`: `vfs_open`/`vfs_create` take a `cwd_cluster`
-  parameter; `vfs_fd_t` gained `parent_cluster`, captured at open/create
-  time so `vfs_write` doesn't depend on the caller's cwd at write time.
-- `docs/setup.md`: rewritten to drop Phase 0 framing (filename/section
-  history that mixed "how to set up today" with "how this file used to
-  document Phase 0 only") and reorganized into a direct dependencies →
-  cross-compiler → Windows/macOS → Arch → build/run → boot output →
-  serial-debug order. Made explicit that automatic dependency
-  installation (`tools/setup_env.sh`) only covers Fedora and Debian.
-
-### Added
-- **FAT16 subdirectories** (Phase 15): `mkdir`/`cd` in
-  the shell, and `touch`/`edit`/`ls` now accept a path with a subfolder
-  (e.g. `edit docs/notes.txt`). New syscalls `SYS_CHDIR (26)` and
-  `SYS_MKDIR (27)`; `SYS_READDIR (21)` gained an optional path argument.
-  New `process_t.cwd_cluster` field, copied across `fork()`. See
-  `docs/filesystem.md` → "Subdirectories" and `docs/scheduler.md` →
-  "Current working directory" for the full design, and `docs/syscalls.md`
-  for the syscall table.
-- `user/forktest.c`: parent and child now each create a relative-path
-  marker file (`fk<pid>.txt`) right after `fork()`, so `cwd_cluster`
-  inheritance can actually be observed from the shell (`ls` the
-  directory `forktest` was run from) — the pre-existing test only
-  checked the parent/child PID split, never touched the filesystem.
-- `user/selftest.c`: four new Phase 15 checks (`run selftest` now
-  reports 11/11 instead of 7/7) — `mkdir`, a file write/read roundtrip
-  done entirely inside the new subdirectory (the same scenario that
-  exposed the `exec()`-cwd bug above, checked here at the FAT16/VFS
-  level directly since `selftest` never `exec()`s), `fork()` correctly
-  inheriting `cwd_cluster` (child creates a marker via a relative path,
-  parent finds it in the same directory), and confirming neither file
-  created inside the subdirectory can be opened by name after `cd`ing
-  back to the root — the regression test for the exact leak the manual
-  test caught. See `docs/testing.md` for the full breakdown.
-- `docs/setup.md`: "Windows and macOS" section recommending
-  `tools/docker_build.sh` under Docker Desktop (WSL2 backend on
-  Windows, native Docker Desktop on macOS) as the only viable path,
-  since neither OS has a working native `grub-mkrescue`. Explicitly
-  flagged as untested by anyone on the project on either platform.
-- `docs/setup.md`: "Arch Linux" subsection under Dependencies with the
-  confirmed `pacman` package names for every dependency
-  `tools/setup_env.sh` installs on Fedora/Debian (notably
-  `libisoburn` for `xorriso` and `qemu-system-x86`), plus a note that
-  Arch isn't auto-detected by `tools/setup_env.sh` yet (manual install
-  only) and a pointer to that as a possible future improvement.
+- `fat16_find`/`fat16_create`/`fat16_mkdir`/`fat16_resolve_dir` all now take an explicit directory cluster (cwd) parameter and resolve relative paths against it; `vfs_open`/`vfs_create` (`kernel/fs/vfs.c`) pass the caller's `cwd_cluster` through. `vfs_fd_t` caches `parent_cluster` + the final path component at open/create time rather than the full path, so a later `vfs_write()` doesn't depend on the process's cwd at write time (which could have changed via `cd` since the file was opened).
+- `fat16_write_file(parent_cluster, name, buf, len)` now takes an already-resolved parent cluster and single final path component instead of a full path.
+- Name-collision policy: `fat16_create` fails if a directory already exists under that name; `fat16_mkdir` fails if a file already exists under that name (both remain idempotent for a matching-type existing entry).
+- ROADMAP.md phase numbers 15+ shifted by one: FAT16 subdirectories was originally planned as "Phase 17" but landed before the two process-related phases (pipes, copy-on-write fork) that preceded it in that list, taking the next available completed-phase slot (15); those two are renumbered 16/17.
 
 ## [0.14.2] - Docs audit fixes, LICENSE, push-rule convention, `make debug`
 
