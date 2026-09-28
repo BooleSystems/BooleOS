@@ -39,8 +39,11 @@ Expected output shape (exact wording may evolve as tests are added):
 [PASS] exec() runs a program that exists only on FAT16
 [PASS] exec() rejects a FAT16 file that is not a valid program
 [PASS] printf family: %d %u %x %s %c %% and snprintf truncation
+[PASS] copy-on-write fork: writes stay private (child first, then parent first)
+[PASS] copy-on-write fork: 3 generations, refcount follows the live holders
+[PASS] copy-on-write fork under preemption: 4 children rewrite 4 shared pages
 [INFO] cleanup: no delete/unlink/rmdir syscall exists yet - st_root.txt, st_big.txt, st_cat.elf, st_bad.bin, st_trunc.elf, selftest_dir/ and st_d1/ (with their files) left on disk (harmless)
-Selftest: 21/21 passed
+Selftest: 24/24 passed
 ```
 
 A `[FAIL] <name>: <reason>` line pinpoints which subsystem broke without
@@ -48,7 +51,7 @@ needing to reproduce the bug by hand first.
 
 ## What each test checks
 
-**21 tests in total** (numbering below: the cleanup note is item 22).
+**24 tests in total** (numbering below: the cleanup note is item 25).
 
 1. **Memory** — calls `SYS_MEMINFO` and checks it returns a plausible
    process count. There is no userland-facing syscall that allocates a
@@ -176,7 +179,27 @@ needing to reproduce the bug by hand first.
     return value. During development the same code was also compared with a
     host libc over ~9000 formats (a one-off harness that is not part of the
     repository); this test runs it on the real i386 target.
-22. **Cleanup** — not a PASS/FAIL check: there's no delete/unlink/rmdir
+22. **Copy-on-write `fork()`, writes stay private** (Phase 21). A
+    page-aligned global buffer, two rounds. After `fork()` the buffer's
+    reference count (`nos_pageref()`) must be 2 in the parent. In round one
+    the child writes first and the parent must still see its old byte, with
+    the count back to 1; then the parent writes and the child must still see
+    its own. Round two swaps the order. Pipes force the order between the
+    two processes. Neither write may show up in the other process.
+23. **Copy-on-write `fork()`, three generations** (Phase 21). This
+    process forks a middle process, which forks a youngest one, all holding
+    the same page. The count must be 3 in each while all three are alive,
+    2 after the youngest exits without writing, and 1 after the middle one
+    exits too, with the page content unchanged the whole time. The last
+    holder must then be able to write its page.
+24. **Copy-on-write `fork()` under preemption** (Phase 21). Four children,
+    forked one after another while the earlier ones are already running,
+    each rewriting every 64th byte of four shared pages for about 300 ms
+    (many timer ticks) while the parent keeps rewriting its own copy between
+    forks. Each child must see only its own bytes plus the untouched ones it
+    inherited; the parent must end with its own content and a count of 1 on
+    every page, so no reference is lost or left behind.
+25. **Cleanup** — not a PASS/FAIL check: there's no delete/unlink/rmdir
     syscall yet, so `st_root.txt`, `st_big.txt`, `st_cat.elf`, `st_bad.bin`,
     `st_trunc.elf`, `selftest_dir/` and the files inside it, and
     `st_d1/st_d2/st_d3/` with `st_deep.txt`, are left on disk. Noted in the

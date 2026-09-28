@@ -5,26 +5,13 @@
 #include "memory/vmm.h"
 #include "memory/pmm.h"
 #include "tss.h"
+#include "irq.h"
 #include <stdint.h>
 
 static process_t process_table[PROCESS_MAX];
 static uint8_t process_stacks[PROCESS_MAX][PROCESS_STACK_SIZE] __attribute__((aligned(16)));
 static process_t *current_process = 0;
 static uint32_t next_pid = 1;
-
-/* Save EFLAGS and disable interrupts / restore the saved EFLAGS.
-   Used instead of a bare cli/sti so a critical section entered with
-   interrupts already off (e.g. inside process_fork()'s own cli section)
-   doesn't turn them back on when it ends. */
-static inline uint32_t irq_save(void) {
-    uint32_t flags;
-    __asm__ volatile ("pushf; pop %0; cli" : "=r"(flags) : : "memory");
-    return flags;
-}
-
-static inline void irq_restore(uint32_t flags) {
-    __asm__ volatile ("push %0; popf" : : "r"(flags) : "memory", "cc");
-}
 
 /* Atomic "return the next pid and increment". The increment is a
    read-modify-write, so a timer tick landing in the middle of it could
@@ -84,6 +71,7 @@ void process_init(void) {
         process_table[i].stdin_redirect = -1;
         process_table[i].stdout_redirect = -1;
         process_table[i].waiting_for_pid = 0;
+        process_table[i].cr3 = 0;
     }
 
     current_process = 0;
@@ -116,6 +104,7 @@ process_t *process_spawn_user(const char *name, uint32_t user_entry,
             process_table[i].state = PROCESS_BLOCKED;
             process_table[i].pid = alloc_pid();
             process_table[i].waiting_for_pid = 0;
+            process_table[i].cr3 = 0;   /* no address space yet: see process_exit() */
             break;
         }
     }
@@ -155,21 +144,15 @@ void process_make_ready(process_t *p) {
         p->state = PROCESS_READY;
 }
 
-/* Unwinds a fork() that ran out of memory partway through copying the
-   address space: frees every data page currently mapped in cr3's user
-   region (PDE 2 and up — PDE 0/1 are the shared kernel identity map,
-   never touched here) plus the directory page itself.
-   Walking the child's OWN (partially built) directory, instead of
-   keeping a separate list of what was allocated so far, is deliberate:
-   process_fork() runs on the calling process's kernel stack, which is
-   only PROCESS_STACK_SIZE bytes — there's no room to spare for a
-   tracking array sized for "however many pages this process happens
-   to have". The directory itself already records exactly that.
-   This does NOT free the intermediate page-table pages that
-   vmm_map_user_page() may have allocated along the way — same
-   accepted limitation as process_exit() never reclaiming a process's
-   address space at all (see its comment below). */
-static void fork_free_address_space(uint32_t cr3) {
+/* Drops this address space's reference to every user page mapped in it
+   (PDE 2 and up — PDE 0/1 are the shared kernel identity map, never
+   touched here). pmm_free_page() only returns a page to the pool when its
+   last reference goes, so a page still shared copy-on-write with another
+   process stays allocated. The directory and the page-table pages are NOT
+   freed (accepted leak, Phase 23-B). Interrupts are off for the walk so no
+   fork() or copy-on-write break of a sharer sees half of it. */
+static void release_user_pages(uint32_t cr3) {
+    uint32_t flags = irq_save();
     uint32_t *pd = (uint32_t *)cr3;
     for (uint32_t di = 2; di < 1024; di++) {
         if (!(pd[di] & VMM_PRESENT)) continue;
@@ -179,7 +162,7 @@ static void fork_free_address_space(uint32_t cr3) {
                 pmm_free_page(pt[ti] & 0xFFFFF000);
         }
     }
-    pmm_free_page(cr3);
+    irq_restore(flags);
 }
 
 process_t *process_fork(process_t *parent, const uint32_t *saved_frame) {
@@ -201,6 +184,7 @@ process_t *process_fork(process_t *parent, const uint32_t *saved_frame) {
                PROCESS_READY once the child is fully formed, so
                scheduler_run_once() can't pick it up half-built. */
             process_table[i].state = PROCESS_BLOCKED;
+            process_table[i].cr3 = 0;   /* no address space yet: see process_exit() */
             break;
         }
     }
@@ -229,16 +213,21 @@ process_t *process_fork(process_t *parent, const uint32_t *saved_frame) {
     /* per-syscall-in-progress state, not identity — never inherited */
     child->waiting_for_pid = 0;
 
-    /* ── 2. duplicate the address space: full copy, not COW ────────
-       Walks every present PDE/PTE beyond the shared kernel mapping
-       (PDE 0/1), so this naturally covers whatever the parent has
-       mapped — code, data, stack, anything else — not a fixed list
-       of regions. Each page gets a fresh physical frame (allocated
-       via pmm_alloc_page(), matching the same convention elf_load()
-       already uses: content is copied through the raw physical
-       address, assumed to be within the identity-mapped first 8MB)
-       and is mapped into the child's directory via the same
-       vmm_map_user_page() exec() already relies on. */
+    /* ── 2. share the address space copy-on-write ─────────────────
+       Walks every present user PTE beyond the shared kernel mapping
+       (PDE 0/1), so it covers whatever the parent has mapped — code,
+       data, stack — not a fixed list of regions. Each page is mapped
+       into the child at the SAME frame, its refcount goes up by one,
+       and a writable page becomes read-only + VMM_COW in both
+       directories; the first write by either side copies it
+       (vmm_cow_break()). A page that was already read-only without
+       VMM_COW stays that way in both, and one already VMM_COW (a
+       process forking again) just gains another sharer.
+
+       The whole pass runs with interrupts off: a timer tick in the
+       middle would let the parent (or a sharer of one of its pages)
+       run with some PTEs converted and others not, or with a refcount
+       one short of its mappings. Nothing in the pass blocks. */
     uint32_t child_cr3 = vmm_create_directory();
     if (!child_cr3) {
         child->state = PROCESS_UNUSED;
@@ -247,38 +236,52 @@ process_t *process_fork(process_t *parent, const uint32_t *saved_frame) {
     }
 
     uint32_t *parent_pd = (uint32_t *)parent->cr3;
+    uint32_t cur_cr3;
+    __asm__ volatile ("mov %%cr3, %0" : "=r"(cur_cr3));
     int failed = 0;
 
+    uint32_t flags = irq_save();
     for (uint32_t di = 2; di < 1024 && !failed; di++) {
         if (!(parent_pd[di] & VMM_PRESENT)) continue;
         uint32_t *parent_pt = (uint32_t *)(parent_pd[di] & 0xFFFFF000);
 
         for (uint32_t ti = 0; ti < 1024; ti++) {
-            if (!(parent_pt[ti] & VMM_PRESENT)) continue;
+            uint32_t pte = parent_pt[ti];
+            if (!(pte & VMM_PRESENT)) continue;
 
-            uint32_t virt        = (di << 22) | (ti << 12);
-            uint32_t parent_phys = parent_pt[ti] & 0xFFFFF000;
-            uint32_t child_phys  = pmm_alloc_page();
-            if (!child_phys) { failed = 1; break; }
+            uint32_t virt  = (di << 22) | (ti << 12);
+            uint32_t frame = pte & 0xFFFFF000;
+            uint32_t share = pte & 0xFFF;
+            if (share & VMM_WRITABLE)
+                share = (share & ~VMM_WRITABLE) | VMM_COW;
 
-            uint32_t *src = (uint32_t *)parent_phys;
-            uint32_t *dst = (uint32_t *)child_phys;
-            for (uint32_t w = 0; w < PAGE_SIZE / 4; w++) dst[w] = src[w];
-
-            if (vmm_map_user_page(child_cr3, virt, child_phys) != 0) {
-                pmm_free_page(child_phys);   /* not mapped, so the unwind below can't find it */
+            if (pmm_page_ref(frame) != 0) { failed = 1; break; }
+            if (vmm_map_user_page_flags(child_cr3, virt, frame, share) != 0) {
+                pmm_free_page(frame);   /* undo the reference: not mapped, the unwind can't see it */
                 failed = 1;
                 break;
+            }
+
+            if (share != (pte & 0xFFF)) {
+                parent_pt[ti] = frame | share;
+                if (parent->cr3 == cur_cr3)
+                    __asm__ volatile ("invlpg (%0)" : : "r"(virt) : "memory");
             }
         }
     }
 
     if (failed) {
-        fork_free_address_space(child_cr3);
+        /* Drops the child's references. Pages the parent already turned
+           read-only stay VMM_COW with a count of 1, so its next write
+           takes them back writable in place (vmm_cow_break()). */
+        release_user_pages(child_cr3);
+        pmm_free_page(child_cr3);
+        irq_restore(flags);
         child->state = PROCESS_UNUSED;
         child->pid   = 0;
         return 0;
     }
+    irq_restore(flags);
 
     child->cr3 = child_cr3;
 
@@ -326,19 +329,31 @@ void process_set_current(process_t *process) {
 }
 
 void process_exit(process_t *process) {
-    if (!process || process->state == PROCESS_UNUSED)
+    /* Drops the process's reference to each of its user pages; a page
+       goes back to the pool only when no other process still maps it
+       (copy-on-write sharing after fork()). cr3 == 0 is a slot claimed
+       by fork()/spawn but not built yet (killed in that window), which
+       owns nothing. The directory and page tables are still leaked
+       (Phase 23-B), so a process exiting while running on its own
+       directory keeps a valid CR3 until it switches away.
+       One interrupt-off section from the state check to PROCESS_UNUSED:
+       a tick between clearing cr3 and leaving the READY/RUNNING states
+       would let the scheduler switch to this process with CR3 = 0, and
+       two exits of the same process must not both release its pages. */
+    uint32_t flags = irq_save();
+    if (!process || process->state == PROCESS_UNUSED) {
+        irq_restore(flags);
         return;
+    }
+    if (process->cr3 && process->cr3 != vmm_get_kernel_directory())
+        release_user_pages(process->cr3);
+    process->cr3 = 0;
 
-    /* KNOWN LEAK (pre-existing, out of scope): this never frees
-       process->cr3 or any of the physical pages mapped under it —
-       the process's whole address space (and, for a forked child,
-       its independent copy of every page) is simply abandoned. Slots
-       are still safely reusable since process_spawn_user()/process_fork()
-       always get a fresh cr3 for whatever they build next. */
     uint32_t exited_pid = process->pid;
 
     process->state = PROCESS_UNUSED;
     process->pid   = 0;
+    irq_restore(flags);
 
     /* Wakes every process specifically waiting (via sys_wait(), Phase
        16) for THIS pid — not a generic "some child exited" signal, so

@@ -1,8 +1,8 @@
 # BooleOS — Future roadmap
 
 The table below is the granular phase table: one row per phase AND per
-sub-phase, for both completed work (Phases 0–20, detailed in `README.md`,
-`CHANGELOG.md` and `docs/`) and planned work (Phases 21–31, ending at the
+sub-phase, for both completed work (Phases 0–21, detailed in `README.md`,
+`CHANGELOG.md` and `docs/`) and planned work (Phases 22–31, ending at the
 v1.0.0 milestone, detailed in the section further down). Planned
 sub-phases become completed rows as they land.
 
@@ -47,7 +47,7 @@ restructuring after Phase 16) use a hyphen and an uppercase letter
 | **18-B** | Safe Mode (failure counter, text UI, restricted shell, previous-release GRUB entry) | ✅ Done | CHANGELOG `[0.18.0]`, `docs/safemode.md` |
 | **19** | SDK / app-development experience | ✅ Done | CHANGELOG `[0.19.0]`, `docs/sdk.md`, `docs/kernel.md` |
 | **20** | Crash handler leads into Safe Mode (a crash saves a dump, resets, and Safe Mode shows it) | ✅ Done | CHANGELOG `[0.20.0]`, `docs/safemode.md` |
-| **21** | Copy-on-write `fork()` | 🔜 Planned | below |
+| **21** | Copy-on-write `fork()` | ✅ Done | CHANGELOG `[0.21.0]`, `docs/memory.md`, `docs/scheduler.md`, `docs/syscalls.md` |
 | **22** | `unlink()`/`rmdir()` | 🔜 Planned | below |
 | **23** | Memory/CR3 release in `process_exit()` | 🔜 Planned | below |
 | **23-A** | Free the process's physical data pages | 🔜 Planned | below |
@@ -63,8 +63,11 @@ restructuring after Phase 16) use a hyphen and an uppercase letter
 | **26-B** | Port reset | 🔜 Planned | below |
 | **26-C** | Enumerate the connected device | 🔜 Planned | below |
 | **26-D** | Parse HID reports | 🔜 Planned | below |
-| **26-E** | Canonical input event (unifies PS/2 + USB HID) | 🔜 Planned | below |
+| **26-E** | USB HID keyboard driver | 🔜 Planned | below |
+| **26-F** | Deflection — canonical input event (unifies PS/2 + USB HID) | 🔜 Planned | below |
 | **27** | Linear framebuffer + simple GUI | 🔜 Planned | below |
+| **27-A** | Cathode — graphics API / framebuffer driver | 🔜 Planned | below |
+| **27-B** | Raster — launcher/grid, the GUI delivered in this phase (on top of Cathode) | 🔜 Planned | below |
 | **28** | Syscall deprecation/compatibility strategy | 🔜 Planned | below |
 | **29** | Second pass of audit fixes | 🔜 Planned | below |
 | **30** | General polish | 🔜 Planned | below |
@@ -106,12 +109,9 @@ Done; see the table above, CHANGELOG `[0.20.0]` and `docs/safemode.md`. An unhan
 - A crash *inside* the saving code (the re-entry guard), a crash before the disk is up (the halt path) and a fault in kernel mode were not exercised by the manual test; the `crash` command faults in ring 3 (BooleOS has no per-process fault isolation yet, so it takes the same fatal path).
 - Per-process fault isolation (a user-mode fault killing only that process instead of the machine) is Phase 29's item ("Per-process fault isolation in `idt.c`") and would change what a user-mode crash does.
 
-### Phase 21 — Copy-on-write `fork()`
+### Phase 21 — Copy-on-write `fork()` (closed in 0.21.0)
 
-- **Goal:** `fork()` no longer copies all physical memory up front; the parent's pages become read-only and shared until the first write.
-- **Approach:** requires a smart page-fault handler (exception 14) that distinguishes a COW fault from a real fault, allocates a new page on demand, copies the data, and remaps it read-write. Needs a per-physical-page refcount in the PMM (which likely doesn't exist yet) to know when it's safe to free a shared page.
-- **Main risk:** without a correct refcount, one process can free a page the other is still using.
-- **Depends on:** Phase 13 (`fork()`) — already done. Phase 16 (pipes), previously recommended as a prerequisite to avoid debugging two new features at once, is also already done.
+Done; see the table above, CHANGELOG `[0.21.0]` and `docs/memory.md`. `fork()` shares the parent's pages read-only with a `VMM_COW` PTE bit and a per-page reference count in the PMM; the first write copies the page. It also took over the data-page part of Phase 23: `process_exit()` drops the process's reference to each user page, so 23-A and the data-page half of 23-C are done. The page directory and page tables still leak (23-B).
 
 ### Phase 22 — `unlink()`/`rmdir()`
 
@@ -126,9 +126,9 @@ Done; see the table above, CHANGELOG `[0.20.0]` and `docs/safemode.md`. An unhan
 - **Main risk:** the most dangerous phase in the roadmap — a real risk of double-free or of freeing a page another process still references.
 - **Depends on:** Phase 21 (COW fork) changes how memory is shared between processes, so 23-C depends on Phase 21 being closed.
 
-- 23-A: free the process's physical data pages (heap, stack) in `process_exit()`
+- 23-A: free the process's physical data pages (heap, stack) in `process_exit()` — done as part of Phase 21 (through the refcount)
 - 23-B: free the page directory (CR3) and its associated page tables
-- 23-C: handle page sharing via fork/COW (Phase 21) — needs a per-physical-page refcount in the PMM before really freeing
+- 23-C: handle page sharing via fork/COW (Phase 21) — needs a per-physical-page refcount in the PMM before really freeing — done as part of Phase 21 for data pages
 
 ### Phase 24 — `e1000` driver + minimal TCP/IP
 
@@ -159,10 +159,11 @@ Done; see the table above, CHANGELOG `[0.20.0]` and `docs/safemode.md`. An unhan
 - 26-B: port reset
 - 26-C: enumerate the connected device
 - 26-D: parse HID reports (a real keyboard/mouse)
-- 26-E: canonical input event (unifies PS/2 + USB HID)
+- 26-E: USB HID keyboard driver (takes the parsed HID reports of 26-D and turns them into key events; the mouse side stays with 26-D)
+- 26-F: **Deflection**, the canonical input event (unifies PS/2 + USB HID)
   - **Why:** the PS/2 driver and the new USB HID driver each deliver data in their own raw format (PS/2 scancode vs. parsed HID report). This sub-phase unifies them before any app reads input, so no app needs to know whether the keyboard is PS/2 or USB.
   - Define a single `input_event_t`: event type (key down / key up) + a BooleOS-own standardized keycode enum (neither raw PS/2 scancodes nor USB usage codes) + source `device_id`.
-  - The PS/2 driver and the USB HID driver (built in 26-A–26-D) translate their raw format into `input_event_t` and push it onto one kernel-wide queue.
+  - The PS/2 driver and the USB HID driver (built in 26-A–26-E) translate their raw format into `input_event_t` and push it onto one kernel-wide queue.
   - Apps read only from that single queue, never from a device driver directly.
   - `device_id` will later allow telling apart several keyboards plugged in at once (e.g. per-device local multiplayer); no extra implementation now — the field just has to exist and be filled in correctly from the start.
   - **Why here and not later:** every GUI app built from Phase 27 on (launcher, settings, DOOM) reads input through the standard queue from day one, avoiding rewrites when more input backends (Bluetooth, etc.) appear.
@@ -173,6 +174,9 @@ Done; see the table above, CHANGELOG `[0.20.0]` and `docs/safemode.md`. An unhan
 - **Approach:** GRUB2/Multiboot2 can hand over a linear framebuffer directly via a Multiboot2 protocol tag (no need for a real GPU driver like VBE/BIOS calls, which don't work anymore once protected mode has been entered) — just request it in `grub.cfg` and read the physical address from the structure.
 - **Main risk / note:** without a working mouse (Phase 26), a "GUI" with no decent input has limited value — recommended after Phase 26, even though the framebuffer itself has no technical dependency on USB.
 - **Depends on:** none technically, but gains much more value after Phase 26 (mouse).
+
+- 27-A: **Cathode**, the graphics API / framebuffer driver (the linear framebuffer from the Multiboot2 tag and the drawing primitives on top of it)
+- 27-B: **Raster**, the launcher/grid: the GUI this phase delivers, built on top of Cathode
 
 ### Phase 28 — Syscall deprecation and compatibility strategy
 
@@ -221,11 +225,11 @@ Done; see the table above, CHANGELOG `[0.20.0]` and `docs/safemode.md`. An unhan
 
 ## Recommended priority order
 
-**Phase 21 → 22 → 23 → 24 → 25 → 26 → 27 → 28 → 29 → 30 → 31 → v1.0.0.**
+**Phase 22 → 23 → 24 → 25 → 26 → 27 → 28 → 29 → 30 → 31 → v1.0.0.**
 
 Dependency notes:
 
-- Phase 23-C depends on Phase 21 (COW fork) being closed.
+- Phase 23-C depends on Phase 21 (COW fork), which closed in 0.21.0.
 - Phase 29 depends on Phase 18 (HAL).
 - Phase 31 depends on Phase 27 (framebuffer) and on `lseek` from Phase 30.
 

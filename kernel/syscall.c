@@ -65,6 +65,18 @@ static char *user_kptr(process_t *cur, uint32_t uaddr) {
     return (char *)((phys & ~0xFFFu) | (uaddr & 0xFFFu));
 }
 
+/* user_kptr() for a byte the kernel is about to WRITE. The kernel writes
+   through the identity-mapped physical address, not through the process's
+   page tables, so a read-only copy-on-write PTE would not stop it: it would
+   write straight into a frame still shared with another process. Breaking
+   the copy-on-write first gives this process its own frame (or takes the
+   shared one back if nobody else has it). NULL if unmapped, not user, or no
+   memory for the copy. */
+static char *user_kptr_write(process_t *cur, uint32_t uaddr) {
+    if (vmm_cow_break(cur->cr3, uaddr) < 0) return (char *)0;
+    return user_kptr(cur, uaddr);
+}
+
 /* ── user pointer validation / safe copy ─────────────────────────
    Central point every syscall that touches a userland pointer MUST go
    through before reading or writing it (or, for a bounded/whole-range
@@ -113,7 +125,7 @@ static int copy_to_user(process_t *cur, uint32_t udst, const void *ksrc, uint32_
     if (!user_ptr_valid(cur, udst, len)) return -1;
     const uint8_t *src = (const uint8_t *)ksrc;
     for (uint32_t i = 0; i < len; i++) {
-        char *kp = user_kptr(cur, udst + i);
+        char *kp = user_kptr_write(cur, udst + i);
         if (!kp) return -1;
         *kp = (char)src[i];
     }
@@ -640,12 +652,12 @@ static uint32_t sys_getarg(char *user_buf, uint32_t len) {
     if (!cur) return (uint32_t)-1;
     uint32_t n = 0;
     while (n < len - 1 && exec_arg[n]) {
-        char *kp = user_kptr(cur, (uint32_t)user_buf + n);
+        char *kp = user_kptr_write(cur, (uint32_t)user_buf + n);
         if (!kp) return (uint32_t)-1;
         *kp = exec_arg[n];
         n++;
     }
-    char *kp = user_kptr(cur, (uint32_t)user_buf + n);
+    char *kp = user_kptr_write(cur, (uint32_t)user_buf + n);
     if (kp) *kp = '\0';
     return n;
 }
@@ -885,6 +897,18 @@ static uint32_t sys_write_file(uint32_t fd, uint32_t user_buf, uint32_t len) {
     return (r < 0) ? (uint32_t)-1 : 0;
 }
 
+/* Reference count of the physical page behind the caller's address uaddr:
+   1 for a private page, N for a page shared copy-on-write by N processes.
+   Read-only, for tests; no physical address is returned. -1 if uaddr is not
+   a mapped user address. */
+static uint32_t sys_pageref(uint32_t uaddr) {
+    process_t *cur = process_current();
+    if (!cur) return (uint32_t)-1;
+    uint32_t phys = vmm_get_user_phys_from_dir(cur->cr3, uaddr);
+    if (!phys) return (uint32_t)-1;
+    return pmm_page_refcount(phys);
+}
+
 uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t arg3) {
     switch (num) {
         case SYS_WRITE:   return sys_write(arg1, (const char *)arg2, arg3);
@@ -925,6 +949,7 @@ uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t ar
         case SYS_REBOOT:       return sys_reboot();
         case SYS_SHUTDOWN:     return sys_shutdown();
         case SYS_PCI_FIND:     return (uint32_t)pci_find_device((uint16_t)arg1, (uint16_t)arg2, 0, 0, 0);
+        case SYS_PAGEREF:      return sys_pageref(arg1);
         default:
             console_set_color(CONSOLE_YELLOW, CONSOLE_BLACK);
             console_puts(msg(MSG_SYS_UNKNOWN_SYSCALL));

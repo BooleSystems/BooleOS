@@ -19,6 +19,10 @@
 // pmm_mark_used().
 void pmm_init(const boot_mem_region_t *map, int nregions);
 
+// Every allocated page carries a reference count: the number of owners
+// (for a user page, the number of page tables mapping it — more than one
+// after a copy-on-write fork()). An allocation starts at 1.
+
 // Allocates a physical page (returns physical address or 0 if out of memory)
 uint32_t pmm_alloc_page(void);
 
@@ -27,8 +31,17 @@ uint32_t pmm_alloc_page(void);
 // this: its virtual addresses ARE the physical ones (see heap.c).
 uint32_t pmm_alloc_page_at(uint32_t addr);
 
-// Frees a physical page
+// Drops one reference to a page; the page returns to the free pool only when
+// the count reaches 0. For a page with a single owner this is a plain free.
 void pmm_free_page(uint32_t addr);
+
+// Adds a reference to an allocated page. Returns 0, or -1 if the page is not
+// allocated or the count would overflow.
+int pmm_page_ref(uint32_t addr);
+
+// Current reference count of the page containing addr (0 = free or not
+// managed).
+uint32_t pmm_page_refcount(uint32_t addr);
 
 // Returns the number of free pages
 uint32_t pmm_free_pages(void);

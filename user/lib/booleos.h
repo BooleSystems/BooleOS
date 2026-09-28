@@ -84,6 +84,12 @@ int nos_getcwd(char *buf, unsigned len);
    during enumeration, 0 if not (used by selftest to check a specific device). */
 int nos_pci_find(unsigned vendor, unsigned device);
 
+/* SYS_PAGEREF — reference count of the physical page behind addr in this
+   process: 1 = private, N = shared copy-on-write by N processes (after
+   fork(), until one of them writes to it). -1 if addr is not mapped. For
+   tests (selftest checks copy-on-write sharing with it). */
+int nos_pageref(const void *addr);
+
 /* SYS_REBOOT / SYS_SHUTDOWN — do not return on success; -1 if the request
    had no effect (the kernel prints why). */
 int nos_reboot(void);

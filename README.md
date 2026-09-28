@@ -9,7 +9,7 @@
  | |_) || (_) || (_) || ||  __/| |_| | ___) |
  |____/  \___/  \___/ |_| \___| \___/ |____/ 
 
- BooleOS v0.20.1 - Phase 20: Crash handler leads into Safe Mode
+ BooleOS v0.21.0 - Phase 21: Copy-on-write fork()
 ```
 
 ## Overview
@@ -43,15 +43,16 @@ See [CHANGELOG.md](CHANGELOG.md) for version history and [ROADMAP.md](ROADMAP.md
 | **18** | Safety/portability foundation: a hardware abstraction layer (`kernel/hal.*`: console, input, block I/O, power, boot info — [docs/hal.md](docs/hal.md)); `msg(ID)` centralized output text for the kernel and the userland; the exception handler and all disk access through the HAL; `pmm_init()` on the bootloader's real memory map (8 MB allocatable ceiling); and **Safe Mode** ([docs/safemode.md](docs/safemode.md)): boot failure counter in a raw config sector, automatic entry after 3 failed boots or from the GRUB menu, a text UI (reboot, disk info, sector hexdump) and a restricted read-only shell, plus a "previous release" GRUB entry (`tools/prev/`, `make snapshot`) | ✅ Done |
 | **19** | SDK / app-development experience: `exec()` loads programs from FAT16 as well as the ramfs (found by `vfs_open()`, read from disk by the directory-entry size), so a program no longer needs an ISO rebuild to be tested; the ELF loader validates the file against its real size; a minimal `printf` family in libnos (`printf`, `sprintf`, `snprintf`, `vsnprintf`); an SDK template and Makefile (`sdk/`, `make inject`) and a developer guide ([docs/sdk.md](docs/sdk.md)); `make test-elf` (host-side loader test); a kernel heap fix (its pages must be virt == phys) | ✅ Done |
 | **20** | Crash handler leads into Safe Mode: an unhandled CPU exception saves a crash record in the boot config sector (polling-only ATA I/O, no heap or scheduler), shows the red screen and resets the machine; the next boot goes to Safe Mode with the reason and a "View last crash details" screen; the `crash <de\|pf\|gpf>` shell command tests the pipeline ([docs/safemode.md](docs/safemode.md)) | ✅ Done |
+| **21** | Copy-on-write `fork()`: the parent's pages are shared read-only with the child (new `VMM_COW` PTE bit, a reference count per physical page in the PMM) and the first write copies the page, from the page-fault handler or from a kernel write into user memory (`vmm_cow_break()`); `CR0.WP` set; `process_exit()` now releases a process's data pages through the refcount; `SYS_PAGEREF`; selftest expanded to 24 tests ([docs/memory.md](docs/memory.md)) | ✅ Done |
 
-For planned Phases 21–31, see **[ROADMAP.md](ROADMAP.md)**.
+For planned Phases 22–31, see **[ROADMAP.md](ROADMAP.md)**.
 
 ## Documentation
 
 Detailed, per-system documentation lives under `docs/`:
 
 - [docs/kernel.md](docs/kernel.md) — kernel base (boot, GDT/IDT/PIC/PIT, keyboard) and program loading (Multiboot2, ramfs, ELF loader, `exec()`)
-- [docs/memory.md](docs/memory.md) — PMM, VMM, kernel heap
+- [docs/memory.md](docs/memory.md) — PMM (with the per-page reference count), VMM, kernel heap, copy-on-write `fork()`
 - [docs/scheduler.md](docs/scheduler.md) — process table, scheduler, `fork()`, real `waitpid`
 - [docs/syscalls.md](docs/syscalls.md) — full syscall table (number, signature, description)
 - [docs/filesystem.md](docs/filesystem.md) — ATA PIO driver, FAT16, VFS
@@ -78,6 +79,7 @@ boot/
 kernel/
   main.c              kmain: initialization and the scheduler loop
   version.h           Single source of truth for the version string
+  irq.h               irq_save()/irq_restore(): interrupt-off critical sections
   gdt.c/asm           Global Descriptor Table
   idt.c               Interrupt Descriptor Table + exception handler
   isr.asm             Exception stubs and the syscall gate (isr128)
@@ -109,8 +111,8 @@ kernel/
     fat16.c/h         FAT16 read/write over ATA
     vfs.c/h           ramfs + FAT16 dispatcher
   memory/
-    pmm.c             Physical Memory Manager
-    vmm.c             Virtual Memory Manager
+    pmm.c             Physical Memory Manager (per-page reference count)
+    vmm.c             Virtual Memory Manager (vmm_cow_break())
     heap.c            kmalloc/kfree
 user/
   lib/messages.c/h    msg(ID): userland output-text table (shell, edit, cat) — see docs/hal.md

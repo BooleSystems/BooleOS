@@ -53,6 +53,28 @@ static unsigned int st_child_result(char *out, unsigned int idx, unsigned int pi
     return at;
 }
 
+/* ── copy-on-write fork() (Phase 21) ──────────────────────────────── */
+
+/* Page-aligned and page-sized, so nothing else lives on these pages and
+   their refcounts only move with the tests' own forks and writes. */
+static volatile char g_cow_page[4096] __attribute__((aligned(4096)));
+static volatile char g_cow_multi[4][4096] __attribute__((aligned(4096)));
+
+static int st_pageref(volatile const void *p) {
+    return nos_pageref((const void *)p);
+}
+
+/* A pipe read may return fewer bytes than asked for. */
+static int st_read_n(int fd, char *buf, int n) {
+    int got = 0;
+    while (got < n) {
+        int r = nos_read(fd, buf + got, (unsigned)(n - got));
+        if (r <= 0) return -1;
+        got += r;
+    }
+    return 0;
+}
+
 /* ── the test suite itself ────────────────────────────────────────── */
 
 void _start(void) {
@@ -832,7 +854,198 @@ void _start(void) {
         else     st_pass(tname);
     }
 
-    /* 22. Cleanup — not counted as PASS/FAIL, just a note: there is no
+    /* 22. Copy-on-write fork() (Phase 21): after fork() both processes map
+       the same frame (refcount 2) and the first write by either side copies
+       it (refcount back to 1 on each side). Two rounds, the order forced
+       with pipes: the child writes first, then the parent writes first.
+       Neither write may show up in the other process. The child always
+       waits for "start" so the parent can see the refcount at 2 first. */
+    {
+        const char *tname = "copy-on-write fork: writes stay private (child first, then parent first)";
+        const char *why = 0;
+        int round;
+        for (round = 0; round < 2 && !why; round++) {
+            int up[2], down[2];   /* up: child -> parent, down: parent -> child */
+            char c, res;
+            g_cow_page[0] = 'A';
+            if (nos_pipe(up) < 0) { why = "pipe() failed"; break; }
+            if (nos_pipe(down) < 0) {
+                nos_close(up[0]); nos_close(up[1]);
+                why = "pipe() failed";
+                break;
+            }
+            int pid = nos_fork();
+            if (pid == 0) {
+                res = 'y';
+                st_read_n(down[0], &c, 1);                   /* start */
+                if (round == 0) {
+                    g_cow_page[0] = 'C';                     /* child first */
+                    nos_write(up[1], "w", 1);
+                    st_read_n(down[0], &c, 1);               /* the parent has written */
+                    if (g_cow_page[0] != 'C') res = 'n';
+                } else {
+                    if (g_cow_page[0] != 'A') res = 'n';     /* the parent wrote first */
+                    g_cow_page[0] = 'C';
+                    if (g_cow_page[0] != 'C') res = 'n';
+                }
+                nos_write(up[1], &res, 1);
+                nos_exit(0);
+            }
+            if (pid < 0) {
+                why = "fork() failed";
+            } else {
+                if (st_pageref(g_cow_page) != 2) why = "refcount is not 2 right after fork()";
+                if (round == 0) {
+                    nos_write(down[1], "s", 1);
+                    st_read_n(up[0], &c, 1);                 /* the child has written */
+                    if (!why && g_cow_page[0] != 'A') why = "the child's write leaked into the parent";
+                    if (!why && st_pageref(g_cow_page) != 1) why = "refcount is not 1 after the child copied";
+                    g_cow_page[0] = 'P';
+                    nos_write(down[1], "g", 1);
+                } else {
+                    g_cow_page[0] = 'P';                     /* parent first */
+                    if (!why && st_pageref(g_cow_page) != 1) why = "refcount is not 1 after the parent copied";
+                    nos_write(down[1], "s", 1);
+                }
+                res = 'n';
+                if (st_read_n(up[0], &res, 1) < 0 && !why) why = "no answer from the child";
+                if (!why && res != 'y') why = "the parent's write leaked into the child";
+                if (!why && g_cow_page[0] != 'P') why = "the parent lost its own write";
+                nos_wait(pid);
+            }
+            nos_close(up[0]); nos_close(up[1]); nos_close(down[0]); nos_close(down[1]);
+        }
+        if (why) st_fail(tname, why);
+        else     st_pass(tname);
+    }
+
+    /* 23. Three generations (this process -> middle -> youngest) share one
+       page: the refcount must be 3 while all three hold it, drop to 2 when
+       the youngest exits WITHOUT writing, and to 1 when the middle one
+       exits too; the page must survive both exits with its content. */
+    {
+        const char *tname = "copy-on-write fork: 3 generations, refcount follows the live holders";
+        const char *why = 0;
+        int rep[2], rel[2];   /* rep: reports to this process; rel: release */
+        char m[2], c;
+        g_cow_page[0] = 'G';
+        if (st_pageref(g_cow_page) != 1) why = "page not private before the test";
+        if (!why && nos_pipe(rep) < 0) why = "pipe() failed";
+        if (!why && nos_pipe(rel) < 0) {
+            nos_close(rep[0]); nos_close(rep[1]);
+            why = "pipe() failed";
+        }
+        if (!why) {
+            int ppid = nos_fork();
+            if (ppid == 0) {
+                int cpid = nos_fork();
+                if (cpid == 0) {
+                    m[0] = 'C'; m[1] = (char)('0' + st_pageref(g_cow_page));
+                    nos_write(rep[1], m, 2);
+                    st_read_n(rel[0], &c, 1);            /* exits without writing */
+                    nos_exit(0);
+                }
+                m[0] = 'P'; m[1] = cpid > 0 ? (char)('0' + st_pageref(g_cow_page)) : 'x';
+                nos_write(rep[1], m, 2);
+                if (cpid > 0) nos_wait(cpid);
+                m[0] = 'Q'; m[1] = (char)('0' + st_pageref(g_cow_page));
+                if (g_cow_page[0] != 'G') m[1] = 'x';
+                nos_write(rep[1], m, 2);
+                st_read_n(rel[0], &c, 1);
+                nos_exit(0);
+            }
+            if (ppid < 0) {
+                why = "fork() failed";
+            } else {
+                int i;
+                for (i = 0; i < 2 && !why; i++) {
+                    if (st_read_n(rep[0], m, 2) < 0)     why = "no report from a descendant";
+                    else if (m[0] != 'C' && m[0] != 'P') why = "unexpected report";
+                    else if (m[1] != '3')                why = "refcount is not 3 with 3 holders";
+                }
+                if (!why && st_pageref(g_cow_page) != 3) why = "refcount is not 3 in the oldest process";
+                nos_write(rel[1], "1", 1);               /* the youngest exits */
+                if (!why && st_read_n(rep[0], m, 2) < 0) why = "no report from the middle process";
+                if (!why && (m[0] != 'Q' || m[1] != '2'))
+                    why = "refcount is not 2 after the youngest exited (or the page changed)";
+                if (!why && st_pageref(g_cow_page) != 2) why = "refcount is not 2 in the oldest process";
+                nos_write(rel[1], "2", 1);               /* the middle one exits */
+                nos_wait(ppid);
+                if (!why && st_pageref(g_cow_page) != 1) why = "refcount is not 1 after both exited";
+                if (!why && g_cow_page[0] != 'G')        why = "the page lost its content";
+                g_cow_page[0] = 'H';
+                if (!why && (g_cow_page[0] != 'H' || st_pageref(g_cow_page) != 1))
+                    why = "the last holder could not write its page";
+            }
+            nos_close(rep[0]); nos_close(rep[1]); nos_close(rel[0]); nos_close(rel[1]);
+        }
+        if (why) st_fail(tname, why);
+        else     st_pass(tname);
+    }
+
+    /* 24. Copy-on-write under preemption: four children, forked one after
+       another while the earlier ones are already running, each rewrite
+       every 64th byte of 4 shared pages for ~300 ms (many timer ticks),
+       while this process rewrites its own copy between forks. Each child
+       must end with only its own bytes plus the untouched bytes it
+       inherited; this process must end with its own content and a
+       refcount of 1 on every page (no reference lost or left behind). */
+    {
+        const char *tname = "copy-on-write fork under preemption: 4 children rewrite 4 shared pages";
+        const char *why = 0;
+        int rep[2], i, p, k, forked = 0, have_pipe = 0;
+        int pids[4];
+        for (p = 0; p < 4; p++) for (k = 0; k < 4096; k++) g_cow_multi[p][k] = 'p';
+        if (nos_pipe(rep) < 0) why = "pipe() failed";
+        else have_pipe = 1;
+        for (i = 0; i < 4 && !why; i++) {
+            int r = nos_fork();
+            if (r == 0) {
+                char id = (char)('0' + i), res = 'y';
+                uint32_t end = nos_uptime() + 30;
+                do {
+                    for (p = 0; p < 4; p++)
+                        for (k = 0; k < 4096; k += 64) g_cow_multi[p][k] = id;
+                } while (nos_uptime() < end);
+                for (p = 0; p < 4; p++) {
+                    for (k = 0; k < 4096; k++) {
+                        char want = (k % 64 == 0) ? id : 'p';
+                        if (g_cow_multi[p][k] != want) res = 'n';
+                    }
+                }
+                char out[2] = { id, res };
+                nos_write(rep[1], out, 2);
+                nos_exit(0);
+            }
+            if (r < 0) { why = "fork() failed"; break; }
+            pids[forked++] = r;
+            for (p = 0; p < 4; p++)
+                for (k = 0; k < 4096; k += 64) g_cow_multi[p][k] = 'p';
+        }
+        if (!why) {
+            int seen = 0;
+            char out[2];
+            for (i = 0; i < forked && !why; i++) {
+                if (st_read_n(rep[0], out, 2) < 0)  why = "no report from a child";
+                else if (out[0] < '0' || out[0] > '3') why = "unexpected report";
+                else if (out[1] != 'y')             why = "a child saw another process's writes";
+                else seen |= 1 << (out[0] - '0');
+            }
+            if (!why && seen != 0xF) why = "a child reported twice or not at all";
+        }
+        for (i = 0; i < forked; i++) nos_wait(pids[i]);
+        for (p = 0; p < 4 && !why; p++) {
+            for (k = 0; k < 4096; k++) {
+                if (g_cow_multi[p][k] != 'p') { why = "a child's write leaked into the parent"; break; }
+            }
+            if (!why && st_pageref(g_cow_multi[p]) != 1) why = "a page's refcount is not 1 after all children exited";
+        }
+        if (have_pipe) { nos_close(rep[0]); nos_close(rep[1]); }
+        if (why) st_fail(tname, why);
+        else     st_pass(tname);
+    }
+
+    /* 25. Cleanup — not counted as PASS/FAIL, just a note: there is no
        delete/unlink/rmdir syscall yet, so st_root.txt, st_big.txt,
        selftest_dir/ (and the two files inside it) and st_d1/st_d2/st_d3/ (with st_deep.txt) are left on disk. Harmless: the
        next run just re-creates/overwrites everything by the same names. */

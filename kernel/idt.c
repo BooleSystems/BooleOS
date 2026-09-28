@@ -4,6 +4,7 @@
 #include "messages.h"
 #include "crashdump.h"
 #include "timer.h"
+#include "memory/vmm.h"
 #include <stdint.h>
 
 typedef struct {
@@ -101,6 +102,18 @@ const char *exception_name(uint32_t int_no) {
 // lock.
 void exception_handler(uint32_t int_no, uint32_t err_code, uint32_t eip) {
     __asm__ volatile ("cli");
+
+    // A write to a present page (error code bits 0 and 1) may be a write to a
+    // copy-on-write page shared after fork(): resolve it and return, and the
+    // CPU retries the write. Anything else, or a copy-on-write fault with no
+    // memory left for the copy, is a genuine fault and takes the path below.
+    if (int_no == 14 && (err_code & 3) == 3) {
+        uint32_t fault_addr, cur_cr3;
+        __asm__ volatile ("mov %%cr2, %0" : "=r"(fault_addr));
+        __asm__ volatile ("mov %%cr3, %0" : "=r"(cur_cr3));
+        if (vmm_cow_break(cur_cr3, fault_addr) == 1)
+            return;
+    }
 
     // A second exception while this one is being handled (a fault while saving
     // or printing): skip the dump and reset at once — no crash-in-the-crash loop.

@@ -2,6 +2,8 @@
 #include "pmm.h"
 #include "../hal.h"
 #include "../messages.h"
+#include "../irq.h"
+#include "../process.h"
 #include <stdint.h>
 
 // Bitmap at a fixed safe address: 0x202000 (right after the IDT at 0x200000)
@@ -20,6 +22,15 @@
 
 static uint32_t pmm_total = 0;
 static uint32_t pmm_used  = 0;
+
+// Per-page reference count, parallel to the bitmap (4 KB in .bss). A user
+// page is shared by at most one mapping per process, so PROCESS_MAX bounds
+// the count; uint16_t leaves room if that limit grows, uint8_t would not
+// leave much.
+typedef uint16_t pmm_ref_t;
+#define PMM_REF_MAX 0xFFFFu
+typedef char pmm_ref_size_check[(PROCESS_MAX < PMM_REF_MAX) ? 1 : -1];   // C99: no _Static_assert
+static pmm_ref_t pmm_refcount[PMM_MAX_PAGES];
 
 static uint32_t *get_bitmap(void) {
     return (uint32_t *)PMM_BITMAP_ADDR;
@@ -50,40 +61,82 @@ void pmm_mark_free(uint32_t addr, uint32_t size) {
     uint32_t i;
     for (i = 0; i < n && (page+i) < pmm_total; i++) {
         if (bitmap_test(page+i)) { bitmap_clear(page+i); pmm_used--; }
+        pmm_refcount[page+i] = 0;
     }
 }
 
 uint32_t pmm_free_pages(void)  { return pmm_total - pmm_used; }
 uint32_t pmm_total_pages(void) { return pmm_total; }
 
+// The allocation, reference and free paths below run with interrupts off:
+// a copy-on-write fault or a fork() in another process changes the same
+// counts, and a timer tick in the middle of a read-modify-write would lose
+// an update.
+
 uint32_t pmm_alloc_page(void) {
     uint32_t i, bit;
+    uint32_t flags = irq_save();
     for (i = 0; i < PMM_BITMAP_SIZE; i++) {
         if (get_bitmap()[i] == 0xFFFFFFFF) continue;
         for (bit = 0; bit < 32; bit++) {
             uint32_t page = i * 32 + bit;
-            if (page >= pmm_total) return 0;
+            if (page >= pmm_total) { irq_restore(flags); return 0; }
             if (!bitmap_test(page)) {
                 bitmap_set(page); pmm_used++;
+                pmm_refcount[page] = 1;
+                irq_restore(flags);
                 return page * PAGE_SIZE;
             }
         }
     }
+    irq_restore(flags);
     return 0;
 }
 
 uint32_t pmm_alloc_page_at(uint32_t addr) {
     if (addr & (PAGE_SIZE - 1)) return 0;
     uint32_t page = addr / PAGE_SIZE;
-    if (page >= pmm_total || bitmap_test(page)) return 0;
+    uint32_t flags = irq_save();
+    if (page >= pmm_total || bitmap_test(page)) { irq_restore(flags); return 0; }
     bitmap_set(page); pmm_used++;
+    pmm_refcount[page] = 1;
+    irq_restore(flags);
     return addr;
 }
 
 void pmm_free_page(uint32_t addr) {
     uint32_t page = addr / PAGE_SIZE;
-    if (page >= pmm_total || !bitmap_test(page)) return;
-    bitmap_clear(page); pmm_used--;
+    uint32_t flags = irq_save();
+    if (page >= pmm_total || !bitmap_test(page)) { irq_restore(flags); return; }
+    // A used page with a count of 0 was reserved with pmm_mark_used(), never
+    // allocated; treat it as a single owner, like before refcounts existed.
+    if (pmm_refcount[page] > 1) {
+        pmm_refcount[page]--;
+    } else {
+        pmm_refcount[page] = 0;
+        bitmap_clear(page); pmm_used--;
+    }
+    irq_restore(flags);
+}
+
+int pmm_page_ref(uint32_t addr) {
+    uint32_t page = addr / PAGE_SIZE;
+    int r = -1;
+    uint32_t flags = irq_save();
+    if (page < pmm_total && bitmap_test(page)) {
+        // A mapped page with no count still has an owner (the mapping that
+        // is being shared); it must not look free once this new one drops.
+        if (pmm_refcount[page] == 0) pmm_refcount[page] = 1;
+        if (pmm_refcount[page] < PMM_REF_MAX) { pmm_refcount[page]++; r = 0; }
+    }
+    irq_restore(flags);
+    return r;
+}
+
+uint32_t pmm_page_refcount(uint32_t addr) {
+    uint32_t page = addr / PAGE_SIZE;
+    if (page >= pmm_total) return 0;
+    return pmm_refcount[page];
 }
 
 void pmm_init(const boot_mem_region_t *map, int nregions) {

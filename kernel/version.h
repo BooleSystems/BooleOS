@@ -17,9 +17,9 @@
 #ifndef BOOLEOS_VERSION_H
 #define BOOLEOS_VERSION_H
 
-#define BOOLEOS_VERSION      "0.20.1"
-#define BOOLEOS_PHASE        "20"
-#define BOOLEOS_PHASE_DESC   "Crash handler leads into Safe Mode"
+#define BOOLEOS_VERSION      "0.21.0"
+#define BOOLEOS_PHASE        "21"
+#define BOOLEOS_PHASE_DESC   "Copy-on-write fork()"
 
 // Composed strings so callers don't have to concatenate these by hand.
 #define BOOLEOS_BANNER       "BooleOS v" BOOLEOS_VERSION " - Phase " BOOLEOS_PHASE ": " BOOLEOS_PHASE_DESC
