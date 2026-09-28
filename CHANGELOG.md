@@ -28,6 +28,7 @@ at the time.
 - Phase 22 (in progress, not yet tested): kernel side of `unlink()`/`rmdir()`. `fat16_unlink()`/`fat16_rmdir()` mark the dirent `0xE5` and free the cluster chain in every FAT copy (dirent first, then FAT). A file open by any process, a non-empty directory, the root, `.`/`..` and any process's cwd are refused. `SYS_UNLINK` (35) and `SYS_RMDIR` (36). Freeing and allocating clusters in the FAT cache now run with interrupts off; disk I/O cannot (the ATA wait blocks on its IRQ).
 - Phase 22 (in progress): `nos_unlink()`/`nos_rmdir()` in libnos (`user/lib/booleos.c/h`), the same inline `int $0x80` wrapper as the other calls.
 - Phase 22 (in progress): selftest tests 25–31: `unlink()` of a file, `unlink()` refusing an open file, `rmdir()` of an empty directory, `rmdir()` refusing a non-empty one, both refusing the wrong kind and `/`/`.`/`..`, `rmdir()` refusing a live process's cwd, and a counted cleanup that deletes every test file and directory. The `[INFO]` note about files left on disk is gone; the suite is now 31 tests (`docs/testing.md`).
+- Phase 22 (in progress): docs. `docs/filesystem.md` has a "Deleting files and directories (Phase 22)" section (the delete steps, why the dirent is written before the FAT, the in-use checks, and the directory-sector race left to the Phase 29 FAT16 lock); `docs/syscalls.md` rows 35/36 (checked against `kernel/syscall.h`); `docs/sdk.md` lists `nos_unlink()`/`nos_rmdir()`; ROADMAP Phase 22 marked in progress with a checklist; PROGRESS.md, `docs/safemode.md` and `docs/TODO.md` synced.
 - `SECURITY.md` (repository root, the file GitHub's Security tab shows): supported versions (only the latest tag, `v0.21.0` today), how to report a vulnerability (email `theshannondev@gmail.com`, best effort, no SLA, no bounty, receipt of the report is confirmed), and a "Phase 21: Copy-on-write fork() hardening" section (per-page reference count, `user_kptr_write()` breaking copy-on-write before kernel writes, `CR0.WP`, known limits). The Phase 14 and Phase 19 material stays in `docs/security.md` and is linked, not copied.
 
 ### Changed
@@ -35,6 +36,7 @@ at the time.
 - `tools/prev/` now holds the v0.21.0 snapshot (kernel + ramfs built from the `v0.21.0` tag in a clean worktree), so the "previous release" GRUB entry of the next version is v0.21.0.
 
 ### Fixed
+- `docs/syscalls.md` still described `SYS_FORK` (25) as "not copy-on-write" after Phase 21 made it copy-on-write.
 - `sys_kill()` never closed the killed process's fds (only `sys_exit()` did): its files stayed open in the fd table and its pipe ends never closed. It now closes them before `process_exit()`.
 
 ## [0.21.0] - 2026-09-27 - Phase 21: Copy-on-write fork()

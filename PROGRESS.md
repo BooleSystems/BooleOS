@@ -39,9 +39,11 @@ Last closed phase: **Phase 21** (Copy-on-write `fork()`).
   `vmm_cow_break()`, `CR0.WP`, `SYS_PAGEREF`; `process_exit()` releases data
   pages (ROADMAP 23-A and the data-page half of 23-C) — `0.21.0`.
 
-### Next: Phase 22 — `unlink()`/`rmdir()`
+### In progress: Phase 22 — `unlink()`/`rmdir()` (version still `0.21.0`)
 
-See ROADMAP.md. Release routine after tagging: `make clean && make && make snapshot`
+Code, libnos wrappers, selftest (tests 25–31, 31 total) and docs are done and
+build clean; the selftest has NOT been run in QEMU yet. Next: the user runs it,
+then closes 0.22.0 when asked. Progress checklist in ROADMAP.md, Phase 22. Release routine after tagging: `make clean && make && make snapshot`
 on the tagged tree, commit `tools/prev/`, and publish the GitHub Release with the
 zip (see the Definition of Done in CLAUDE.md). Deferred, not blocking: test
 `docs/setup.md` on Windows (Phase 30).
@@ -141,6 +143,11 @@ package manager phase was deliberately decided against — don't add one.
 - **`kernel/version.h` is macros-only** so userland may include it; it is
   the single version source. Any shared kernel/user header needs the same
   "macros only" property.
+- **`unlink`/`rmdir` write the `0xE5` dirent before freeing the FAT chain**
+  (a crash loses space, never leaves a live entry on free clusters), refuse a
+  file open in any process and a directory that is any process's cwd (via a
+  `fat16_busy_fn` callback from `syscall.c`, so `fat16.c` stays process-free),
+  and are not recursive. See `docs/filesystem.md`.
 - **`SYS_PCI_LIST` returns the device count** (for `selftest`); `lspci`
   ignores it. See `docs/testing.md`.
 
@@ -175,7 +182,8 @@ package manager phase was deliberately decided against — don't add one.
   its `else` branch, reporting the misleading "saved (no disk)" — a message
   that covers two cases ("no disk", "no file name"). Expected: ask for a name
   (save as). Pre-existing since the editor got file saving.
-- **Safe Mode gaps:** no erase action (needs `unlink`, Phase 22), no fsck-like
+- **Safe Mode gaps:** no erase action (`fat16_unlink()` exists since Phase 22,
+  the menu action doesn't), no fsck-like
   verify/repair submenu (its own future sub-phase), no GUI-debug/Text-mode
   entries (Phase 27). `kmain` keeps its own copy of the module/boot-info PMM
   reservations that could use `boot_get_module()`/`boot_get_info_region()`.
@@ -203,7 +211,8 @@ package manager phase was deliberately decided against — don't add one.
   returns nothing but 0 (the selftest passes child results through pipes).
 - **`dir_buf`/`sector_buf` in `fat16.c` are global buffers held across
   blocking ATA writes** — a concurrent FAT16 call from another process can
-  clobber them. Fix = whole-operation FAT16 lock, Phase 29
+  clobber them. `unlink`/`rmdir` share the gap: two processes rewriting one
+  directory sector can lose an entry. Fix = whole-operation FAT16 lock, Phase 29
   (`docs/filesystem.md`).
 - **Shell redirection limits:** builtins can't be redirected; `>`/`<`
   can't combine with `|` and pass no arguments (`docs/shell.md`).
@@ -212,8 +221,8 @@ package manager phase was deliberately decided against — don't add one.
 - **`process_exit()` never frees `cr3` or the page tables** (accepted leak,
   Phase 23-B; slots stay reusable). User data pages ARE released since
   Phase 21, through the refcount.
-- **No unlink/delete syscall or FAT16 delete path** (cluster-chain free +
-  0xE5 dirent). Test files can be overwritten, never removed.
+- **No shell command for `unlink`/`rmdir`** (no `rm`/`rmdir` in `shell.c`);
+  only programs calling `nos_unlink()`/`nos_rmdir()` can delete.
 - **No syscall exposes `kmalloc()` to userland**, so userland can't test a
   real heap allocation (`SYS_MEMINFO` only reads counters).
 

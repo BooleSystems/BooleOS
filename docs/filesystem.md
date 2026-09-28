@@ -4,7 +4,7 @@
 - `SYS_OPEN (11)`: copies the name from user space via `user_kptr`, allocates the first free slot in `fd_table[proc_slot][0..7]`, and calls `vfs_open` — which tries ramfs via `ramfs_find` and, if not found, FAT16 via `fat16_find`; returns `fd = 3 + idx`, or -1 if not found in either backend or no free slots
 - `SYS_READ (5)` with fd≥3: dispatches by `fd->backend` via `vfs_read` — ramfs reads directly from `ramfs_base + offset + pos`, FAT16 uses `fat16_read_at` following the cluster chain; both advance `pos` and return 0 on EOF — non-blocking
 - `SYS_CLOSE (12)`: marks the slot as free
-- `fd_table[PROCESS_MAX][8]` — global table indexed by process slot; `sys_exit` clears all of the process's fds on exit, avoiding slot leaks
+- `fd_table[PROCESS_MAX][8]` — global table indexed by process slot; `sys_exit` and `sys_kill` close all of the process's fds (`close_all_fds()`), so a killed process leaves no slot, pipe end or open file behind (before Phase 22 only `sys_exit` did, and `unlink` would have refused a killed process's file forever)
 - fds 0/1/2 are reserved (stdin/stdout/stderr); files start at fd=3
 
 ## Persistent disk: ATA PIO + FAT16
@@ -52,6 +52,24 @@ FAT16 has two structurally different kinds of directory, and the design here tre
 `exec()` (`kernel/exec.c`) is a consumer of `vfs_open()` like any file open: it does **not** have its own lookup. `vfs_open()` tries the ramfs first (system programs; a disk file can never shadow one) and then FAT16 through `fat16_find()`, resolving a relative path against the caller's `cwd_cluster` — the same parameter `exec()` already received to give the new process its own cwd. A ramfs program is loaded straight from the image in memory. A FAT16 program is **read** from disk: its size comes from the directory entry (0 or more than `EXEC_MAX_FILE_SIZE`, 192 KB, is refused), it is read whole with `vfs_read()` into a temporary `kmalloc` buffer, `elf_load()` copies its segments into the new address space, and the buffer is freed. The `vfs_fd_t` is a local variable of `exec()`; it never enters a process's fd table. The heap it needs is fixed-size (see `docs/memory.md`), so a program too big for what is free fails with "out of memory to load the program file" instead of growing the heap.
 
 **Known hazard (Phase 29):** `sector_buf`/`dir_buf` are single global buffers shared by every FAT16 caller and held across blocking `block_read_sector()`/`block_write_sector()` calls. `exec()` adds a long sequence of blocking sector reads (one per sector of the program) to that exposure: a concurrent FAT16 operation from another process during an `exec()` can corrupt the read. The fix is the whole-operation FAT16 lock of ROADMAP Phase 29, not something `exec()` can avoid on its own.
+
+## Deleting files and directories (Phase 22)
+
+`SYS_UNLINK` (35) deletes a file and `SYS_RMDIR` (36) an empty directory; libnos wraps them as `nos_unlink()`/`nos_rmdir()`. The path is resolved like every other FAT16 path (absolute, or relative to the caller's `cwd_cluster`). There is no shell command for either yet. The kernel side is `fat16_unlink()`/`fat16_rmdir()` in `kernel/fs/fat16.c`, and both end in the same `delete_entry()`:
+
+1. Find the entry: `find_entry()` runs `resolve_path()` + `dir_lookup()` and keeps the sector LBA and slot index of the dirent. `unlink` refuses an entry with `ATTR_DIRECTORY`, `rmdir` one without it. The root, `.` and `..` never resolve to a deletable entry.
+2. `rmdir` only: `dir_is_empty()` walks the directory with the shared `dir_iter_t` stepper. Only `.`/`..` and free or `0xE5` slots may be there; any other entry, a long-name entry included, means "not empty".
+3. Ask whether the entry is in use. `fat16.c` doesn't know about processes, so the syscall passes a callback (`fat16_busy_fn`, `fat16_entry_busy()` in `kernel/syscall.c`), called with interrupts off. A file is in use if any live process has a FAT16 fd whose cached `parent_cluster` and final name (compared in 8.3 form through `fat16_name83()`, so `a.txt` and `A.TXT` match) point at it. A directory is in use if it is any live process's `cwd_cluster`. That includes the caller, so `rmdir` of your own cwd fails too. A cwd left pointing at a freed cluster would be worse than an error: once another file reused the cluster, `ls` and relative paths in that process would read the new file's data as a directory.
+4. Re-read the dirent's sector (`dir_buf` may have been reused since the lookup), check the slot still holds the same name, set `name[0] = 0xE5` and write the sector back.
+5. Free the cluster chain in the in-memory FAT (`fat16_free_chain()`, interrupts off) and write the FAT to disk with `fat16_flush_fat()`, which writes every FAT copy from the same cache, so the copies stay identical. An empty file (`first_cluster` < 2) has no chain and stops at step 4.
+
+The dirent goes to disk before the FAT on purpose. A crash between steps 4 and 5 leaves clusters marked used that nothing points to: lost space, which an fsck-like check could recover later. The opposite order could leave a live entry pointing at clusters marked free, which the next allocation would hand to another file.
+
+A deleted slot (`0xE5`) is skipped by `dir_lookup()` and reused by `dir_insert()`, so creating the same name again gets a fresh, empty entry.
+
+**Interrupts and locking.** Only the in-memory steps run with interrupts off: the busy check, freeing the chain, and `fat16_alloc_cluster()` (which also runs under `irq_save()`/`irq_restore()` now, so two processes can't claim the same free cluster or claim one that is being freed). Disk I/O can't run that way: `ata_wait_irq()` blocks the caller until IRQ14 arrives and re-enables interrupts itself.
+
+**Known race (Phase 29 debt, not fixed here).** Nothing stops two processes from working on the same directory sector at once. Process A reads the sector, blocks on the disk, and process B writes a new entry into the same sector; when A writes its copy back with the `0xE5` mark, B's entry is lost. The busy check has the same gap: a process can open the file after the check passes and before the dirent is written. Both are the same missing whole-operation FAT16 lock already described under "Later FAT16 changes (Phase 17)" (`dir_buf`/`sector_buf` shared across blocking I/O). The fix is ROADMAP Phase 29.
 
 ## ATA IRQ-driven I/O
 

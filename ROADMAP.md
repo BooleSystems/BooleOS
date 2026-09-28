@@ -48,7 +48,7 @@ restructuring after Phase 16) use a hyphen and an uppercase letter
 | **19** | SDK / app-development experience | ✅ Done | CHANGELOG `[0.19.0]`, `docs/sdk.md`, `docs/kernel.md` |
 | **20** | Crash handler leads into Safe Mode (a crash saves a dump, resets, and Safe Mode shows it) | ✅ Done | CHANGELOG `[0.20.0]`, `docs/safemode.md` |
 | **21** | Copy-on-write `fork()` | ✅ Done | CHANGELOG `[0.21.0]`, `docs/memory.md`, `docs/scheduler.md`, `docs/syscalls.md` |
-| **22** | `unlink()`/`rmdir()` | 🔜 Planned | below |
+| **22** | `unlink()`/`rmdir()` | 🚧 In progress | below, CHANGELOG `[Unreleased]`, `docs/filesystem.md` |
 | **23** | Memory/CR3 release in `process_exit()` | 🔜 Planned | below |
 | **23-A** | Free the process's physical data pages | 🔜 Planned | below |
 | **23-B** | Free the page directory (CR3) and page tables | 🔜 Planned | below |
@@ -92,7 +92,7 @@ Done; see the table above and CHANGELOG `[0.17.0]`. One item carried over, not b
 Done; see the table above, CHANGELOG `[0.18.0]`, `docs/hal.md` and `docs/safemode.md`. Items from the original plan that were deliberately **not** done in this phase, carried over:
 
 - Safe Mode's GRUB entries **GUI debug** and **Text mode**, and "reboot into GUI debug" in its reboot submenu — they need the GUI (Phase 27); for now the menu has Default, serial debug mode, Safe Mode and the previous release.
-- Safe Mode's **erase** action (needs `unlink`, Phase 22) and the **disk check with verify-only vs. verify-and-repair** submenu (an fsck-like feature; its own sub-phase, not scheduled yet). The restricted shell is read-only for now.
+- Safe Mode's **erase** action (can call `fat16_unlink()` directly since Phase 22; not written yet) and the **disk check with verify-only vs. verify-and-repair** submenu (an fsck-like feature; its own sub-phase, not scheduled yet). The restricted shell is read-only for now.
 
 ### Phase 19 — SDK / app-development experience (closed in 0.19.0)
 
@@ -116,9 +116,18 @@ Done; see the table above, CHANGELOG `[0.21.0]` and `docs/memory.md`. `fork()` s
 ### Phase 22 — `unlink()`/`rmdir()`
 
 - **Goal:** complete the basic set of file operations — today `selftest` itself leaves junk on the disk because no delete syscall exists.
-- **Approach:** mark the dirent as `0xE5` (deleted), release the cluster chain back to the FAT's free list; decide a policy for deleting a directory with contents (error vs. recursive).
+- **Approach:** mark the dirent as `0xE5` (deleted), release the cluster chain back to the FAT's free list. Decided: `rmdir` of a directory with contents is an error, not recursive. Also refused: a file open in any process, and a directory that is any process's cwd.
 - **Main risk:** a bug surface similar to mkdir/subdirectories from Phase 15 — treat with the same "approve the approach before the code" rigor.
 - **Depends on:** FAT16 (already done).
+
+Progress (no lettered sub-phases; one piece of work):
+
+- [x] Kernel: `fat16_unlink()`/`fat16_rmdir()`, `SYS_UNLINK` (35)/`SYS_RMDIR` (36); `sys_kill()` now closes the killed process's fds
+- [x] libnos: `nos_unlink()`/`nos_rmdir()`
+- [x] Selftest: tests 25–30 (success and every refusal) and a counted cleanup (31); 31 tests
+- [x] Docs: `docs/filesystem.md`, `docs/syscalls.md`, `docs/testing.md`
+- [ ] Selftest run in QEMU, 31/31
+- [ ] Close as 0.22.0 (README, version, tag, release)
 
 ### Phase 23 — Memory/CR3 release in `process_exit()`
 
