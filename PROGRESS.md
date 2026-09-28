@@ -13,8 +13,8 @@ Do not duplicate README/docs content here. `README.md` is a lean index
 
 ## Current status
 
-Current version: **0.20.1** (Phase 20 closed as `0.20.0`, tagged `v0.20.0`; `0.20.1` is a PATCH: the `debug` boot argument now works).
-Last closed phase: **Phase 20** (Crash handler leads into Safe Mode).
+Current version: **0.21.0** (Phase 21 closed as `0.21.0`, tagged `v0.21.0`).
+Last closed phase: **Phase 21** (Copy-on-write `fork()`).
 
 ### Closed phases (one line each; detail in CHANGELOG.md / README.md)
 
@@ -33,25 +33,23 @@ Last closed phase: **Phase 20** (Crash handler leads into Safe Mode).
   `docs/sdk.md`, `make test-elf` — `0.19.0`.
 - Phase 20 — Crash handler leads into Safe Mode: an unhandled exception saves a
   record (polling-only ATA I/O), resets, and Safe Mode shows the crash; `crash
-  <de|pf|gpf>` test command — `0.20.0`. The roadmap was renumbered (old 20–30 are
-  now 21–31).
+  <de|pf|gpf>` test command — `0.20.0` (`0.20.1` PATCH: the `debug` boot
+  argument works). The roadmap was renumbered (old 20–30 are now 21–31).
+- Phase 21 — Copy-on-write `fork()`: `VMM_COW`, a per-page refcount in the PMM,
+  `vmm_cow_break()`, `CR0.WP`, `SYS_PAGEREF`; `process_exit()` releases data
+  pages (ROADMAP 23-A and the data-page half of 23-C) — `0.21.0`.
 
-### In progress: Phase 21 — Copy-on-write `fork()`
+### Next: Phase 22 — `unlink()`/`rmdir()`
 
-Code done on `nightly`, builds clean; waiting for the QEMU selftest run
-(tests 22–24 are the copy-on-write ones). Also pulled in, by the user's
-decision: `process_exit()` releases data pages (ROADMAP 23-A/23-C's data-page
-part; 23-B, directory + page tables, still open). Docs owed: see
-`docs/TODO.md`. `kernel/version.h` is `0.21.0-nightly`. Release
-routine after tagging: `make clean && make && make snapshot` on the tagged tree,
-commit `tools/prev/` (now holds v0.19.0, correct for 0.20.0), and publish the
-GitHub Release with the zip (see the Definition of Done in CLAUDE.md).
-Deferred, not blocking: test `docs/setup.md` on Windows (Phase 30).
+See ROADMAP.md. Release routine after tagging: `make clean && make && make snapshot`
+on the tagged tree, commit `tools/prev/`, and publish the GitHub Release with the
+zip (see the Definition of Done in CLAUDE.md). Deferred, not blocking: test
+`docs/setup.md` on Windows (Phase 30).
 
 ### Future roadmap
 
 See `ROADMAP.md` for the full per-phase breakdown and priority order
-(Phases 21–31, v1.0.0 closes right after Phase 31, the DOOM port). A
+(Phases 22–31, v1.0.0 closes right after Phase 31, the DOOM port). A
 package manager phase was deliberately decided against — don't add one.
 
 ## Architecture decisions (non-obvious; detail lives in the linked docs)

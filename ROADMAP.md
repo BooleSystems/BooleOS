@@ -1,8 +1,8 @@
 # BooleOS — Future roadmap
 
 The table below is the granular phase table: one row per phase AND per
-sub-phase, for both completed work (Phases 0–20, detailed in `README.md`,
-`CHANGELOG.md` and `docs/`) and planned work (Phases 21–31, ending at the
+sub-phase, for both completed work (Phases 0–21, detailed in `README.md`,
+`CHANGELOG.md` and `docs/`) and planned work (Phases 22–31, ending at the
 v1.0.0 milestone, detailed in the section further down). Planned
 sub-phases become completed rows as they land.
 
@@ -47,7 +47,7 @@ restructuring after Phase 16) use a hyphen and an uppercase letter
 | **18-B** | Safe Mode (failure counter, text UI, restricted shell, previous-release GRUB entry) | ✅ Done | CHANGELOG `[0.18.0]`, `docs/safemode.md` |
 | **19** | SDK / app-development experience | ✅ Done | CHANGELOG `[0.19.0]`, `docs/sdk.md`, `docs/kernel.md` |
 | **20** | Crash handler leads into Safe Mode (a crash saves a dump, resets, and Safe Mode shows it) | ✅ Done | CHANGELOG `[0.20.0]`, `docs/safemode.md` |
-| **21** | Copy-on-write `fork()` | 🔜 Planned | below |
+| **21** | Copy-on-write `fork()` | ✅ Done | CHANGELOG `[0.21.0]`, `docs/memory.md`, `docs/scheduler.md`, `docs/syscalls.md` |
 | **22** | `unlink()`/`rmdir()` | 🔜 Planned | below |
 | **23** | Memory/CR3 release in `process_exit()` | 🔜 Planned | below |
 | **23-A** | Free the process's physical data pages | 🔜 Planned | below |
@@ -109,13 +109,9 @@ Done; see the table above, CHANGELOG `[0.20.0]` and `docs/safemode.md`. An unhan
 - A crash *inside* the saving code (the re-entry guard), a crash before the disk is up (the halt path) and a fault in kernel mode were not exercised by the manual test; the `crash` command faults in ring 3 (BooleOS has no per-process fault isolation yet, so it takes the same fatal path).
 - Per-process fault isolation (a user-mode fault killing only that process instead of the machine) is Phase 29's item ("Per-process fault isolation in `idt.c`") and would change what a user-mode crash does.
 
-### Phase 21 — Copy-on-write `fork()`
+### Phase 21 — Copy-on-write `fork()` (closed in 0.21.0)
 
-- **Goal:** `fork()` no longer copies all physical memory up front; the parent's pages become read-only and shared until the first write.
-- **Approach:** requires a smart page-fault handler (exception 14) that distinguishes a COW fault from a real fault, allocates a new page on demand, copies the data, and remaps it read-write. Needs a per-physical-page refcount in the PMM (which likely doesn't exist yet) to know when it's safe to free a shared page.
-- **Main risk:** without a correct refcount, one process can free a page the other is still using.
-- **Depends on:** Phase 13 (`fork()`) — already done. Phase 16 (pipes), previously recommended as a prerequisite to avoid debugging two new features at once, is also already done.
-- **Status (in progress on `nightly`):** implemented, waiting for the selftest run. It also took over the data-page part of Phase 23 (see below): `process_exit()` drops the process's reference to each user page through the refcount, since the copy-on-write tests need an exit to release a shared page.
+Done; see the table above, CHANGELOG `[0.21.0]` and `docs/memory.md`. `fork()` shares the parent's pages read-only with a `VMM_COW` PTE bit and a per-page reference count in the PMM; the first write copies the page. It also took over the data-page part of Phase 23: `process_exit()` drops the process's reference to each user page, so 23-A and the data-page half of 23-C are done. The page directory and page tables still leak (23-B).
 
 ### Phase 22 — `unlink()`/`rmdir()`
 
@@ -229,11 +225,11 @@ Done; see the table above, CHANGELOG `[0.20.0]` and `docs/safemode.md`. An unhan
 
 ## Recommended priority order
 
-**Phase 21 → 22 → 23 → 24 → 25 → 26 → 27 → 28 → 29 → 30 → 31 → v1.0.0.**
+**Phase 22 → 23 → 24 → 25 → 26 → 27 → 28 → 29 → 30 → 31 → v1.0.0.**
 
 Dependency notes:
 
-- Phase 23-C depends on Phase 21 (COW fork) being closed.
+- Phase 23-C depends on Phase 21 (COW fork), which closed in 0.21.0.
 - Phase 29 depends on Phase 18 (HAL).
 - Phase 31 depends on Phase 27 (framebuffer) and on `lseek` from Phase 30.
 

@@ -15,16 +15,6 @@ only) whenever a version is closed.
 
 ## Pending
 
-- WIP: document copy-on-write `fork()` (Phase 21): `VMM_COW`, the PMM refcount
-  and `pmm_free_page()` as "drop a reference", `vmm_cow_break()` from the #PF
-  handler and from kernel writes (`user_kptr_write()`), CR0.WP, `process_exit()`
-  releasing data pages, why each critical section is interrupt-off, and
-  `SYS_PAGEREF` in `docs/syscalls.md`. Targets: docs/memory.md,
-  docs/scheduler.md, docs/syscalls.md, docs/security.md, docs/testing.md.
-  Files: kernel/memory/pmm.c/h, kernel/memory/vmm.c/h, kernel/process.c/h,
-  kernel/idt.c, kernel/syscall.c/h, kernel/irq.h, user/lib/booleos.c/h,
-  user/selftest.c.
-
 Known, intermittent, NOT blocking any phase:
 
 - TODO later: `probe()` in `kernel/drivers/ata.c` occasionally reports "no disk"

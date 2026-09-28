@@ -42,6 +42,7 @@ before the kernel touches it, see [security.md](security.md).
 | 31 | `SYS_REBOOT` | `reboot() → does not return; -1 if the reset had no effect` (keyboard-controller reset, port 0x64 ← 0xFE — `kernel/power.c`) |
 | 32 | `SYS_SHUTDOWN` | `shutdown() → does not return; -1 if unsupported/failed` (ACPI power-off through the PIIX4 power-management registers; prints "shutdown not supported on this hardware" if that device isn't in the PCI table — `kernel/power.c`) |
 | 33 | `SYS_PCI_FIND` | `pci_find(vendor, device) → 1 or 0` (1 if a device with that vendor/device ID is in the PCI table built at boot, 0 if not; no output parameters — bus/dev/fn are not returned to userland. Added for `selftest`'s specific-device check.) |
+| 34 | `SYS_PAGEREF` | `pageref(addr) → count or -1` (reference count of the physical page behind the caller's user address `addr`: 1 for a private page, N for a page shared copy-on-write by N processes after `fork()`, until one of them writes to it. -1 if `addr` is not a mapped user address. Read-only and returns no physical address. Added for `selftest`'s copy-on-write tests; libnos wrapper `nos_pageref()`.) |
 
 > `SYS_READ` is polymorphic: fd=0 reads from the keyboard (blocking, with echo and backspace) unless redirected (`stdin_redirect`, see `docs/pipes.md`); fd≥3 reads from a file or pipe opened via `SYS_OPEN`/`SYS_CREATE`/`SYS_PIPE`, advances the position (files only — a pipe has no seekable position), and returns 0 on EOF.
 

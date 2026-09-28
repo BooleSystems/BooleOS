@@ -3,6 +3,8 @@
 - Every syscall that reads or writes through a userland-supplied address (`sys_write`, `sys_read`, `sys_write_file`, `sys_meminfo`) goes through `user_ptr_valid()`/`copy_from_user()`/`copy_to_user()` (`kernel/syscall.c`), which confirm the whole `[addr, addr+len)` range is mapped **and** `VMM_USER` (via `vmm_get_user_phys_from_dir()`) before touching a single byte — a process can no longer point a syscall at the kernel's own identity-mapped memory (heap, page tables, ...) to read or corrupt it
 - The same `VMM_USER` check is enforced for filename/argument strings too: `user_kptr()` — the shared byte-resolution helper `copy_user_str()` is built on, used by `sys_open`, `sys_create`, `sys_exec`, and `sys_getarg` — resolves through `vmm_get_user_phys_from_dir()` as well, so those four syscalls got the same fix with no changes of their own
 
+- Since Phase 21 (copy-on-write `fork()`), writes into a user buffer go through `user_kptr_write()`, which breaks copy-on-write for the page first: the kernel writes through the physical address, so a read-only PTE alone would let `copy_to_user()` or `SYS_GETARG` write into a frame another process still maps. `CR0.WP` is also set, so a ring-0 write through a read-only user PTE faults instead of succeeding. See [memory.md](memory.md).
+
 ## Phase 14: bugs fixed
 
 Kernel memory-safety hardening closed 4 confirmed ring 3 → ring 0 arbitrary
@@ -42,7 +44,7 @@ Nothing is read outside `[data, data + size)`. This closes the old gap "`elf_loa
 
 ```
 kernel/
-  syscall.c/h         user_ptr_valid(), copy_from_user(), copy_to_user(), user_kptr()
+  syscall.c/h         user_ptr_valid(), copy_from_user(), copy_to_user(), user_kptr(), user_kptr_write()
   memory/vmm.c        vmm_get_user_phys_from_dir()
   elf.c/h             elf_load(): validates the program file against its size
 ```
