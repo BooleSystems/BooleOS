@@ -17,7 +17,7 @@
 #ifndef BOOLEOS_VERSION_H
 #define BOOLEOS_VERSION_H
 
-#define BOOLEOS_VERSION      "0.21.0"
+#define BOOLEOS_VERSION      "0.22.0-nightly"
 #define BOOLEOS_PHASE        "21"
 #define BOOLEOS_PHASE_DESC   "Copy-on-write fork()"
 

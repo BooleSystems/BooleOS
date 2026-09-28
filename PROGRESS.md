@@ -39,7 +39,7 @@ Last closed phase: **Phase 21** (Copy-on-write `fork()`).
   `vmm_cow_break()`, `CR0.WP`, `SYS_PAGEREF`; `process_exit()` releases data
   pages (ROADMAP 23-A and the data-page half of 23-C) — `0.21.0`.
 
-### In progress: Phase 22 — `unlink()`/`rmdir()` (version still `0.21.0`)
+### In progress: Phase 22 — `unlink()`/`rmdir()` (`kernel/version.h`: `0.22.0-nightly`)
 
 Code, libnos wrappers, selftest (tests 25–31, 31 total) and docs are done and
 build clean; the selftest has NOT been run in QEMU yet. Next: the user runs it,
