@@ -1,8 +1,8 @@
 # BooleOS — Future roadmap
 
 The table below is the granular phase table: one row per phase AND per
-sub-phase, for both completed work (Phases 0–21, detailed in `README.md`,
-`CHANGELOG.md` and `docs/`) and planned work (Phases 22–31, ending at the
+sub-phase, for both completed work (Phases 0–22, detailed in `README.md`,
+`CHANGELOG.md` and `docs/`) and planned work (Phases 23–31, ending at the
 v1.0.0 milestone, detailed in the section further down). Planned
 sub-phases become completed rows as they land.
 
@@ -48,7 +48,7 @@ restructuring after Phase 16) use a hyphen and an uppercase letter
 | **19** | SDK / app-development experience | ✅ Done | CHANGELOG `[0.19.0]`, `docs/sdk.md`, `docs/kernel.md` |
 | **20** | Crash handler leads into Safe Mode (a crash saves a dump, resets, and Safe Mode shows it) | ✅ Done | CHANGELOG `[0.20.0]`, `docs/safemode.md` |
 | **21** | Copy-on-write `fork()` | ✅ Done | CHANGELOG `[0.21.0]`, `docs/memory.md`, `docs/scheduler.md`, `docs/syscalls.md` |
-| **22** | `unlink()`/`rmdir()` | 🚧 In progress | below, CHANGELOG `[Unreleased]`, `docs/filesystem.md` |
+| **22** | `unlink()`/`rmdir()` | ✅ Done | CHANGELOG `[0.22.0]`, `docs/filesystem.md` |
 | **23** | Memory/CR3 release in `process_exit()` | 🔜 Planned | below |
 | **23-A** | Free the process's physical data pages | 🔜 Planned | below |
 | **23-B** | Free the page directory (CR3) and page tables | 🔜 Planned | below |
@@ -113,21 +113,9 @@ Done; see the table above, CHANGELOG `[0.20.0]` and `docs/safemode.md`. An unhan
 
 Done; see the table above, CHANGELOG `[0.21.0]` and `docs/memory.md`. `fork()` shares the parent's pages read-only with a `VMM_COW` PTE bit and a per-page reference count in the PMM; the first write copies the page. It also took over the data-page part of Phase 23: `process_exit()` drops the process's reference to each user page, so 23-A and the data-page half of 23-C are done. The page directory and page tables still leak (23-B).
 
-### Phase 22 — `unlink()`/`rmdir()`
+### Phase 22 — `unlink()`/`rmdir()` (closed in 0.22.0)
 
-- **Goal:** complete the basic set of file operations — today `selftest` itself leaves junk on the disk because no delete syscall exists.
-- **Approach:** mark the dirent as `0xE5` (deleted), release the cluster chain back to the FAT's free list. Decided: `rmdir` of a directory with contents is an error, not recursive. Also refused: a file open in any process, and a directory that is any process's cwd.
-- **Main risk:** a bug surface similar to mkdir/subdirectories from Phase 15 — treat with the same "approve the approach before the code" rigor.
-- **Depends on:** FAT16 (already done).
-
-Progress (no lettered sub-phases; one piece of work):
-
-- [x] Kernel: `fat16_unlink()`/`fat16_rmdir()`, `SYS_UNLINK` (35)/`SYS_RMDIR` (36); `sys_kill()` now closes the killed process's fds
-- [x] libnos: `nos_unlink()`/`nos_rmdir()`
-- [x] Selftest: tests 25–30 (success and every refusal) and a counted cleanup (31); 31 tests
-- [x] Docs: `docs/filesystem.md`, `docs/syscalls.md`, `docs/testing.md`
-- [ ] Selftest run in QEMU, 31/31
-- [ ] Close as 0.22.0 (README, version, tag, release)
+Done; see the table above, CHANGELOG `[0.22.0]` and `docs/filesystem.md`. `fat16_unlink()`/`fat16_rmdir()` mark the dirent `0xE5` and free the cluster chain in every FAT copy, dirent first. `rmdir` of a non-empty directory is an error, not recursive, matching the approach decided here. `SYS_UNLINK`/`SYS_RMDIR` (35/36), libnos `nos_unlink()`/`nos_rmdir()`, selftest expanded to 31 tests. The directory-sector race under concurrent access (two processes writing the same sector) is documented as known debt, not fixed — still Phase 29's whole-operation FAT16 lock.
 
 ### Phase 23 — Memory/CR3 release in `process_exit()`
 

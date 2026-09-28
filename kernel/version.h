@@ -17,9 +17,9 @@
 #ifndef BOOLEOS_VERSION_H
 #define BOOLEOS_VERSION_H
 
-#define BOOLEOS_VERSION      "0.22.0-nightly"
-#define BOOLEOS_PHASE        "21"
-#define BOOLEOS_PHASE_DESC   "Copy-on-write fork()"
+#define BOOLEOS_VERSION      "0.22.0"
+#define BOOLEOS_PHASE        "22"
+#define BOOLEOS_PHASE_DESC   "unlink()/rmdir()"
 
 // Composed strings so callers don't have to concatenate these by hand.
 #define BOOLEOS_BANNER       "BooleOS v" BOOLEOS_VERSION " - Phase " BOOLEOS_PHASE ": " BOOLEOS_PHASE_DESC

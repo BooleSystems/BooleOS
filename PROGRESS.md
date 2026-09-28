@@ -13,8 +13,8 @@ Do not duplicate README/docs content here. `README.md` is a lean index
 
 ## Current status
 
-Current version: **0.21.0** (Phase 21 closed as `0.21.0`, tagged `v0.21.0`).
-Last closed phase: **Phase 21** (Copy-on-write `fork()`).
+Current version: **0.22.0** (Phase 22 closed as `0.22.0`, tagged `v0.22.0`).
+Last closed phase: **Phase 22** (`unlink()`/`rmdir()`).
 
 ### Closed phases (one line each; detail in CHANGELOG.md / README.md)
 
@@ -38,20 +38,24 @@ Last closed phase: **Phase 21** (Copy-on-write `fork()`).
 - Phase 21 — Copy-on-write `fork()`: `VMM_COW`, a per-page refcount in the PMM,
   `vmm_cow_break()`, `CR0.WP`, `SYS_PAGEREF`; `process_exit()` releases data
   pages (ROADMAP 23-A and the data-page half of 23-C) — `0.21.0`.
+- Phase 22 — `unlink()`/`rmdir()`: `fat16_unlink()`/`fat16_rmdir()` (dirent
+  `0xE5` first, then the FAT chain freed), `SYS_UNLINK`/`SYS_RMDIR` (35/36),
+  `nos_unlink()`/`nos_rmdir()`, `sys_kill()` now closes fds too; selftest
+  expanded to 31 tests — `0.22.0`.
 
-### In progress: Phase 22 — `unlink()`/`rmdir()` (`kernel/version.h`: `0.22.0-nightly`)
+### Next: Phase 23 — Memory/CR3 release in `process_exit()`
 
-Code, libnos wrappers, selftest (tests 25–31, 31 total) and docs are done and
-build clean; the selftest has NOT been run in QEMU yet. Next: the user runs it,
-then closes 0.22.0 when asked. Progress checklist in ROADMAP.md, Phase 22. Release routine after tagging: `make clean && make && make snapshot`
-on the tagged tree, commit `tools/prev/`, and publish the GitHub Release with the
-zip (see the Definition of Done in CLAUDE.md). Deferred, not blocking: test
+See ROADMAP.md; the data-page half already landed in Phase 21 (23-A/23-C),
+so what remains is 23-B (page directory + page tables). Release routine
+after tagging: `make clean && make && make snapshot` on the tagged tree,
+commit `tools/prev/`, and publish the GitHub Release with the zip (see the
+Definition of Done in CLAUDE.md). Deferred, not blocking: test
 `docs/setup.md` on Windows (Phase 30).
 
 ### Future roadmap
 
 See `ROADMAP.md` for the full per-phase breakdown and priority order
-(Phases 22–31, v1.0.0 closes right after Phase 31, the DOOM port). A
+(Phases 23–31, v1.0.0 closes right after Phase 31, the DOOM port). A
 package manager phase was deliberately decided against — don't add one.
 
 ## Architecture decisions (non-obvious; detail lives in the linked docs)
