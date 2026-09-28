@@ -3,6 +3,7 @@
 #include "../hal.h"
 #include "../messages.h"
 #include "../memory/heap.h"
+#include "../irq.h"
 #include <stdint.h>
 
 /* ── BPB (BIOS Parameter Block) — fixed on-disk layout ─────── */
@@ -205,22 +206,33 @@ static int fat16_flush_fat(void) {
     return 0;
 }
 
+/* The FAT cache is shared by every process. Freeing a chain and claiming a
+   free cluster are read-modify-writes on it, so both run with interrupts
+   off: a timer tick in the middle could otherwise let another process claim
+   a cluster this one is freeing, or both claim the same free cluster. Only
+   the in-memory cache is covered; writing it to disk (fat16_flush_fat())
+   blocks on the ATA IRQ and cannot run with interrupts off. */
 static void fat16_free_chain(uint32_t cluster) {
-    while (cluster >= 2 && cluster < 0xFFF8) {
+    uint32_t flags = irq_save();
+    while (cluster >= 2 && cluster < 0xFFF8 && cluster < g_total_clusters) {
         uint32_t next = g_fat[cluster];
         g_fat[cluster] = 0x0000;
         cluster = next;
     }
+    irq_restore(flags);
 }
 
 /* allocates a free cluster, marks it as end-of-chain, returns the cluster or 0 */
 static uint32_t fat16_alloc_cluster(void) {
+    uint32_t flags = irq_save();
     for (uint32_t c = 2; c < g_total_clusters; c++) {
         if (g_fat[c] == 0x0000) {
             g_fat[c] = 0xFFFF;
+            irq_restore(flags);
             return c;
         }
     }
+    irq_restore(flags);
     return 0;  /* disk full */
 }
 
@@ -1022,4 +1034,116 @@ int fat16_read_at(uint32_t first_cluster, uint32_t pos,
     }
 
     return (int)read;
+}
+
+/* ── deletion (unlink / rmdir) ────────────────────────────────────── */
+
+void fat16_name83(const char *name, uint8_t out[11]) {
+    to_8_3(name, out);
+}
+
+static int name83_equal(const fat16_dirent_t *e, const uint8_t name83[11]) {
+    uint8_t n[11];
+    for (int j = 0; j < 8; j++) n[j]     = e->name[j];
+    for (int j = 0; j < 3; j++) n[8 + j] = e->ext[j];
+    for (int j = 0; j < 11; j++) if (n[j] != name83[j]) return 0;
+    return 1;
+}
+
+static int name83_is_dot(const uint8_t name83[11]) {
+    if (name83[0] != '.') return 0;
+    for (int j = (name83[1] == '.') ? 2 : 1; j < 11; j++) if (name83[j] != ' ') return 0;
+    return 1;
+}
+
+/* Resolves path to its dirent: the parent directory, the 8.3 name, a copy of
+   the entry, and where it lives (sector LBA + index in the sector). Returns
+   1 if found, 0 if not (or path names the root / "." / ".."), -1 on I/O
+   error. */
+static int find_entry(uint32_t dir_cluster, const char *path, uint32_t *parent,
+                      uint8_t name83[11], fat16_dirent_t *e, uint32_t *lba, uint32_t *idx) {
+    int r = resolve_path(dir_cluster, path, parent, name83);
+    if (r != 1) return r;
+    if (name83_is_dot(name83)) return 0;
+    return dir_lookup(*parent, name83, e, lba, idx);
+}
+
+/* Asks busy() with interrupts off, then deletes: marks the dirent 0xE5
+   (re-reading its sector first, since dir_buf may have been reused since the
+   lookup, and checking the slot still holds the same name), then frees the
+   cluster chain and writes the FAT to every copy. The dirent goes first: a
+   crash between the two steps leaves lost clusters (space that is never
+   reused), never a live entry pointing at clusters marked free. */
+static int delete_entry(uint32_t parent, const uint8_t name83[11], const fat16_dirent_t *found,
+                        uint32_t lba, uint32_t idx, int is_dir, fat16_busy_fn busy) {
+    uint32_t first = found->first_cluster;
+
+    if (busy) {
+        uint32_t flags = irq_save();
+        int in_use = busy(parent, name83, first, is_dir);
+        irq_restore(flags);
+        if (in_use) return -1;
+    }
+
+    if (block_read_sector(lba, dir_buf) < 0) return -1;
+    fat16_dirent_t *e = &((fat16_dirent_t *)dir_buf)[idx];
+    if (e->name[0] == DIRENT_EMPTY || e->name[0] == DIRENT_DELETED || !name83_equal(e, name83))
+        return -1;   /* changed under us since the lookup */
+    e->name[0] = DIRENT_DELETED;
+    if (block_write_sector(lba, dir_buf) < 0) return -1;
+
+    if (first < 2) return 0;   /* empty file: no chain */
+    fat16_free_chain(first);
+    return fat16_flush_fat();
+}
+
+int fat16_unlink(uint32_t dir_cluster, const char *path, fat16_busy_fn busy) {
+    if (!g_ready) return -1;
+
+    uint32_t parent, lba, idx;
+    uint8_t name83[11];
+    fat16_dirent_t e;
+    if (find_entry(dir_cluster, path, &parent, name83, &e, &lba, &idx) != 1) return -1;
+    if (e.attr & ATTR_DIRECTORY) return -1;   /* rmdir, not unlink */
+
+    return delete_entry(parent, name83, &e, lba, idx, 0, busy);
+}
+
+/* 1 if directory `cluster` holds nothing but "." / ".." and deleted or free
+   slots, 0 if it holds anything else (a long-name entry counts, it belongs
+   to a real file), -1 on I/O error. */
+static int dir_is_empty(uint32_t cluster) {
+    dir_iter_t it;
+    dir_iter_init(&it, cluster);
+    int r;
+
+    while ((r = dir_iter_next_sector(&it, dir_buf, 0)) == 1) {
+        fat16_dirent_t *entries = (fat16_dirent_t *)dir_buf;
+        for (uint32_t i = 0; i < 512 / sizeof(fat16_dirent_t); i++) {
+            fat16_dirent_t *e = &entries[i];
+            if (e->name[0] == DIRENT_EMPTY)   return 1;   /* end of directory */
+            if (e->name[0] == DIRENT_DELETED) continue;
+            uint8_t n[11];
+            for (int j = 0; j < 8; j++) n[j]     = e->name[j];
+            for (int j = 0; j < 3; j++) n[8 + j] = e->ext[j];
+            if ((e->attr & ATTR_DIRECTORY) && name83_is_dot(n)) continue;
+            return 0;
+        }
+    }
+    return r < 0 ? -1 : 1;
+}
+
+int fat16_rmdir(uint32_t dir_cluster, const char *path, fat16_busy_fn busy) {
+    if (!g_ready) return -1;
+
+    uint32_t parent, lba, idx;
+    uint8_t name83[11];
+    fat16_dirent_t e;
+    if (find_entry(dir_cluster, path, &parent, name83, &e, &lba, &idx) != 1) return -1;
+    if (!(e.attr & ATTR_DIRECTORY)) return -1;   /* unlink, not rmdir */
+    if (e.first_cluster < 2) return -1;          /* a subdirectory always has a cluster */
+
+    if (dir_is_empty(e.first_cluster) != 1) return -1;
+
+    return delete_entry(parent, name83, &e, lba, idx, 1, busy);
 }

@@ -33,7 +33,7 @@ before the kernel touches it, see [security.md](security.md).
 | 22 | `SYS_WRITE_FILE` | `write_file(fd, buf, len) → 0 or -1` (whole-file "save": the file's content becomes exactly `buf`, `len == 0` truncates; FAT16 only — see `vfs_write_all()`. For a stream of writes use `SYS_WRITE` on the fd instead) |
 | 23 | `SYS_CREATE` | `create(name) → fd (≥3) or -1` (opens if it exists, otherwise creates it empty on FAT16) |
 | 24 | `SYS_PCI_LIST` | `pci_list() → device count` (reprints the PCI device table found at boot via VGA, without rescanning; also returns `pci_device_count()` so a caller can check "found anything?" without parsing VGA text — added for `user/selftest.c`) |
-| 25 | `SYS_FORK` | `fork() → child's pid (parent) / 0 (child) / -1` (duplicates the caller: full address space, open fds; not copy-on-write) |
+| 25 | `SYS_FORK` | `fork() → child's pid (parent) / 0 (child) / -1` (duplicates the caller: address space and open fds; since Phase 21 the user pages are shared copy-on-write and copied on the first write, see `docs/memory.md`) |
 | 26 | `SYS_CHDIR` | `chdir(path) → 0 or -1` (changes the caller's FAT16 cwd; only mutates it on confirmed success — a missing path, a path naming a file, or an I/O error all leave the cwd untouched) |
 | 27 | `SYS_MKDIR` | `mkdir(path) → 0 or -1` (creates a directory on FAT16; idempotent if a directory of that name already exists, fails if a file does) |
 | 28 | `SYS_PIPE` | `pipe(fds[2]) → 0 or -1` (creates a pipe; `fds[0]`=read end, `fds[1]`=write end — both plain fds, usable with `SYS_READ`/`SYS_WRITE` like any other. See `docs/pipes.md`.) |
@@ -43,6 +43,8 @@ before the kernel touches it, see [security.md](security.md).
 | 32 | `SYS_SHUTDOWN` | `shutdown() → does not return; -1 if unsupported/failed` (ACPI power-off through the PIIX4 power-management registers; prints "shutdown not supported on this hardware" if that device isn't in the PCI table — `kernel/power.c`) |
 | 33 | `SYS_PCI_FIND` | `pci_find(vendor, device) → 1 or 0` (1 if a device with that vendor/device ID is in the PCI table built at boot, 0 if not; no output parameters — bus/dev/fn are not returned to userland. Added for `selftest`'s specific-device check.) |
 | 34 | `SYS_PAGEREF` | `pageref(addr) → count or -1` (reference count of the physical page behind the caller's user address `addr`: 1 for a private page, N for a page shared copy-on-write by N processes after `fork()`, until one of them writes to it. -1 if `addr` is not a mapped user address. Read-only and returns no physical address. Added for `selftest`'s copy-on-write tests; libnos wrapper `nos_pageref()`.) |
+| 35 | `SYS_UNLINK` | `unlink(path) → 0 or -1` (deletes a FAT16 file: its dirent is marked `0xE5` and its cluster chain freed in every FAT copy. -1 if the path doesn't exist, is a directory, or the file is open in any live process. libnos wrapper `nos_unlink()`; see `docs/filesystem.md`) |
+| 36 | `SYS_RMDIR` | `rmdir(path) → 0 or -1` (deletes an empty FAT16 directory, same way as `SYS_UNLINK`. -1 if the path doesn't exist, is a file, is the root, `.` or `..`, holds any entry besides `.`/`..`, or is the cwd of any live process, the caller included. libnos wrapper `nos_rmdir()`) |
 
 > `SYS_READ` is polymorphic: fd=0 reads from the keyboard (blocking, with echo and backspace) unless redirected (`stdin_redirect`, see `docs/pipes.md`); fd≥3 reads from a file or pipe opened via `SYS_OPEN`/`SYS_CREATE`/`SYS_PIPE`, advances the position (files only — a pipe has no seekable position), and returns 0 on EOF.
 

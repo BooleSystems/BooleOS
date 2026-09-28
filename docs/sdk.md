@@ -78,7 +78,7 @@ The header `user/lib/booleos.h` is the reference; what each system call does is 
 
 **Input and output:** `nos_write(fd, buf, len)` and `nos_read(fd, buf, len)` (fd 1 is the screen, fd 0 the keyboard), `nos_read_raw()`, `nos_set_raw_mode()`, `nos_kbd_flush()`, `nos_clear()`, `nos_gotoxy(col, row)`, `nos_setcolor(fg, bg)`.
 
-**Files and directories:** `nos_open(name)`, `nos_create(name)`, `nos_close(fd)`, `nos_read`/`nos_write` on file descriptors, `nos_write_file(fd, buf, len)` (replace the whole file), `nos_readdir(path)` (prints a listing), `nos_chdir(path)`, `nos_mkdir(path)`, `nos_getcwd(buf, len)`.
+**Files and directories:** `nos_open(name)`, `nos_create(name)`, `nos_close(fd)`, `nos_read`/`nos_write` on file descriptors, `nos_write_file(fd, buf, len)` (replace the whole file), `nos_readdir(path)` (prints a listing), `nos_chdir(path)`, `nos_mkdir(path)`, `nos_unlink(path)` (delete a file; fails if it is open anywhere), `nos_rmdir(path)` (delete an empty directory; fails if it is some process's cwd), `nos_getcwd(buf, len)`.
 
 **System:** `nos_getarg(buf, len)`, `nos_pci_list()`, `nos_pci_find(vendor, device)`, `nos_reboot()`, `nos_shutdown()`.
 

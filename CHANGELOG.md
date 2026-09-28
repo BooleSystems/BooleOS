@@ -22,7 +22,21 @@ called out inline rather than silently "corrected", and `[0.11.0]`–
 Phase 10), not a version string that ever actually appeared in the repo
 at the time.
 
-## [Unreleased]
+## [0.22.0] - 2026-09-28 - Phase 22: unlink()/rmdir()
+
+### Added
+- **`unlink()`/`rmdir()` (Phase 22).** `fat16_unlink()`/`fat16_rmdir()` mark the dirent `0xE5` and free the cluster chain in every FAT copy, dirent first and then the FAT (a crash between the two loses space, never leaves a live entry pointing at freed clusters). `rmdir` refuses a non-empty directory (not recursive) and both refuse a file open in any live process or a directory that is any process's cwd, checked through a `fat16_busy_fn` callback so `fat16.c` stays free of process knowledge. `SYS_UNLINK` (35) and `SYS_RMDIR` (36); libnos wrappers `nos_unlink()`/`nos_rmdir()`. Freeing and allocating FAT clusters now run with interrupts off (disk I/O can't: `ata_wait_irq()` blocks on the IRQ with interrupts on).
+- selftest tests 25–31 (31 total, was 24): `unlink()` of a file and a second `unlink()` failing, `unlink()` refusing an open file then succeeding after close, `rmdir()` of an empty directory and a second `rmdir()` failing, `rmdir()` refusing a non-empty directory then succeeding once emptied, `unlink()`/`rmdir()` refusing the wrong kind and the root/`.`/`..`, `rmdir()` refusing a directory that is a live process's cwd (its own included), and a counted cleanup that deletes every file and directory the suite created. The old `[INFO]` note about files left on disk is gone.
+- Documentation for the phase: a "Deleting files and directories" section in `docs/filesystem.md` (the delete steps, why the dirent is written before the FAT, the in-use checks, and the directory-sector race left open as Phase 29 debt, with a reproduced case: two `run selftest` at once can fail cleanup, though shared test names and the cwd refusal can cause that on their own, so it isn't proof of the race by itself); `docs/syscalls.md` rows 35/36; `docs/sdk.md` lists the new wrappers.
+- `SECURITY.md` (repository root, the file GitHub's Security tab shows): supported versions (only the latest tag, `v0.21.0` at the time), how to report a vulnerability (email `theshannondev@gmail.com`, best effort, no SLA, no bounty, receipt of the report is confirmed), and a "Phase 21: Copy-on-write fork() hardening" section (per-page reference count, `user_kptr_write()` breaking copy-on-write before kernel writes, `CR0.WP`, known limits). The Phase 14 and Phase 19 material stays in `docs/security.md` and is linked, not copied.
+
+### Changed
+- `sys_kill()` now closes the killed process's fds and pipe ends before `process_exit()` (only `sys_exit()` did before), so `unlink()` no longer refuses a file forever just because the process that had it open was killed rather than exited.
+- Two known issues found while validating this phase, recorded and not fixed: two concurrent `run selftest` can fail the cleanup test (30/31, cause not isolated, see `docs/filesystem.md`); typing at the shell while a `run` program is still printing garbles the input (lost/doubled characters, a command re-running by itself — `run` doesn't wait for the program, so the shell's line reading and the program's output run at once), recorded in `docs/TODO.md`.
+- `CLAUDE.md`, "Regra de push": a scope line makes explicit that the section (including the doc-only exception) only decides what justifies a push to `main`; `nightly` always takes a push at the end of a finished unit of work or a session, documentation-only included. The one bullet that referred to `nightly` in parentheses now correctly says `main`.
+- `docs/security.md`: the short Phase 21 note became a full section, "Copy-on-write fork() and memory safety (Phase 21)", and the "Relevant files" block lists the Phase 21 files.
+- `docs/syscalls.md` row 25 no longer describes `fork()` as "not copy-on-write" (stale since Phase 21).
+- `tools/prev/` now holds the v0.21.0 snapshot (kernel + ramfs built from the `v0.21.0` tag in a clean worktree), so the "previous release" GRUB entry of this version is v0.21.0.
 
 ## [0.21.0] - 2026-09-27 - Phase 21: Copy-on-write fork()
 

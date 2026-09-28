@@ -9,7 +9,7 @@
  | |_) || (_) || (_) || ||  __/| |_| | ___) |
  |____/  \___/  \___/ |_| \___| \___/ |____/ 
 
- BooleOS v0.21.0 - Phase 21: Copy-on-write fork()
+ BooleOS v0.22.0 - Phase 22: unlink()/rmdir()
 ```
 
 ## Overview
@@ -44,8 +44,9 @@ See [CHANGELOG.md](CHANGELOG.md) for version history and [ROADMAP.md](ROADMAP.md
 | **19** | SDK / app-development experience: `exec()` loads programs from FAT16 as well as the ramfs (found by `vfs_open()`, read from disk by the directory-entry size), so a program no longer needs an ISO rebuild to be tested; the ELF loader validates the file against its real size; a minimal `printf` family in libnos (`printf`, `sprintf`, `snprintf`, `vsnprintf`); an SDK template and Makefile (`sdk/`, `make inject`) and a developer guide ([docs/sdk.md](docs/sdk.md)); `make test-elf` (host-side loader test); a kernel heap fix (its pages must be virt == phys) | ✅ Done |
 | **20** | Crash handler leads into Safe Mode: an unhandled CPU exception saves a crash record in the boot config sector (polling-only ATA I/O, no heap or scheduler), shows the red screen and resets the machine; the next boot goes to Safe Mode with the reason and a "View last crash details" screen; the `crash <de\|pf\|gpf>` shell command tests the pipeline ([docs/safemode.md](docs/safemode.md)) | ✅ Done |
 | **21** | Copy-on-write `fork()`: the parent's pages are shared read-only with the child (new `VMM_COW` PTE bit, a reference count per physical page in the PMM) and the first write copies the page, from the page-fault handler or from a kernel write into user memory (`vmm_cow_break()`); `CR0.WP` set; `process_exit()` now releases a process's data pages through the refcount; `SYS_PAGEREF`; selftest expanded to 24 tests ([docs/memory.md](docs/memory.md)) | ✅ Done |
+| **22** | `unlink()`/`rmdir()`: `fat16_unlink()`/`fat16_rmdir()` mark the dirent `0xE5` and free the cluster chain in every FAT copy, dirent first so a crash never leaves a live entry on freed clusters; refuse a file open in any process, a non-empty directory, the root, `.`/`..`, and a directory that is any process's cwd; `SYS_UNLINK`/`SYS_RMDIR` (35/36), libnos `nos_unlink()`/`nos_rmdir()`; `sys_kill()` now closes the killed process's fds too; selftest expanded to 31 tests ([docs/filesystem.md](docs/filesystem.md)) | ✅ Done |
 
-For planned Phases 22–31, see **[ROADMAP.md](ROADMAP.md)**.
+For planned Phases 23–31, see **[ROADMAP.md](ROADMAP.md)**.
 
 ## Documentation
 

@@ -113,7 +113,7 @@ Main menu item **5. Restricted shell (initializes disk access)**. Tier 1 never t
   - `cd [dir]` — no argument = root;
   - `back` — returns to the menu; nothing is torn down, and the current directory is kept for the next visit.
   Unknown command: an error and the prompt continues.
-- **Deliberately not here:** file writes/editing, delete (no `unlink` until Phase 22), an fsck-like check, and the Tier-1 screens (reboot, disk info, hexdump stay in the main menu). It is a read/navigation-only recovery aid so it cannot corrupt more.
+- **Deliberately not here:** file writes/editing, delete (Phase 22 adds `fat16_unlink()`, a plain C call Safe Mode could use, but the erase action is not written yet), an fsck-like check, and the Tier-1 screens (reboot, disk info, hexdump stay in the main menu). It is a read/navigation-only recovery aid so it cannot corrupt more.
 
 ## Implemented in pass 3: the tier-1 TUI (`kernel/safemode.c`)
 

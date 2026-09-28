@@ -42,8 +42,14 @@ Expected output shape (exact wording may evolve as tests are added):
 [PASS] copy-on-write fork: writes stay private (child first, then parent first)
 [PASS] copy-on-write fork: 3 generations, refcount follows the live holders
 [PASS] copy-on-write fork under preemption: 4 children rewrite 4 shared pages
-[INFO] cleanup: no delete/unlink/rmdir syscall exists yet - st_root.txt, st_big.txt, st_cat.elf, st_bad.bin, st_trunc.elf, selftest_dir/ and st_d1/ (with their files) left on disk (harmless)
-Selftest: 24/24 passed
+[PASS] unlink() deletes a file; a second unlink of it fails
+[PASS] unlink() refuses an open file, then succeeds after close
+[PASS] rmdir() deletes an empty directory; a second rmdir of it fails
+[PASS] rmdir() refuses a non-empty directory, then succeeds once emptied
+[PASS] unlink()/rmdir() refuse the wrong kind, the root, "." and ".."
+[PASS] rmdir() refuses a directory that is a live process's cwd
+[PASS] cleanup: every test file and directory deleted
+Selftest: 31/31 passed
 ```
 
 A `[FAIL] <name>: <reason>` line pinpoints which subsystem broke without
@@ -51,7 +57,7 @@ needing to reproduce the bug by hand first.
 
 ## What each test checks
 
-**24 tests in total** (numbering below: the cleanup note is item 25).
+**31 tests in total**; the cleanup (31) is a counted test too.
 
 1. **Memory** — calls `SYS_MEMINFO` and checks it returns a plausible
    process count. There is no userland-facing syscall that allocates a
@@ -199,11 +205,38 @@ needing to reproduce the bug by hand first.
     forks. Each child must see only its own bytes plus the untouched ones it
     inherited; the parent must end with its own content and a count of 1 on
     every page, so no reference is lost or left behind.
-25. **Cleanup** — not a PASS/FAIL check: there's no delete/unlink/rmdir
-    syscall yet, so `st_root.txt`, `st_big.txt`, `st_cat.elf`, `st_bad.bin`,
-    `st_trunc.elf`, `selftest_dir/` and the files inside it, and
-    `st_d1/st_d2/st_d3/` with `st_deep.txt`, are left on disk. Noted in the
-    output as a known limitation, not a failure.
+25. **`unlink()` of a file** (Phase 22) — creates `st_unl.txt`, deletes it,
+    and checks it no longer opens and that a second `unlink()` of the name
+    fails. Creating the name again must give an empty file, not the old
+    data (the new entry reuses the `0xE5` slot).
+26. **`unlink()` refuses an open file** (Phase 22) — with `st_open.txt` open
+    in this process, `unlink()` must fail and leave the file in place; after
+    `close()` the same call succeeds. The kernel checks the fds of every
+    live process, this one included.
+27. **`rmdir()` of an empty directory** (Phase 22) — `st_rmd` is created and
+    removed; `cd` into it must fail afterwards, and so must a second
+    `rmdir()`.
+28. **`rmdir()` refuses a non-empty directory** (Phase 22) — `st_full`
+    holds `st_in.txt`, so `rmdir()` must fail and keep the file. After
+    `unlink("st_full/st_in.txt")` (a path through the directory) the
+    `rmdir()` succeeds.
+29. **Wrong kind and special names** (Phase 22) — `unlink()` of a directory,
+    `rmdir()` of a file, and `rmdir()` of `/`, `.` and `..` must all fail
+    without deleting anything.
+30. **`rmdir()` refuses a live process's cwd** (Phase 22) — a forked child
+    `cd`s into `st_cwd` and waits on a pipe; while it is alive `rmdir()`
+    must fail. The parent also `cd`s into the directory and tries
+    `rmdir("../st_cwd")` on its own cwd, which must fail too. Once the child
+    has exited and been reaped, and the parent is back at `/`, the same
+    `rmdir()` succeeds.
+31. **Cleanup** (Phase 22) — deletes every file and directory the suite
+    creates, deepest first: `st_root.txt`, `st_big.txt`, `st_cat.elf`,
+    `st_bad.bin`, `st_trunc.elf`, `selftest_dir/` with its two files,
+    `st_d1/st_d2/st_d3/` with `st_deep.txt`, and the names of tests 25–30
+    in case one of them stopped halfway. A name that is already gone is
+    fine; the test fails only if something is still there afterwards. The
+    first run on a disk used by an older selftest also removes what that
+    one left behind.
 
 ## Manual test: a real pipeline (`cmd1 | cmd2`)
 
@@ -232,9 +265,6 @@ see EOF and exit.
 
 ## Known limitations
 
-- No delete/unlink/rmdir syscall exists yet, so test files/directories
-  persist across runs (harmless — each run just re-creates/overwrites
-  the same names).
 - Test 5 can't directly verify "no duplicate directory entry" since
   there's no syscall that returns parsed directory entries — it checks
   the closest observable symptom instead (see above). Test 11 has the

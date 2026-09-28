@@ -1,8 +1,8 @@
 # BooleOS — Future roadmap
 
 The table below is the granular phase table: one row per phase AND per
-sub-phase, for both completed work (Phases 0–21, detailed in `README.md`,
-`CHANGELOG.md` and `docs/`) and planned work (Phases 22–31, ending at the
+sub-phase, for both completed work (Phases 0–22, detailed in `README.md`,
+`CHANGELOG.md` and `docs/`) and planned work (Phases 23–31, ending at the
 v1.0.0 milestone, detailed in the section further down). Planned
 sub-phases become completed rows as they land.
 
@@ -48,7 +48,7 @@ restructuring after Phase 16) use a hyphen and an uppercase letter
 | **19** | SDK / app-development experience | ✅ Done | CHANGELOG `[0.19.0]`, `docs/sdk.md`, `docs/kernel.md` |
 | **20** | Crash handler leads into Safe Mode (a crash saves a dump, resets, and Safe Mode shows it) | ✅ Done | CHANGELOG `[0.20.0]`, `docs/safemode.md` |
 | **21** | Copy-on-write `fork()` | ✅ Done | CHANGELOG `[0.21.0]`, `docs/memory.md`, `docs/scheduler.md`, `docs/syscalls.md` |
-| **22** | `unlink()`/`rmdir()` | 🔜 Planned | below |
+| **22** | `unlink()`/`rmdir()` | ✅ Done | CHANGELOG `[0.22.0]`, `docs/filesystem.md` |
 | **23** | Memory/CR3 release in `process_exit()` | 🔜 Planned | below |
 | **23-A** | Free the process's physical data pages | 🔜 Planned | below |
 | **23-B** | Free the page directory (CR3) and page tables | 🔜 Planned | below |
@@ -92,7 +92,7 @@ Done; see the table above and CHANGELOG `[0.17.0]`. One item carried over, not b
 Done; see the table above, CHANGELOG `[0.18.0]`, `docs/hal.md` and `docs/safemode.md`. Items from the original plan that were deliberately **not** done in this phase, carried over:
 
 - Safe Mode's GRUB entries **GUI debug** and **Text mode**, and "reboot into GUI debug" in its reboot submenu — they need the GUI (Phase 27); for now the menu has Default, serial debug mode, Safe Mode and the previous release.
-- Safe Mode's **erase** action (needs `unlink`, Phase 22) and the **disk check with verify-only vs. verify-and-repair** submenu (an fsck-like feature; its own sub-phase, not scheduled yet). The restricted shell is read-only for now.
+- Safe Mode's **erase** action (can call `fat16_unlink()` directly since Phase 22; not written yet) and the **disk check with verify-only vs. verify-and-repair** submenu (an fsck-like feature; its own sub-phase, not scheduled yet). The restricted shell is read-only for now.
 
 ### Phase 19 — SDK / app-development experience (closed in 0.19.0)
 
@@ -113,12 +113,9 @@ Done; see the table above, CHANGELOG `[0.20.0]` and `docs/safemode.md`. An unhan
 
 Done; see the table above, CHANGELOG `[0.21.0]` and `docs/memory.md`. `fork()` shares the parent's pages read-only with a `VMM_COW` PTE bit and a per-page reference count in the PMM; the first write copies the page. It also took over the data-page part of Phase 23: `process_exit()` drops the process's reference to each user page, so 23-A and the data-page half of 23-C are done. The page directory and page tables still leak (23-B).
 
-### Phase 22 — `unlink()`/`rmdir()`
+### Phase 22 — `unlink()`/`rmdir()` (closed in 0.22.0)
 
-- **Goal:** complete the basic set of file operations — today `selftest` itself leaves junk on the disk because no delete syscall exists.
-- **Approach:** mark the dirent as `0xE5` (deleted), release the cluster chain back to the FAT's free list; decide a policy for deleting a directory with contents (error vs. recursive).
-- **Main risk:** a bug surface similar to mkdir/subdirectories from Phase 15 — treat with the same "approve the approach before the code" rigor.
-- **Depends on:** FAT16 (already done).
+Done; see the table above, CHANGELOG `[0.22.0]` and `docs/filesystem.md`. `fat16_unlink()`/`fat16_rmdir()` mark the dirent `0xE5` and free the cluster chain in every FAT copy, dirent first. `rmdir` of a non-empty directory is an error, not recursive, matching the approach decided here. `SYS_UNLINK`/`SYS_RMDIR` (35/36), libnos `nos_unlink()`/`nos_rmdir()`, selftest expanded to 31 tests. The directory-sector race under concurrent access (two processes writing the same sector) is documented as known debt, not fixed — still Phase 29's whole-operation FAT16 lock.
 
 ### Phase 23 — Memory/CR3 release in `process_exit()`
 
