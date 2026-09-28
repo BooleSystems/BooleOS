@@ -26,3 +26,15 @@ Known, intermittent, NOT blocking any phase:
   the next occurrence: when it happens, keep the serial log of that boot and of the
   one before it, look at `altstatus BEFORE soft reset` and the step that failed,
   fix the cause, then REMOVE the trace. Related files: kernel/drivers/ata.c.
+
+- TODO later (known bug, found while validating Phase 22, not caused by it):
+  typing at the shell while a program started with `run` is still writing to
+  the console garbles the input. `run` does not wait for the program, so the
+  shell's prompt and line reading run at the same time as the program's output.
+  Symptoms seen: characters lost or doubled; `run selftest` coming out as
+  `runrun`; a command running again without being typed. Suspected cause, not
+  checked: a race between the keyboard IRQ handler / the shell's line
+  editing (echo, backspace) and console output from another process. Reproduce:
+  `run selftest`, then type another command while it is still printing.
+  Related files: kernel/keyboard.c, kernel/syscall.c (`SYS_READ` fd 0,
+  echo), user/shell.c (`cmd_run()`, line reading), kernel/drivers/vga.c.

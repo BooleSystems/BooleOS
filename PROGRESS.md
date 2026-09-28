@@ -212,8 +212,13 @@ package manager phase was deliberately decided against — don't add one.
 - **`dir_buf`/`sector_buf` in `fat16.c` are global buffers held across
   blocking ATA writes** — a concurrent FAT16 call from another process can
   clobber them. `unlink`/`rmdir` share the gap: two processes rewriting one
-  directory sector can lose an entry. Fix = whole-operation FAT16 lock, Phase 29
+  directory sector can lose an entry. Two concurrent selftests fail cleanup
+  (30/31), but fixed shared names + the cwd refusal explain that too, so it is
+  not proof of the race (`docs/filesystem.md`). Fix = whole-operation FAT16 lock, Phase 29
   (`docs/filesystem.md`).
+- **Typing while a `run` program prints garbles shell input** (lost/doubled
+  characters, a command running again by itself). Found in Phase 22
+  validation, pre-existing; symptoms and repro in `docs/TODO.md`.
 - **Shell redirection limits:** builtins can't be redirected; `>`/`<`
   can't combine with `|` and pass no arguments (`docs/shell.md`).
 - **`SYS_WRITE` chunks at 128 bytes**, each chunk doing its own dirent
