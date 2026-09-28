@@ -24,6 +24,9 @@ at the time.
 
 ## [Unreleased]
 
+### Changed
+- `tools/prev/` now holds the v0.21.0 snapshot (kernel + ramfs built from the `v0.21.0` tag in a clean worktree), so the "previous release" GRUB entry of the next version is v0.21.0.
+
 ## [0.21.0] - 2026-09-27 - Phase 21: Copy-on-write fork()
 
 ### Added
