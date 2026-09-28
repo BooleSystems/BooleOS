@@ -75,6 +75,34 @@ static int st_read_n(int fd, char *buf, int n) {
     return 0;
 }
 
+/* ── unlink()/rmdir() (Phase 22) ──────────────────────────────────── */
+
+/* 1 if path opens as a file. Only for names that are not in the ramfs
+   (vfs_open() looks there first). */
+static int st_file_exists(const char *path) {
+    int fd = nos_open(path);
+    if (fd < 0) return 0;
+    nos_close(fd);
+    return 1;
+}
+
+/* 1 if path is a directory the caller can cd into. Assumes cwd is the root
+   and leaves it there. */
+static int st_dir_exists(const char *path) {
+    if (nos_chdir(path) != 0) return 0;
+    nos_chdir("/");
+    return 1;
+}
+
+/* Creates path with the given content. 0 on success, -1 on failure. */
+static int st_make_file(const char *path, const char *content) {
+    int fd = nos_create(path);
+    if (fd < 0) return -1;
+    int r = nos_write_file(fd, content, strlen(content));
+    nos_close(fd);
+    return r == 0 ? 0 : -1;
+}
+
 /* ── the test suite itself ────────────────────────────────────────── */
 
 void _start(void) {
@@ -1045,12 +1073,207 @@ void _start(void) {
         else     st_pass(tname);
     }
 
-    /* 25. Cleanup — not counted as PASS/FAIL, just a note: there is no
-       delete/unlink/rmdir syscall yet, so st_root.txt, st_big.txt,
-       selftest_dir/ (and the two files inside it) and st_d1/st_d2/st_d3/ (with st_deep.txt) are left on disk. Harmless: the
-       next run just re-creates/overwrites everything by the same names. */
-    st_puts("[INFO] cleanup: no delete/unlink/rmdir syscall exists yet -"
-            " st_root.txt, st_big.txt, st_cat.elf, st_bad.bin, st_trunc.elf, selftest_dir/ and st_d1/ (with their files) left on disk (harmless)\n");
+    /* 25. unlink() of an ordinary file (Phase 22): the file is gone
+       afterwards, a second unlink of the same name fails, and creating the
+       name again gives a fresh, empty file (not the old data). Runs from the
+       root, like every test from 18 on. */
+    {
+        const char *tname = "unlink() deletes a file; a second unlink of it fails";
+        const char *why = 0;
+
+        if (st_make_file("st_unl.txt", "BooleOS selftest unlink data 3141\n") != 0)
+            why = "could not create st_unl.txt (no disk?)";
+        else if (nos_unlink("st_unl.txt") != 0)
+            why = "nos_unlink() returned nonzero on an existing, closed file";
+        else if (st_file_exists("st_unl.txt"))
+            why = "the file can still be opened after unlink()";
+        else if (nos_unlink("st_unl.txt") != -1)
+            why = "a second unlink() of the same name did not fail";
+        else {
+            int fd = nos_create("st_unl.txt");
+            char b[8];
+            if (fd < 0) why = "could not create the name again after unlink()";
+            else {
+                if (nos_read(fd, b, sizeof(b)) != 0) why = "the re-created file is not empty";
+                nos_close(fd);
+                if (nos_unlink("st_unl.txt") != 0 && !why) why = "unlink() of the re-created file failed";
+            }
+        }
+
+        if (why) st_fail(tname, why);
+        else     st_pass(tname);
+    }
+
+    /* 26. unlink() refuses a file that is open (Phase 22). The open fd is
+       this process's own; the check covers every live process the same
+       way. After the close the same unlink() must succeed. */
+    {
+        const char *tname = "unlink() refuses an open file, then succeeds after close";
+        const char *why = 0;
+        int fd = -1;
+
+        if (st_make_file("st_open.txt", "BooleOS selftest open-file data 2718\n") != 0)
+            why = "could not create st_open.txt (no disk?)";
+        else if ((fd = nos_open("st_open.txt")) < 0)
+            why = "could not open st_open.txt";
+        else if (nos_unlink("st_open.txt") != -1)
+            why = "unlink() of an open file did not fail";
+        else if (!st_file_exists("st_open.txt"))
+            why = "the refused unlink() deleted the file anyway";
+        if (fd >= 0) nos_close(fd);
+        if (!why && nos_unlink("st_open.txt") != 0) why = "unlink() after close failed";
+        if (!why && st_file_exists("st_open.txt"))  why = "the file still exists after unlink()";
+
+        if (why) st_fail(tname, why);
+        else     st_pass(tname);
+    }
+
+    /* 27. rmdir() of an empty directory (Phase 22): cd into it fails
+       afterwards, and a second rmdir fails. */
+    {
+        const char *tname = "rmdir() deletes an empty directory; a second rmdir of it fails";
+        const char *why = 0;
+
+        if (nos_mkdir("st_rmd") != 0)        why = "nos_mkdir(st_rmd) failed (no disk?)";
+        else if (nos_rmdir("st_rmd") != 0)   why = "nos_rmdir() returned nonzero on an empty directory";
+        else if (st_dir_exists("st_rmd"))    why = "cd into the directory still works after rmdir()";
+        else if (nos_rmdir("st_rmd") != -1)  why = "a second rmdir() of the same name did not fail";
+
+        if (why) st_fail(tname, why);
+        else     st_pass(tname);
+    }
+
+    /* 28. rmdir() refuses a directory that is not empty (Phase 22); once its
+       only file is unlinked (by a path through the directory), rmdir()
+       succeeds. */
+    {
+        const char *tname = "rmdir() refuses a non-empty directory, then succeeds once emptied";
+        const char *why = 0;
+
+        if (nos_mkdir("st_full") != 0)
+            why = "nos_mkdir(st_full) failed (no disk?)";
+        else if (st_make_file("st_full/st_in.txt", "BooleOS selftest inner data 1618\n") != 0)
+            why = "could not create st_full/st_in.txt";
+        else if (nos_rmdir("st_full") != -1)
+            why = "rmdir() of a non-empty directory did not fail";
+        else if (!st_file_exists("st_full/st_in.txt"))
+            why = "the refused rmdir() lost the file inside";
+        else if (nos_unlink("st_full/st_in.txt") != 0)
+            why = "unlink() of the file inside failed";
+        else if (nos_rmdir("st_full") != 0)
+            why = "rmdir() of the emptied directory failed";
+        else if (st_dir_exists("st_full"))
+            why = "the directory still exists after rmdir()";
+
+        if (why) st_fail(tname, why);
+        else     st_pass(tname);
+    }
+
+    /* 29. The wrong kind and the special names are refused (Phase 22):
+       unlink() of a directory, rmdir() of a file, rmdir() of the root, "."
+       and "..". Nothing may be deleted by any of them. */
+    {
+        const char *tname = "unlink()/rmdir() refuse the wrong kind, the root, \".\" and \"..\"";
+        const char *why = 0;
+
+        if (nos_mkdir("st_kind") != 0)                       why = "nos_mkdir(st_kind) failed (no disk?)";
+        else if (st_make_file("st_kind.txt", "k\n") != 0)    why = "could not create st_kind.txt";
+        else if (nos_unlink("st_kind") != -1)                why = "unlink() of a directory did not fail";
+        else if (nos_rmdir("st_kind.txt") != -1)             why = "rmdir() of a file did not fail";
+        else if (nos_rmdir("/") != -1)                       why = "rmdir(\"/\") did not fail";
+        else if (nos_rmdir(".") != -1)                       why = "rmdir(\".\") did not fail";
+        else if (nos_rmdir("..") != -1)                      why = "rmdir(\"..\") did not fail";
+        else if (!st_dir_exists("st_kind"))                  why = "st_kind was deleted by a refused call";
+        else if (!st_file_exists("st_kind.txt"))             why = "st_kind.txt was deleted by a refused call";
+        if (nos_unlink("st_kind.txt") != 0 && !why)          why = "cleanup: unlink(st_kind.txt) failed";
+        if (nos_rmdir("st_kind") != 0 && !why)               why = "cleanup: rmdir(st_kind) failed";
+
+        if (why) st_fail(tname, why);
+        else     st_pass(tname);
+    }
+
+    /* 30. rmdir() refuses a directory that is another live process's cwd
+       (Phase 22). A forked child cd's into st_cwd and waits; while it is
+       alive rmdir() must fail. After it exits (and is reaped) the same
+       rmdir() must succeed. The directory being this process's own cwd is
+       refused the same way, checked with "../st_cwd" from inside it. */
+    {
+        const char *tname = "rmdir() refuses a directory that is a live process's cwd";
+        const char *why = 0;
+        int up[2] = { -1, -1 }, down[2] = { -1, -1 };
+        char c = 'n';
+
+        if (nos_mkdir("st_cwd") != 0)  why = "nos_mkdir(st_cwd) failed (no disk?)";
+        else if (nos_pipe(up) != 0)    why = "pipe() failed";
+        else if (nos_pipe(down) != 0)  why = "pipe() failed";
+
+        if (!why) {
+            int pid = nos_fork();
+            if (pid == 0) {
+                char r = (nos_chdir("st_cwd") == 0) ? 'y' : 'n';
+                nos_write(up[1], &r, 1);
+                st_read_n(down[0], &r, 1);               /* released */
+                nos_exit(0);
+            }
+            if (pid < 0) {
+                why = "fork() failed";
+            } else {
+                if (st_read_n(up[0], &c, 1) < 0 || c != 'y') why = "the child could not cd into st_cwd";
+                else if (nos_rmdir("st_cwd") != -1)          why = "rmdir() of another process's cwd did not fail";
+                else if (!st_dir_exists("st_cwd"))           why = "the refused rmdir() deleted the directory anyway";
+                nos_write(down[1], "x", 1);
+                nos_wait(pid);
+            }
+        }
+        if (!why) {
+            if (nos_chdir("st_cwd") != 0)            why = "cd into st_cwd failed";
+            else {
+                if (nos_rmdir("../st_cwd") != -1)    why = "rmdir() of this process's own cwd did not fail";
+                if (nos_chdir("/") != 0 && !why)     why = "cd back to / failed";
+            }
+        }
+        if (!why && nos_rmdir("st_cwd") != 0) why = "rmdir() failed after the child exited";
+
+        if (up[0] >= 0)   { nos_close(up[0]);   nos_close(up[1]); }
+        if (down[0] >= 0) { nos_close(down[0]); nos_close(down[1]); }
+        if (why) st_fail(tname, why);
+        else     st_pass(tname);
+    }
+
+    /* 31. Cleanup (Phase 22): delete every file and directory the suite
+       created, deepest first, so the disk ends as it was. Also removes what
+       an earlier failed run, or a run of a pre-Phase 22 selftest (which could
+       not delete anything), left behind. A name that is already gone is
+       fine; the test fails only if something still exists afterwards. The
+       names of tests 25-30 are included in case one of them failed midway. */
+    {
+        const char *tname = "cleanup: every test file and directory deleted";
+        static const char *files[] = {
+            "st_root.txt", "st_big.txt", "st_cat.elf", "st_bad.bin", "st_trunc.elf",
+            "selftest_dir/st_sub.txt", "selftest_dir/st_mark.txt",
+            "st_d1/st_d2/st_d3/st_deep.txt",
+            "st_unl.txt", "st_open.txt", "st_full/st_in.txt", "st_kind.txt",
+        };
+        static const char *dirs[] = {
+            "selftest_dir", "st_d1/st_d2/st_d3", "st_d1/st_d2", "st_d1",
+            "st_rmd", "st_full", "st_kind", "st_cwd",
+        };
+        const char *why = 0;
+        unsigned int i;
+
+        if (!st_cwd_is("/")) nos_chdir("/");
+        for (i = 0; i < sizeof(files) / sizeof(files[0]); i++) {
+            nos_unlink(files[i]);
+            if (!why && st_file_exists(files[i])) why = "a test file still exists";
+        }
+        for (i = 0; i < sizeof(dirs) / sizeof(dirs[0]); i++) {
+            nos_rmdir(dirs[i]);
+            if (!why && st_dir_exists(dirs[i])) why = "a test directory still exists";
+        }
+
+        if (why) st_fail(tname, why);
+        else     st_pass(tname);
+    }
 
     st_puts("Selftest: ");
     char nbuf[16];
