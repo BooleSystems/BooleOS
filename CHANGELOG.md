@@ -24,7 +24,11 @@ at the time.
 
 ## [Unreleased]
 
+### Added
+- `SECURITY.md` (repository root, the file GitHub's Security tab shows): supported versions (only the latest tag, `v0.21.0` today), how to report a vulnerability (email `theshannondev@gmail.com`, best effort, no SLA, no bounty, receipt of the report is confirmed), and a "Phase 21: Copy-on-write fork() hardening" section (per-page reference count, `user_kptr_write()` breaking copy-on-write before kernel writes, `CR0.WP`, known limits). The Phase 14 and Phase 19 material stays in `docs/security.md` and is linked, not copied.
+
 ### Changed
+- `docs/security.md`: the short Phase 21 note became a full section, "Copy-on-write fork() and memory safety (Phase 21)", and the "Relevant files" block lists the Phase 21 files.
 - `tools/prev/` now holds the v0.21.0 snapshot (kernel + ramfs built from the `v0.21.0` tag in a clean worktree), so the "previous release" GRUB entry of the next version is v0.21.0.
 
 ## [0.21.0] - 2026-09-27 - Phase 21: Copy-on-write fork()
