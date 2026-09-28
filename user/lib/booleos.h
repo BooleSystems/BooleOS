@@ -90,6 +90,15 @@ int nos_pci_find(unsigned vendor, unsigned device);
    tests (selftest checks copy-on-write sharing with it). */
 int nos_pageref(const void *addr);
 
+/* SYS_UNLINK / SYS_RMDIR (Phase 22) — path is relative to the caller's cwd,
+   like nos_create(). nos_unlink() deletes a file; it fails (-1) if the path
+   doesn't exist, is a directory, or the file is open in any process.
+   nos_rmdir() deletes an empty directory; it fails (-1) if the directory has
+   entries, is a file, is the root, "." or "..", or is some process's cwd.
+   Both return 0 on success. */
+int nos_unlink(const char *path);
+int nos_rmdir(const char *path);
+
 /* SYS_REBOOT / SYS_SHUTDOWN — do not return on success; -1 if the request
    had no effect (the kernel prints why). */
 int nos_reboot(void);

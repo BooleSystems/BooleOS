@@ -26,6 +26,7 @@ at the time.
 
 ### Added
 - Phase 22 (in progress, not yet tested): kernel side of `unlink()`/`rmdir()`. `fat16_unlink()`/`fat16_rmdir()` mark the dirent `0xE5` and free the cluster chain in every FAT copy (dirent first, then FAT). A file open by any process, a non-empty directory, the root, `.`/`..` and any process's cwd are refused. `SYS_UNLINK` (35) and `SYS_RMDIR` (36). Freeing and allocating clusters in the FAT cache now run with interrupts off; disk I/O cannot (the ATA wait blocks on its IRQ).
+- Phase 22 (in progress): `nos_unlink()`/`nos_rmdir()` in libnos (`user/lib/booleos.c/h`), the same inline `int $0x80` wrapper as the other calls.
 - `SECURITY.md` (repository root, the file GitHub's Security tab shows): supported versions (only the latest tag, `v0.21.0` today), how to report a vulnerability (email `theshannondev@gmail.com`, best effort, no SLA, no bounty, receipt of the report is confirmed), and a "Phase 21: Copy-on-write fork() hardening" section (per-page reference count, `user_kptr_write()` breaking copy-on-write before kernel writes, `CR0.WP`, known limits). The Phase 14 and Phase 19 material stays in `docs/security.md` and is linked, not copied.
 
 ### Changed

@@ -239,6 +239,20 @@ int nos_pageref(const void *addr) {
     return ret;
 }
 
+int nos_unlink(const char *path) {
+    int ret;
+    __asm__ volatile ("int $0x80"
+        : "=a"(ret) : "0"(SYS_UNLINK), "b"(path) : "memory");
+    return ret;
+}
+
+int nos_rmdir(const char *path) {
+    int ret;
+    __asm__ volatile ("int $0x80"
+        : "=a"(ret) : "0"(SYS_RMDIR), "b"(path) : "memory");
+    return ret;
+}
+
 int nos_reboot(void) {
     int ret;
     __asm__ volatile ("int $0x80"
