@@ -25,11 +25,15 @@ at the time.
 ## [Unreleased]
 
 ### Added
+- Phase 22 (in progress, not yet tested): kernel side of `unlink()`/`rmdir()`. `fat16_unlink()`/`fat16_rmdir()` mark the dirent `0xE5` and free the cluster chain in every FAT copy (dirent first, then FAT). A file open by any process, a non-empty directory, the root, `.`/`..` and any process's cwd are refused. `SYS_UNLINK` (35) and `SYS_RMDIR` (36). Freeing and allocating clusters in the FAT cache now run with interrupts off; disk I/O cannot (the ATA wait blocks on its IRQ).
 - `SECURITY.md` (repository root, the file GitHub's Security tab shows): supported versions (only the latest tag, `v0.21.0` today), how to report a vulnerability (email `theshannondev@gmail.com`, best effort, no SLA, no bounty, receipt of the report is confirmed), and a "Phase 21: Copy-on-write fork() hardening" section (per-page reference count, `user_kptr_write()` breaking copy-on-write before kernel writes, `CR0.WP`, known limits). The Phase 14 and Phase 19 material stays in `docs/security.md` and is linked, not copied.
 
 ### Changed
 - `docs/security.md`: the short Phase 21 note became a full section, "Copy-on-write fork() and memory safety (Phase 21)", and the "Relevant files" block lists the Phase 21 files.
 - `tools/prev/` now holds the v0.21.0 snapshot (kernel + ramfs built from the `v0.21.0` tag in a clean worktree), so the "previous release" GRUB entry of the next version is v0.21.0.
+
+### Fixed
+- `sys_kill()` never closed the killed process's fds (only `sys_exit()` did): its files stayed open in the fd table and its pipe ends never closed. It now closes them before `process_exit()`.
 
 ## [0.21.0] - 2026-09-27 - Phase 21: Copy-on-write fork()
 

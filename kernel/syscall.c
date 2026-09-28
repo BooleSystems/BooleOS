@@ -245,14 +245,16 @@ static uint32_t sys_write(uint32_t fd, const char *buf, uint32_t len) {
     return len;
 }
 
+static void close_all_fds(int slot) {
+    if (slot < 0) return;
+    for (uint32_t j = 0; j < FD_PER_PROC; j++)
+        if (fd_table[slot][j].used)
+            vfs_close(&fd_table[slot][j]);
+}
+
 static uint32_t sys_exit(uint32_t code) {
     (void)code;
-    int slot = proc_slot();
-    if (slot >= 0) {
-        for (uint32_t j = 0; j < FD_PER_PROC; j++)
-            if (fd_table[slot][j].used)
-                vfs_close(&fd_table[slot][j]);
-    }
+    close_all_fds(proc_slot());
     process_t *p = process_current();
     if (p) process_exit(p);
     scheduler_yield();
@@ -750,6 +752,47 @@ static uint32_t sys_mkdir(const char *user_name) {
     return (fat16_mkdir(cur->cwd_cluster, kname) == 0) ? 0 : (uint32_t)-1;
 }
 
+/* fat16_busy_fn for unlink/rmdir, called with interrupts off. A file is in
+   use if any live process has an FAT16 fd on it (same parent directory, same
+   8.3 name); a directory is in use if it is any live process's cwd. */
+static int fat16_entry_busy(uint32_t parent_cluster, const uint8_t name83[11],
+                            uint32_t first_cluster, int is_dir) {
+    for (uint32_t i = 0; i < PROCESS_MAX; i++) {
+        process_t *p = process_at(i);
+        if (!p || p->state == PROCESS_UNUSED) continue;
+        if (is_dir) {
+            if (p->cwd_cluster == first_cluster) return 1;
+            continue;
+        }
+        for (uint32_t j = 0; j < FD_PER_PROC; j++) {
+            vfs_fd_t *f = &fd_table[i][j];
+            if (!f->used || f->backend != VFS_FAT16 || f->parent_cluster != parent_cluster)
+                continue;
+            uint8_t n[11];
+            fat16_name83(f->name, n);
+            int same = 1;
+            for (int k = 0; k < 11; k++) if (n[k] != name83[k]) { same = 0; break; }
+            if (same) return 1;
+        }
+    }
+    return 0;
+}
+
+static uint32_t sys_unlink_rmdir(const char *user_name, int is_dir) {
+    if (!user_name) return (uint32_t)-1;
+    process_t *cur = process_current();
+    if (!cur) return (uint32_t)-1;
+
+    char kname[USER_STR_MAX];
+    if (copy_user_str(cur, (uint32_t)user_name, kname, USER_STR_MAX) < 0)
+        return (uint32_t)-1;
+
+    if (!fat16_available()) return (uint32_t)-1;
+    int r = is_dir ? fat16_rmdir(cur->cwd_cluster, kname, fat16_entry_busy)
+                   : fat16_unlink(cur->cwd_cluster, kname, fat16_entry_busy);
+    return r == 0 ? 0 : (uint32_t)-1;
+}
+
 /* Only ever mutates cur->cwd_cluster on confirmed success (fat16_resolve_dir
    returning 1) — every failure path (path doesn't exist, names a file
    instead of a directory, or an I/O error) returns early without
@@ -852,6 +895,7 @@ static uint32_t sys_kill(uint32_t pid) {
     for (uint32_t i = 0; i < PROCESS_MAX; i++) {
         process_t *p = process_at(i);
         if (p && p->pid == pid && p->state != PROCESS_UNUSED) {
+            close_all_fds((int)i);   /* else its files stay "open" and pipe ends never close */
             process_exit(p);
             return 0;
         }
@@ -950,6 +994,8 @@ uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t ar
         case SYS_SHUTDOWN:     return sys_shutdown();
         case SYS_PCI_FIND:     return (uint32_t)pci_find_device((uint16_t)arg1, (uint16_t)arg2, 0, 0, 0);
         case SYS_PAGEREF:      return sys_pageref(arg1);
+        case SYS_UNLINK:       return sys_unlink_rmdir((const char *)arg1, 0);
+        case SYS_RMDIR:        return sys_unlink_rmdir((const char *)arg1, 1);
         default:
             console_set_color(CONSOLE_YELLOW, CONSOLE_BLACK);
             console_puts(msg(MSG_SYS_UNKNOWN_SYSCALL));

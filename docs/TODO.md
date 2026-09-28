@@ -15,6 +15,8 @@ only) whenever a version is closed.
 
 ## Pending
 
+- WIP (Phase 22): still to do: `nos_unlink()`/`nos_rmdir()` in libnos, selftest cleanup + new unlink/rmdir tests, docs (`docs/filesystem.md`, `docs/syscalls.md` rows 35/36), README/ROADMAP/PROGRESS sync. Files: kernel/fs/fat16.c/h, kernel/syscall.c/h.
+
 Known, intermittent, NOT blocking any phase:
 
 - TODO later: `probe()` in `kernel/drivers/ata.c` occasionally reports "no disk"

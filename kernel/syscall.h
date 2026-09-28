@@ -44,6 +44,9 @@
 #define SYS_PCI_FIND      33  /* pci_find(vendor, device) — looks a device up in the PCI table → 1 if present, 0 if not */
 #define SYS_PAGEREF       34  /* pageref(addr) — reference count of the physical page behind the caller's
                                   address addr (1 = private, N = shared copy-on-write by N processes) → count, or -1 */
+#define SYS_UNLINK        35  /* unlink(path) — deletes a FAT16 file → 0, or -1 (missing, a directory, open by any process) */
+#define SYS_RMDIR         36  /* rmdir(path) — deletes an empty FAT16 directory → 0, or -1 (missing, not empty, a file,
+                                  root/"."/"..", or some process's cwd) */
 
 uint32_t syscall_handler(uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t arg3);
 

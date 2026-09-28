@@ -107,4 +107,27 @@ int fat16_resolve_dir(uint32_t cwd_cluster, const char *path, uint32_t *out_clus
    error. */
 int fat16_get_path(uint32_t dir_cluster, char *out, uint32_t out_size);
 
+/* Encodes one path component into the 11-byte on-disk 8.3 form (uppercase,
+   space-padded, "." and ".." kept as-is) — the same encoding every lookup
+   uses, so two spellings of one name ("a.txt", "A.TXT") compare equal. */
+void fat16_name83(const char *name, uint8_t out[11]);
+
+/* Asked by fat16_unlink()/fat16_rmdir(), with interrupts off, whether the
+   entry about to be deleted is still in use: parent_cluster/name83 identify
+   the entry, first_cluster is its data (or, for a directory, the directory
+   itself), is_dir tells which. Return nonzero to refuse the deletion. */
+typedef int (*fat16_busy_fn)(uint32_t parent_cluster, const uint8_t name83[11],
+                             uint32_t first_cluster, int is_dir);
+
+/* Deletes the FILE at path (same dir_cluster/path convention as fat16_find):
+   marks its dirent 0xE5 and returns its cluster chain to the FAT's free list
+   (every FAT copy). Returns 0 on success, -1 if it doesn't exist, is a
+   directory, busy() says it is in use, or on I/O error. */
+int fat16_unlink(uint32_t dir_cluster, const char *path, fat16_busy_fn busy);
+
+/* Deletes the EMPTY directory at path: refuses the root, "." and "..", a
+   file, and a directory holding anything besides its "." / ".." entries and
+   deleted/free slots; otherwise same as fat16_unlink(). Returns 0 or -1. */
+int fat16_rmdir(uint32_t dir_cluster, const char *path, fat16_busy_fn busy);
+
 #endif
