@@ -42,7 +42,7 @@ Code done on `nightly`, builds clean; waiting for the QEMU selftest run
 (tests 22–24 are the copy-on-write ones). Also pulled in, by the user's
 decision: `process_exit()` releases data pages (ROADMAP 23-A/23-C's data-page
 part; 23-B, directory + page tables, still open). Docs owed: see
-`docs/TODO.md`. `kernel/version.h` not bumped yet. Release
+`docs/TODO.md`. `kernel/version.h` is `0.21.0-nightly`. Release
 routine after tagging: `make clean && make && make snapshot` on the tagged tree,
 commit `tools/prev/` (now holds v0.19.0, correct for 0.20.0), and publish the
 GitHub Release with the zip (see the Definition of Done in CLAUDE.md).
