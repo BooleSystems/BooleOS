@@ -33,6 +33,7 @@ at the time.
 
 ### Changed
 - Known issues recorded, not fixed: two concurrent `run selftest` fail the cleanup test (30/31), documented in `docs/filesystem.md` next to the directory-sector race, with the note that the suites' shared names and the cwd refusal can cause it too; typing while a `run` program prints garbles shell input (lost/doubled characters, a command re-running by itself), in `docs/TODO.md`.
+- `CLAUDE.md`, "Regra de push": a scope line says the section only decides what justifies a push to `main`; `nightly` takes a push at the end of every finished unit of work or session, documentation-only included.
 - `kernel/version.h`: `0.22.0-nightly` while Phase 22 is worked on in `nightly`.
 - `docs/security.md`: the short Phase 21 note became a full section, "Copy-on-write fork() and memory safety (Phase 21)", and the "Relevant files" block lists the Phase 21 files.
 - `tools/prev/` now holds the v0.21.0 snapshot (kernel + ramfs built from the `v0.21.0` tag in a clean worktree), so the "previous release" GRUB entry of the next version is v0.21.0.

@@ -475,6 +475,11 @@ contra o estado real dos arquivos, não contra a lembrança do que foi feito.**
 
 ## Regra de push
 
+- ESCOPO: as regras desta seção (inclusive a exceção de documentação
+  pura abaixo) só decidem o que justifica push em `main`, e nunca se
+  aplicam a `nightly`. `nightly` sempre aceita push no fim de cada
+  unidade de trabalho concluída ou no fim da sessão, com qualquer
+  conteúdo, documentação pura inclusa.
 - REGRA DE PUSH: só recomendar/fazer `git push` (pra `nightly`, ver
   seção de branch acima) quando pelo menos um arquivo de código
   (`.c`, `.h`, `.asm`) tiver sido modificado nesta tarefa — mesmo que
