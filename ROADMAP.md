@@ -115,6 +115,7 @@ Done; see the table above, CHANGELOG `[0.20.0]` and `docs/safemode.md`. An unhan
 - **Approach:** requires a smart page-fault handler (exception 14) that distinguishes a COW fault from a real fault, allocates a new page on demand, copies the data, and remaps it read-write. Needs a per-physical-page refcount in the PMM (which likely doesn't exist yet) to know when it's safe to free a shared page.
 - **Main risk:** without a correct refcount, one process can free a page the other is still using.
 - **Depends on:** Phase 13 (`fork()`) — already done. Phase 16 (pipes), previously recommended as a prerequisite to avoid debugging two new features at once, is also already done.
+- **Status (in progress on `nightly`):** implemented, waiting for the selftest run. It also took over the data-page part of Phase 23 (see below): `process_exit()` drops the process's reference to each user page through the refcount, since the copy-on-write tests need an exit to release a shared page.
 
 ### Phase 22 — `unlink()`/`rmdir()`
 
@@ -129,9 +130,9 @@ Done; see the table above, CHANGELOG `[0.20.0]` and `docs/safemode.md`. An unhan
 - **Main risk:** the most dangerous phase in the roadmap — a real risk of double-free or of freeing a page another process still references.
 - **Depends on:** Phase 21 (COW fork) changes how memory is shared between processes, so 23-C depends on Phase 21 being closed.
 
-- 23-A: free the process's physical data pages (heap, stack) in `process_exit()`
+- 23-A: free the process's physical data pages (heap, stack) in `process_exit()` — done as part of Phase 21 (through the refcount)
 - 23-B: free the page directory (CR3) and its associated page tables
-- 23-C: handle page sharing via fork/COW (Phase 21) — needs a per-physical-page refcount in the PMM before really freeing
+- 23-C: handle page sharing via fork/COW (Phase 21) — needs a per-physical-page refcount in the PMM before really freeing — done as part of Phase 21 for data pages
 
 ### Phase 24 — `e1000` driver + minimal TCP/IP
 

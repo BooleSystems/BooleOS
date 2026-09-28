@@ -94,9 +94,10 @@ process_t *process_current(void);
 void process_set_current(process_t *process);
 void process_exit(process_t *process);
 
-/* Duplicates parent into a brand-new process: full copy (not
-   copy-on-write) of its address space, open behavior aside — file
-   descriptors are duplicated by the caller (see sys_fork() in
+/* Duplicates parent into a brand-new process: its address space is
+   shared copy-on-write (same frames, read-only + VMM_COW in both, one
+   more reference each; the first write copies — see vmm_cow_break()),
+   file descriptors are duplicated by the caller (see sys_fork() in
    syscall.c), not here — and a fabricated kernel stack that resumes
    at the exact point the parent called fork(), with eax forced to 0.
    saved_frame must be the 13-word block captured from
@@ -105,8 +106,10 @@ void process_exit(process_t *process);
    LOCAL buffer by the caller with its eax slot zeroed; see the
    g_syscall_frame comment in syscall.c and isr128_resume in isr.asm.
    Returns the new process_t*, or NULL if there's no free process
-   slot or memory ran out partway through the copy — in both cases
-   nothing is left behind (no child, no leaked slot). */
+   slot or memory ran out partway through — in both cases no child and
+   no leaked slot are left behind (the parent may keep some pages
+   VMM_COW with a single reference; its next write takes each one back
+   writable in place). */
 process_t *process_fork(process_t *parent, const uint32_t *saved_frame);
 void process_sleep(process_t *process, uint32_t now, uint32_t ticks);
 void process_wake_sleepers(uint32_t now);

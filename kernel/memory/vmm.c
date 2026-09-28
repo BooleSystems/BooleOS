@@ -3,6 +3,7 @@
 #include "pmm.h"
 #include "../hal.h"
 #include "../messages.h"
+#include "../irq.h"
 #include <stdint.h>
 
 typedef uint32_t pde_t;
@@ -109,6 +110,10 @@ void vmm_switch_directory(uint32_t cr3) {
 }
 
 int vmm_map_user_page(uint32_t pd_phys, uint32_t virt, uint32_t phys) {
+    return vmm_map_user_page_flags(pd_phys, virt, phys, VMM_WRITABLE);
+}
+
+int vmm_map_user_page_flags(uint32_t pd_phys, uint32_t virt, uint32_t phys, uint32_t flags) {
     /* The first 8MB (PDE 0/1) is the kernel's identity map, cloned into
        every process's directory. A user mapping there would either
        overwrite a shared kernel PTE or hand ring 3 access to kernel
@@ -133,8 +138,69 @@ int vmm_map_user_page(uint32_t pd_phys, uint32_t virt, uint32_t phys) {
     }
 
     pte_t *pt = (pte_t *)(pd[di] & 0xFFFFF000);
-    pt[ti] = (phys & 0xFFFFF000) | VMM_PRESENT | VMM_WRITABLE | VMM_USER;
+    pt[ti] = (phys & 0xFFFFF000) | (flags & 0xFFF) | VMM_PRESENT | VMM_USER;
     return 0;
+}
+
+uint32_t *vmm_get_user_pte(uint32_t pd_phys, uint32_t virt) {
+    uint32_t di = virt >> 22;
+    uint32_t ti = (virt >> 12) & 0x3FF;
+    pde_t *pd = (pde_t *)pd_phys;
+    if (!(pd[di] & VMM_PRESENT) || !(pd[di] & VMM_USER)) return 0;
+    pte_t *pt = (pte_t *)(pd[di] & 0xFFFFF000);
+    if (!(pt[ti] & VMM_PRESENT) || !(pt[ti] & VMM_USER)) return 0;
+    return &pt[ti];
+}
+
+static uint32_t read_cr3(void) {
+    uint32_t cr3;
+    __asm__ volatile ("mov %%cr3, %0" : "=r"(cr3));
+    return cr3;
+}
+
+int vmm_cow_break(uint32_t pd_phys, uint32_t virt) {
+    /* Interrupts stay off for the whole break, the 4 KB copy included (about
+       a thousand word moves): a timer tick in the middle could run a fork()
+       or another break on the same shared page and see the PTE and the
+       refcount disagree. Nothing in here blocks. */
+    uint32_t flags = irq_save();
+    uint32_t *pte = vmm_get_user_pte(pd_phys, virt);
+    if (!pte || !(*pte & VMM_COW)) {
+        irq_restore(flags);
+        return 0;
+    }
+
+    uint32_t old_phys = *pte & 0xFFFFF000;
+    uint32_t bits     = (*pte & 0xFFF & ~VMM_COW) | VMM_WRITABLE;
+
+    if (pmm_page_refcount(old_phys) <= 1) {
+        /* Last owner: every other sharer already copied or exited, so the
+           page is this process's alone. Take it back writable, no copy. */
+        *pte = old_phys | bits;
+    } else {
+        uint32_t new_phys = pmm_alloc_page();
+        if (!new_phys) {
+            irq_restore(flags);
+            return -1;
+        }
+        /* Both frames are below PMM_LIMIT_ADDR, inside the identity map. */
+        uint32_t *src = (uint32_t *)old_phys;
+        uint32_t *dst = (uint32_t *)new_phys;
+        for (uint32_t w = 0; w < PAGE_SIZE / 4; w++) dst[w] = src[w];
+        *pte = new_phys | bits;
+    }
+
+    /* Flush the stale read-only entry right away. Another directory's
+       entries are not cached: CR3 is reloaded on every switch and user pages
+       are not global. */
+    if (pd_phys == read_cr3())
+        __asm__ volatile ("invlpg (%0)" : : "r"(virt) : "memory");
+
+    if ((*pte & 0xFFFFF000) != old_phys)
+        pmm_free_page(old_phys);   /* drops this process's reference only */
+
+    irq_restore(flags);
+    return 1;
 }
 
 uint32_t vmm_create_directory(void) {
@@ -189,7 +255,10 @@ void vmm_init(void) {
     __asm__ volatile ("mov %0, %%cr3" : : "r"((uint32_t)PAGE_DIR_ADDR) : "memory");
     uint32_t cr0;
     __asm__ volatile ("mov %%cr0, %0" : "=r"(cr0));
-    cr0 |= 0x80000000U;
+    /* PG, plus WP: without WP the CPU lets ring 0 write through a read-only
+       PTE, so a kernel write to a copy-on-write page by its user virtual
+       address would land in the shared frame instead of faulting. */
+    cr0 |= 0x80010000U;
     __asm__ volatile ("mov %0, %%cr0" : : "r"(cr0) : "memory");
 
     paging_active = 1;

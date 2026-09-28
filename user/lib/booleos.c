@@ -232,6 +232,13 @@ int nos_pci_find(unsigned vendor, unsigned device) {
     return ret;
 }
 
+int nos_pageref(const void *addr) {
+    int ret;
+    __asm__ volatile ("int $0x80"
+        : "=a"(ret) : "0"(SYS_PAGEREF), "b"(addr) : "memory");
+    return ret;
+}
+
 int nos_reboot(void) {
     int ret;
     __asm__ volatile ("int $0x80"

@@ -55,10 +55,27 @@ static unsigned char *guarded(size_t size) {
     return base + data_pages * pg - size;
 }
 
+/* Each load's pages and image buffer are released before the next one:
+   the fuzzing loops load thousands of times, and keeping them all exhausts
+   the host's 32-bit mmap window partway through the run. */
+static unsigned char *g_img_base;
+static size_t g_img_len;
+
+static void release_last_load(void) {
+    for (int i = 0; i < g_nmap; i++) munmap((void *)(uintptr_t)g_pa[i], 4096);
+    g_nmap = 0;
+    if (g_img_base) munmap(g_img_base, g_img_len);
+    g_img_base = 0;
+}
+
 static int try_load(const unsigned char *img, uint32_t size, uint32_t *entry) {
+    release_last_load();
     unsigned char *g = guarded(size);
+    size_t pg = 4096, data_pages = (size + pg - 1) / pg ? (size + pg - 1) / pg : 1;
+    g_img_base = g + size - data_pages * pg;
+    g_img_len  = (data_pages + 1) * pg;
     memcpy(g, img, size);
-    g_nmap = 0; g_pages_left = 1000;
+    g_pages_left = 1000;
     return elf_load(1, g, size, entry);
 }
 

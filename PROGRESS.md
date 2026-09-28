@@ -36,9 +36,13 @@ Last closed phase: **Phase 20** (Crash handler leads into Safe Mode).
   <de|pf|gpf>` test command — `0.20.0`. The roadmap was renumbered (old 20–30 are
   now 21–31).
 
-### Next: Phase 21 — Copy-on-write `fork()`
+### In progress: Phase 21 — Copy-on-write `fork()`
 
-See ROADMAP.md. Release
+Code done on `nightly`, builds clean; waiting for the QEMU selftest run
+(tests 22–24 are the copy-on-write ones). Also pulled in, by the user's
+decision: `process_exit()` releases data pages (ROADMAP 23-A/23-C's data-page
+part; 23-B, directory + page tables, still open). Docs owed: see
+`docs/TODO.md`. `kernel/version.h` not bumped yet. Release
 routine after tagging: `make clean && make && make snapshot` on the tagged tree,
 commit `tools/prev/` (now holds v0.19.0, correct for 0.20.0), and publish the
 GitHub Release with the zip (see the Definition of Done in CLAUDE.md).
@@ -82,6 +86,16 @@ package manager phase was deliberately decided against — don't add one.
 - **`ata_write_sector` returns 0 if only the CACHE FLUSH times out** — the
   WRITE was already confirmed, so it must not be reported as "nothing
   written". Don't "fix" it into a failure.
+- **Copy-on-write `fork()`: the refcount counts mappings, and
+  `pmm_free_page()` means "drop one reference".** Every allocation starts at
+  1; never free a user page any other way. A write-protected PTE does NOT
+  protect a page from the kernel, which writes user memory through physical
+  addresses: every kernel write into user memory must go through
+  `user_kptr_write()`/`copy_to_user()` (they call `vmm_cow_break()` first).
+  `VMM_COW` (PTE bit 9) is the only thing that makes a read-only page
+  copy-on-write. fork's sharing pass, the break, and exit's release are each
+  one interrupt-off section; `process_exit()` clears `cr3` and marks the slot
+  unused in the same section (a tick in between would switch to CR3 = 0).
 - **`fork()` resumes the child via `isr128_resume` + `g_syscall_frame`**
   (copies the 13-word trap block, `eax` forced to 0). See
   `docs/scheduler.md`.
@@ -147,14 +161,14 @@ package manager phase was deliberately decided against — don't add one.
 - **The kernel writes to physical pages through the 0–8 MB identity map
   without checking (pre-existing, real; Phase 23).** The PMM can hand out
   frames above 8 MB while only 0–8 MB is identity-mapped, yet `elf.c:54`
-  (`memzero8((uint8_t *)phys, ...)`) and `process.c:262-265` (`process_fork()`
-  copying via `parent_phys`/`child_phys`) access a frame by its physical
+  (`memzero8((uint8_t *)phys, ...)`) and `vmm_cow_break()` (the copy-on-write
+  copy via `old_phys`/`new_phys`) access a frame by its physical
   address with no range check; only the page-table allocations are guarded
   (`vmm.c:126`, `:146`). Once the low region is used up that is a kernel page
   fault. **Mitigation (18-A):** the PMM ceiling is 8 MB (`PMM_LIMIT_ADDR`), so
   exhaustion is now a failed allocation, at the cost of ~4 MB of free pages
-  (1024 at boot; with `process_exit()` leaking ~10 pages per process, roughly a
-  dozen selftest runs per boot). Real fix: stop touching frames by physical
+  (1024 at boot; `process_exit()` now leaks only the directory and page tables,
+  about 3–4 pages per process). Real fix: stop touching frames by physical
   address (a temporary-mapping mechanism, or a kernel direct map at a high
   address) and then lift the cap. The widening is not trivial: user code lives
   at 16 MB and `vmm_map_user_page()` rejects `virt < 0x800000`.
@@ -197,9 +211,9 @@ package manager phase was deliberately decided against — don't add one.
   can't combine with `|` and pass no arguments (`docs/shell.md`).
 - **`SYS_WRITE` chunks at 128 bytes**, each chunk doing its own dirent
   lookup (slow for large redirected output).
-- **`process_exit()` never frees `cr3` or mapped pages** (accepted leak;
-  slots stay reusable). Needs refcounting from Phase 21 (COW fork); the
-  actual fix is Phase 23.
+- **`process_exit()` never frees `cr3` or the page tables** (accepted leak,
+  Phase 23-B; slots stay reusable). User data pages ARE released since
+  Phase 21, through the refcount.
 - **No unlink/delete syscall or FAT16 delete path** (cluster-chain free +
   0xE5 dirent). Test files can be overwritten, never removed.
 - **No syscall exposes `kmalloc()` to userland**, so userland can't test a
