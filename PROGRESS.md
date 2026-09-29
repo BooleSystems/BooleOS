@@ -13,8 +13,10 @@ Do not duplicate README/docs content here. `README.md` is a lean index
 
 ## Current status
 
-Current version: **0.22.0** (Phase 22 closed as `0.22.0`, tagged `v0.22.0`).
-Last closed phase: **Phase 22** (`unlink()`/`rmdir()`).
+Current version: **0.22.1-nightly** (`kernel/version.h`): a patch fixing the
+VGA console race below, not a new phase; `BOOLEOS_PHASE` stays `22`. Last
+closed phase: **Phase 22** (`unlink()`/`rmdir()`), released as `0.22.0`,
+tagged `v0.22.0`.
 
 ### Closed phases (one line each; detail in CHANGELOG.md / README.md)
 
@@ -60,6 +62,21 @@ package manager phase was deliberately decided against — don't add one.
 
 ## Architecture decisions (non-obvious; detail lives in the linked docs)
 
+- **`vga_putchar()`/`vga_clear()`/`vga_set_cursor()` run with interrupts off
+  for their whole body (0.22.1).** Any process can reach them through
+  `SYS_WRITE`/`SYS_CLEAR`/`SYS_GOTOXY` (echo included, since `SYS_READ`'s
+  fd 0 echo goes through `vga_putchar()` too), and the scheduler preempts on
+  a timer tick regardless of what instruction is running. A preempted write
+  left `term_col`/`term_row`/the VGA buffer half-updated for whoever ran
+  next. Found as real screen corruption while validating Phase 22 (typing
+  at the shell while `run selftest` printed): a torn `vga_scroll()` could
+  duplicate or drop a line, which looked like a command running again by
+  itself. `irq_save()`/`irq_restore()` are safe here for the whole body
+  (unlike `fat16.c`'s disk I/O) because nothing in `vga.c` blocks on an IRQ.
+  This does not stop two processes' output interleaving character-by-
+  character when both print at once; that's normal shared-terminal
+  behavior. See `docs/hal.md`, `docs/testing.md` (test 32 and its manual
+  companion).
 - **exec() is NOT POSIX exec — it spawns a brand-new `process_t`.** Any
   per-process state (cwd, redirects, ...) must be threaded explicitly
   through `syscall → exec()/fork() → scheduler_spawn_user →
@@ -220,9 +237,6 @@ package manager phase was deliberately decided against — don't add one.
   (30/31), but fixed shared names + the cwd refusal explain that too, so it is
   not proof of the race (`docs/filesystem.md`). Fix = whole-operation FAT16 lock, Phase 29
   (`docs/filesystem.md`).
-- **Typing while a `run` program prints garbles shell input** (lost/doubled
-  characters, a command running again by itself). Found in Phase 22
-  validation, pre-existing; symptoms and repro in `docs/TODO.md`.
 - **Shell redirection limits:** builtins can't be redirected; `>`/`<`
   can't combine with `|` and pass no arguments (`docs/shell.md`).
 - **`SYS_WRITE` chunks at 128 bytes**, each chunk doing its own dirent

@@ -49,7 +49,8 @@ Expected output shape (exact wording may evolve as tests are added):
 [PASS] unlink()/rmdir() refuse the wrong kind, the root, "." and ".."
 [PASS] rmdir() refuses a directory that is a live process's cwd
 [PASS] cleanup: every test file and directory deleted
-Selftest: 31/31 passed
+[PASS] concurrent console writers don't corrupt kernel state (vga race, 0.22.1)
+Selftest: 32/32 passed
 ```
 
 A `[FAIL] <name>: <reason>` line pinpoints which subsystem broke without
@@ -57,7 +58,7 @@ needing to reproduce the bug by hand first.
 
 ## What each test checks
 
-**31 tests in total**; the cleanup (31) is a counted test too.
+**32 tests in total**; the cleanup (31) is a counted test too.
 
 1. **Memory** — calls `SYS_MEMINFO` and checks it returns a plausible
    process count. There is no userland-facing syscall that allocates a
@@ -237,6 +238,47 @@ needing to reproduce the bug by hand first.
     fine; the test fails only if something is still there afterwards. The
     first run on a disk used by an older selftest also removes what that
     one left behind.
+32. **Concurrent console writers don't corrupt kernel state** (0.22.1) —
+    four children and this process all `SYS_WRITE` ~4000 bytes each at the
+    same time (50+ screen-fuls apiece, forcing many scrolls), the exact
+    race that used to corrupt `kernel/drivers/vga.c`'s shared cursor state
+    (see "Known limitations" below for why this can't check the screen
+    itself, and the manual test right after this list for the check that
+    does). What it does check through syscalls alone: every child reaps
+    cleanly (`SYS_KILL` on it fails afterward, the same pattern test 17
+    uses), and an unrelated syscall (`SYS_PCI_LIST`) still behaves normally
+    right after the storm. That checks the more serious failure mode of the
+    original bug: `term_row` running past `VGA_ROWS` before being clamped, a
+    write past the mapped VGA buffer into unrelated physical memory.
+
+## Manual test: typing while a background process prints (0.22.1)
+
+The automated test above forces the race that used to corrupt shared
+console state, but nothing reads the screen back through a syscall, so it
+can't confirm the screen itself looks right. That needs a human looking
+at it. Before closing 0.22.1, run this by hand:
+
+```
+run selftest
+```
+
+Then, while it is still printing (roughly the first second or two), type
+a short command and press Enter, for example:
+
+```
+help
+```
+
+Expected: the typed characters echo correctly and `help`'s output prints
+once, right after `selftest` finishes its own output (both may still
+visually interleave line-by-line while both processes are printing at
+once; that is normal shared-terminal behavior, not a bug, see the note
+on `vga_putchar()` in `kernel/drivers/vga.c`). What must NOT happen: a
+whole line duplicating or vanishing, or `help` (or any command) appearing
+to run a second time without being typed again. Repeat two or three times,
+typing at a different moment in `selftest`'s output each time, since the
+original bug depended on the exact timing of a preemption landing mid
+console write.
 
 ## Manual test: a real pipeline (`cmd1 | cmd2`)
 
@@ -278,6 +320,10 @@ see EOF and exit.
 - A failed `exec()` does not free the page directory it already created
   (the same accepted leak as `process_exit()`, Phase 23): test 20 leaks two
   pages per run, out of ~1000 free at boot.
+- No syscall reads back screen content, so test 32 can only check that
+  concurrent console writers don't corrupt kernel state, not that the
+  screen displays correctly; that needs the manual test right after the
+  test list.
 
 ## Manual test: the crash handler (Phase 20)
 

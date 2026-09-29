@@ -22,6 +22,12 @@ called out inline rather than silently "corrected", and `[0.11.0]`–
 Phase 10), not a version string that ever actually appeared in the repo
 at the time.
 
+## [Unreleased]
+
+### Fixed
+- **Console output race, found while validating Phase 22 (patch 0.22.1).** Typing at the shell while a background `run` program kept printing corrupted the screen: characters lost or doubled, a command's name scrambled, and in the worst case what looked like a command running again by itself. Root cause: `vga_putchar()`/`vga_clear()`/`vga_set_cursor()` in `kernel/drivers/vga.c` read and wrote `term_col`/`term_row`/the VGA buffer without any protection against preemption, reachable from any process through `SYS_WRITE` (echo included), `SYS_CLEAR` and `SYS_GOTOXY`. A timer-tick preemption landing mid-write left that shared state half-updated for whoever ran next. Landing inside `vga_scroll()`'s ~2000-cell copy loop could tear a whole scroll, duplicating or dropping a line, which is what the "ran again by itself" symptom actually was. The shell's own line buffer and the keyboard ring buffer were checked and found correctly isolated per process and correctly single-producer-single-consumer; neither was the cause. Fixed by running each of the three functions' whole body with interrupts off (`irq_save()`/`irq_restore()`, the same pattern `fat16.c` uses), safe here because, unlike disk I/O, nothing in `vga.c` blocks on an IRQ. Two processes' output can still interleave character-by-character when both legitimately print at once; that's normal shared-terminal behavior, not something this fixes.
+- selftest test 32: four children and this process all write ~4000 bytes each at the same time, forcing the exact race above. No syscall reads back screen content, so it checks what it can: every child reaps cleanly, and an unrelated syscall still behaves normally right after the storm. A new manual test in `docs/testing.md` covers the screen itself: typing while `run selftest` is still printing, checked by eye.
+
 ## [0.22.0] - 2026-09-28 - Phase 22: unlink()/rmdir()
 
 ### Added

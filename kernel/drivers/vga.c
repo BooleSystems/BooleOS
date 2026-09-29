@@ -4,6 +4,7 @@
 
 #include "vga.h"
 #include "../serial.h"
+#include "../irq.h"
 #include <stdint.h>
 #include <stddef.h>
 
@@ -81,7 +82,14 @@ void vga_set_color(vga_color_t fg, vga_color_t bg) {
     term_color = vga_make_attr(fg, bg);
 }
 
+/* Every function here that touches term_col/term_row/VGA_BUFFER runs with
+   interrupts off for its whole body (see the comment on vga_putchar() for
+   why: any process can call these through SYS_WRITE/SYS_CLEAR/SYS_GOTOXY,
+   and a preemption mid-write would corrupt this shared, unprotected state).
+   None of it blocks (no ATA-style IRQ wait), so holding cli the whole time
+   is safe: unlike fat16.c's disk I/O, there is nothing here to wait on. */
 void vga_clear(void) {
+    uint32_t flags = irq_save();
     uint16_t blank = vga_make_entry(' ', term_color);
     for (int i = 0; i < VGA_ROWS * VGA_COLS; i++) {
         VGA_BUFFER[i] = blank;
@@ -89,17 +97,37 @@ void vga_clear(void) {
     term_col = 0;
     term_row = 0;
     vga_update_cursor();
+    irq_restore(flags);
 }
 
 void vga_set_cursor(uint8_t col, uint8_t row) {
+    uint32_t flags = irq_save();
     if (col < VGA_COLS && row < VGA_ROWS) {
         term_col = col;
         term_row = row;
         vga_update_cursor();
     }
+    irq_restore(flags);
 }
 
+/* Every process shares this one console: SYS_WRITE (echo included, since
+   SYS_READ's fd 0 echo goes through the same call) can run from any of
+   them, and the scheduler preempts on a timer tick regardless of what
+   instruction is running. Without protection, a preempted vga_putchar()
+   (mid character write, or worse, mid vga_scroll()'s ~2000-cell copy loop)
+   left term_col/term_row/VGA_BUFFER half-updated for whoever runs next to
+   read or overwrite. Found as real, reproducible screen corruption while
+   validating Phase 22 (typing at the shell while `run selftest` was still
+   printing): a torn scroll can duplicate or drop whole lines, which is
+   what looked like "a command running again by itself"; a torn single
+   write, more mundane garbled/duplicated characters. Nothing below blocks
+   on an IRQ (serial_putchar() only polls a status port, not an IRQ wait
+   like ata_wait_irq()), so holding cli for the whole body is safe. This
+   does NOT stop two processes' output from interleaving character-by-
+   character when both are legitimately scheduled to print at once. That
+   is normal shared-terminal behavior, not something this fixes. */
 void vga_putchar(char c) {
+    uint32_t flags = irq_save();
     int erased = 0;   /* a '\b' that really blanked a cell (see the serial mirror below) */
     if (c == '\n') {
         term_col = 0;
@@ -151,6 +179,7 @@ void vga_putchar(char c) {
         serial_putchar(c);
     }
     vga_update_cursor();
+    irq_restore(flags);
 }
 
 void vga_puts(const char *str) {

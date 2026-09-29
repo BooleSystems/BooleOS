@@ -1275,6 +1275,65 @@ void _start(void) {
         else     st_pass(tname);
     }
 
+    /* 32. Concurrent console writers survive (0.22.1). Found while
+       validating Phase 22: typing at the shell while `run selftest` kept
+       printing garbled the screen, and in the worst case looked like a
+       command running again by itself — traced to `vga_putchar()`/
+       `vga_scroll()` mutating shared, unprotected state (`term_col`,
+       `term_row`, the VGA buffer itself), so a preemption mid-write left it
+       half-updated for whoever ran next. Fixed by running each of their
+       whole bodies with interrupts off (`kernel/drivers/vga.c`).
+       There is no syscall that reads back screen content, so this can't
+       assert the screen looks right (see docs/testing.md for the manual
+       check that does); what IS checkable through syscalls alone is the
+       more serious failure mode the same bug could cause: a torn scroll
+       let `term_row` run past `VGA_ROWS` before being clamped, which wrote
+       past the mapped VGA buffer into unrelated physical memory. Four
+       children write ~4000 bytes each (50+ screen-fuls, forcing many
+       scrolls) at the same time this process does the same, all pushing
+       the exact race that used to corrupt that shared state; a survival
+       and clean-exit check is what's left once nothing can inspect the
+       screen directly. */
+    {
+        const char *tname = "concurrent console writers don't corrupt kernel state (vga race, 0.22.1)";
+        const char *why = 0;
+        static char burst[512];
+        for (unsigned int i = 0; i < sizeof(burst) - 1; i++)
+            burst[i] = (char)('a' + (i % 26));
+        burst[sizeof(burst) - 2] = '\n';
+        burst[sizeof(burst) - 1] = '\0';
+        unsigned int blen = strlen(burst);
+
+        int pids[4];
+        int forked = 0;
+        for (int i = 0; i < 4 && !why; i++) {
+            int r = nos_fork();
+            if (r == 0) {
+                for (int rep = 0; rep < 8; rep++)
+                    nos_write(1, burst, blen);
+                nos_exit(0);
+            }
+            if (r < 0) { why = "fork() failed"; break; }
+            pids[forked++] = r;
+        }
+        /* this process races the children the same way the shell's echo
+           used to race a background process's output */
+        for (int rep = 0; rep < 8; rep++)
+            nos_write(1, burst, blen);
+
+        for (int i = 0; i < forked; i++) nos_wait(pids[i]);
+        for (int i = 0; i < forked && !why; i++)
+            if (nos_kill((uint32_t)pids[i]) != -1)
+                why = "a child is still alive after nos_wait() returned for it";
+
+        /* the kernel itself must still be in one piece: a plain, unrelated
+           syscall should still behave normally right after the storm */
+        if (!why && nos_pci_list() < 1) why = "PCI enumeration broke after the console write storm";
+
+        if (why) st_fail(tname, why);
+        else     st_pass(tname);
+    }
+
     st_puts("Selftest: ");
     char nbuf[16];
     st_puts(nos_uitoa((unsigned int)g_tests_passed, nbuf, sizeof(nbuf)));
