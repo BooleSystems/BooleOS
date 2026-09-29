@@ -18,6 +18,23 @@ VGA console race below, not a new phase; `BOOLEOS_PHASE` stays `22`. Last
 closed phase: **Phase 22** (`unlink()`/`rmdir()`), released as `0.22.0`,
 tagged `v0.22.0`.
 
+### In progress: 0.22.1 (patch, not a new phase)
+
+The fix (`irq_save()`/`irq_restore()` around `vga_putchar()`/`vga_clear()`/
+`vga_set_cursor()`, see "Architecture decisions" below) is commited and
+pushed to `nightly` as `010fe5e`, but **not yet validated in QEMU**.
+Pending before closing 0.22.1:
+
+1. `run selftest` in QEMU, expecting `32/32 passed` (test 32 is new).
+2. The manual test in `docs/testing.md`: run `run selftest` and type a
+   command while it is still printing; no duplicated/vanished line, no
+   command re-running by itself.
+3. Only after both of those: the usual version-close flow (`kernel/
+   version.h` to `0.22.1` with the `-nightly` suffix dropped, CHANGELOG
+   `[Unreleased]` consolidated into `[0.22.1]`, merge `nightly` → `main`,
+   tag `v0.22.1`, push, `make snapshot`, `gh release create`), same as
+   `0.22.0`.
+
 ### Closed phases (one line each; detail in CHANGELOG.md / README.md)
 
 - Phases 1–14 — see the README "Completed phases" table (Phase 14 closed
