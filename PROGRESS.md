@@ -62,6 +62,29 @@ e) **`tools/Makefile`:** `run` = `qemu-system-x86_64` + `QEMU_FLAGS_RUN`
    same device explicitly (a `-netdev` option turns the default NIC off) plus
    a pcap dump.
 
+**24-A RX review (QEMU showed TX working, the ARP reply in the pcap, but the
+boot self-test saw no reply).** Checked against `kernel/drivers/e1000.c`
+(`setup_rings()`, `e1000_poll_rx()`, `read_mac()`, `e1000_init()`):
+a) all 16 descriptors are filled with their buffer address, then RDBAL/
+   RDBAH/RDLEN/RDH=0, then RDT=15, then RCTL with EN: correct.
+b) the ring is read through `desc()`, a `volatile uint32_t *`, on every
+   poll: correct. Added a compiler barrier after the DD check anyway.
+c) RAL0/RAH0 hold the MAC with AV set (from the card, or written back from
+   the EEPROM), MTA zeroed, RCTL = EN|BAM|SECRC, BSIZE 2048, BSEX 0: correct.
+d) `g_rx_next` starts at 0 (= RDH), advances mod 16, status cleared and
+   RDT set to the consumed index: correct.
+e) buffer addresses are PMM frames (< 8 MB, virt == phys), high half 0:
+   correct.
+Nothing wrong found in the RX path itself. Two suspects in the self-test
+wait instead: (1) its loop also stopped after 10M spins of RAM-only polls,
+which can be far less than its 100-tick budget; (2) QEMU's e1000 model
+(from memory of hw/net/e1000.c, `flush_queue_timer`, not checked against the
+QEMU source here) refuses to receive for ~1 s after every RCTL write and
+queues frames meanwhile, so a reply to a request sent right after init only
+arrives after that. The wait is now 300 ticks with a PIT-counted delay per
+empty poll, and a `[NET] diag:` serial line (RX registers, descriptor 0,
+GPRC/MPC/RNBC) prints when no reply comes. Pending QEMU validation.
+
 ### Closed phases (one line each; detail in CHANGELOG.md / README.md)
 
 - Phases 1–14 — see the README "Completed phases" table (Phase 14 closed

@@ -36,8 +36,9 @@ int e1000_send(const uint8_t *frame, uint16_t len);
 int e1000_poll_rx(uint8_t *out, uint16_t max);
 
 /* Boot-time check (Phase 24-A): broadcasts an ARP request for 10.0.2.2 (the
-   QEMU user-mode gateway) as 10.0.2.15 and polls up to ~100 ticks for the
-   reply, printing what happened. Never fails the boot. */
+   QEMU user-mode gateway) as 10.0.2.15 and polls up to 300 ticks for the
+   reply, printing what happened (plus a register/counter line on the serial
+   port when no reply came). Never fails the boot. */
 void e1000_boot_selftest(void);
 
 #endif

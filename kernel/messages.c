@@ -310,8 +310,9 @@ static const char *const g_msgs[] = {
     [MSG_NET_ERR_EEPROM] = "cannot read the MAC address from the EEPROM\n",
     [MSG_NET_ERR_NOMEM] = "out of memory for the descriptor rings\n",
     [MSG_NET_ARP_REPLY] = "ARP reply: 10.0.2.2 is at ",
-    [MSG_NET_NO_ARP_REPLY] = "no ARP reply (no network backend?)\n",
+    [MSG_NET_NO_ARP_REPLY] = "no ARP reply received\n",
     [MSG_NET_ARP_NOT_SENT] = "ARP request not sent (transmit timed out)\n",
+    [MSG_NET_DIAG] = "[NET] diag:",
 };
 
 // Compile-time check: the table must reach exactly MSG_COUNT entries (its

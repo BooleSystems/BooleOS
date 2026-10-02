@@ -31,6 +31,7 @@ at the time.
 - `docs/network.md` (work in progress), and new sections in `docs/pci.md` and `docs/memory.md`.
 
 ### Fixed
+- e1000 boot self-test (24-A, pending QEMU validation): the ARP reply showed up in `build/net.pcap` but the self-test reported none. A review of the RX path (ring setup, `RDT`, volatile descriptor reads, `RAL0`/`RAH0` with AV, MTA, `RCTL`, ring index, buffer addresses) found nothing wrong. The wait was the weak spot: it also stopped after 10M fast polls, possibly long before its 100-tick budget, and QEMU's e1000 most likely holds received frames for about a second after `RCTL` is written. It now waits up to 300 ticks with a PIT-counted delay between empty polls. When no reply comes, a `[NET] diag:` line on the serial port shows the RX registers, descriptor 0 and the GPRC/MPC/RNBC counters, and the message is now `no ARP reply received`. `e1000_poll_rx()` gained a compiler barrier after the DD check.
 - `pt_next` in `kernel/memory/vmm.c` started on top of the two identity-map page tables, so the first new kernel page table would have overwritten the 0–4 MB map. It never happened because no kernel mapping outside 0–8 MB existed until the e1000 one.
 
 ### Changed

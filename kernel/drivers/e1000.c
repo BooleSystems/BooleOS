@@ -20,6 +20,7 @@
 #include "../timer.h"
 #include "../memory/pmm.h"
 #include "../memory/vmm.h"
+#include "../serial.h"
 #include <stdint.h>
 
 /* ── supported devices: add a line to support another 8254x ─────────── */
@@ -49,6 +50,9 @@ static const struct { uint16_t vendor, device; } e1000_ids[] = {
 #define REG_TDLEN   0x3808
 #define REG_TDH     0x3810
 #define REG_TDT     0x3818
+#define REG_MPC     0x4010   /* missed packets (no buffer / FIFO full), clear-on-read */
+#define REG_GPRC    0x4074   /* good packets received, clear-on-read */
+#define REG_RNBC    0x40A0   /* receive: no buffers available, clear-on-read */
 #define REG_MTA     0x5200   /* 128 dwords, multicast table */
 #define REG_RAL0    0x5400
 #define REG_RAH0    0x5404
@@ -109,6 +113,12 @@ static const struct { uint16_t vendor, device; } e1000_ids[] = {
 #define T_EEPROM      5
 #define T_LINK        100
 #define T_TX          10
+/* How long the boot self-test waits for the ARP reply. Longer than one
+   second on purpose: QEMU's e1000 model refuses to receive for about 1 s
+   (virtual time) after every RCTL write and queues what arrives meanwhile
+   (flush_queue_timer in hw/net/e1000.c), so a reply to a request sent right
+   after init is only delivered once that window ends. */
+#define T_ARP_REPLY   300
 #define SPIN_CAP_PER_TICK 100000u
 
 /* ── state ──────────────────────────────────────────────────────────── */
@@ -411,6 +421,10 @@ int e1000_poll_rx(uint8_t *out, uint16_t max) {
     volatile uint32_t *d = desc(g_rx_ring, i);
     uint32_t st = d[3];
     if (!(st & RXD_STA_DD)) return 0;
+    /* d is volatile, so every poll reads the status from memory. The
+       barrier keeps the compiler from reading the length or the buffer
+       before the DD check (x86 does not reorder loads with loads). */
+    __asm__ volatile ("" : : : "memory");
 
     uint32_t len    = d[2] & 0xFFFF;
     uint32_t errors = (st >> 8) & 0xFF;
@@ -447,6 +461,60 @@ static void put_ip(uint8_t *p, uint8_t a, uint8_t b, uint8_t c, uint8_t d) {
     p[0] = a; p[1] = b; p[2] = c; p[3] = d;
 }
 
+static void serial_str(const char *s) {
+    while (*s) serial_putchar(*s++);
+}
+
+static void serial_hex32(uint32_t v) {
+    static const char hex[] = "0123456789abcdef";
+    serial_putchar('0'); serial_putchar('x');
+    for (int sh = 28; sh >= 0; sh -= 4) serial_putchar(hex[(v >> sh) & 0xF]);
+}
+
+static void serial_dec(uint32_t v) {
+    char b[10];
+    int n = 0;
+    do { b[n++] = (char)('0' + v % 10); v /= 10; } while (v);
+    while (n) serial_putchar(b[--n]);
+}
+
+static void diag_hex(const char *name, uint32_t v) {
+    serial_putchar(' '); serial_str(name); serial_putchar('='); serial_hex32(v);
+}
+
+static void diag_dec(const char *name, uint32_t v) {
+    serial_putchar(' '); serial_str(name); serial_putchar('='); serial_dec(v);
+}
+
+/* One serial line with the RX state, printed when the boot self-test got no
+   reply: did the card take the frame (GPRC), had it no buffer (RNBC/MPC),
+   or was it filtered (nothing counted)? The statistics registers clear on
+   read, so each is read exactly once. The register names are hardware
+   mnemonics, not prose, so they stay literals; the prefix goes through
+   msg(). */
+static void rx_diag(void) {
+    volatile uint32_t *d0 = desc(g_rx_ring, 0);
+    uint32_t gprc = e1000_rd32(REG_GPRC);
+    uint32_t mpc  = e1000_rd32(REG_MPC);
+    uint32_t rnbc = e1000_rd32(REG_RNBC);
+    serial_str(msg(MSG_NET_DIAG));
+    diag_hex("RCTL",  e1000_rd32(REG_RCTL));
+    diag_dec("RDLEN", e1000_rd32(REG_RDLEN));
+    diag_dec("RDH",   e1000_rd32(REG_RDH));
+    diag_dec("RDT",   e1000_rd32(REG_RDT));
+    diag_hex("RDBAL", e1000_rd32(REG_RDBAL));
+    diag_hex("STATUS", e1000_rd32(REG_STATUS));
+    diag_hex("RAL0",  e1000_rd32(REG_RAL0));
+    diag_hex("RAH0",  e1000_rd32(REG_RAH0));
+    diag_hex("D0STA", d0[3] & 0xFF);
+    diag_dec("D0LEN", d0[2] & 0xFFFF);
+    diag_dec("next",  g_rx_next);
+    diag_dec("GPRC",  gprc);
+    diag_dec("MPC",   mpc);
+    diag_dec("RNBC",  rnbc);
+    serial_putchar('\n');
+}
+
 #define ETH_TYPE_ARP 0x0806
 #define ARP_FRAME_LEN 42   /* 14 Ethernet + 28 ARP */
 
@@ -474,12 +542,18 @@ void e1000_boot_selftest(void) {
         return;
     }
 
+    /* Between empty polls, timer_poll_delay_ms() waits on the PIT counter
+       itself (no IRQ needed); it rounds up to one timer period (10 ms), so
+       the iteration count bounds the wait to about T_ARP_REPLY ticks even if
+       the tick counter stopped. The old loop stopped after a fixed number of
+       fast RAM-only polls, which could end well before its one-second tick
+       budget. */
     static uint8_t rx[E1000_MAX_FRAME];
     uint32_t start = timer_get_ticks();
-    uint32_t cap = 100 * SPIN_CAP_PER_TICK;
-    for (uint32_t spins = 0; spins < cap && timer_get_ticks() - start < 100; spins++) {
+    for (uint32_t it = 0; it < T_ARP_REPLY && timer_get_ticks() - start < T_ARP_REPLY; it++) {
         int n = e1000_poll_rx(rx, sizeof(rx));
-        if (n < ARP_FRAME_LEN) continue;   /* nothing, dropped, or too short */
+        if (n == 0) { timer_poll_delay_ms(1); continue; }
+        if (n < ARP_FRAME_LEN) continue;   /* dropped, or too short */
         if (get_be16(rx + 12) != ETH_TYPE_ARP) continue;
         if (get_be16(rx + 20) != 2) continue;   /* not a reply */
         if (rx[28] != 10 || rx[29] != 0 || rx[30] != 2 || rx[31] != 2) continue;
@@ -492,4 +566,5 @@ void e1000_boot_selftest(void) {
     }
     net_tag();
     console_puts(msg(MSG_NET_NO_ARP_REPLY));
+    rx_diag();
 }

@@ -327,6 +327,7 @@ typedef enum {
     MSG_NET_ARP_REPLY,
     MSG_NET_NO_ARP_REPLY,
     MSG_NET_ARP_NOT_SENT,
+    MSG_NET_DIAG,
 
     MSG_COUNT
 } msg_id_t;
