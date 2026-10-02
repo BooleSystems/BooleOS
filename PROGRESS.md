@@ -13,27 +13,10 @@ Do not duplicate README/docs content here. `README.md` is a lean index
 
 ## Current status
 
-Current version: **0.22.1-nightly** (`kernel/version.h`): a patch fixing the
-VGA console race below, not a new phase; `BOOLEOS_PHASE` stays `22`. Last
-closed phase: **Phase 22** (`unlink()`/`rmdir()`), released as `0.22.0`,
-tagged `v0.22.0`.
-
-### In progress: 0.22.1 (patch, not a new phase)
-
-The fix (`irq_save()`/`irq_restore()` around `vga_putchar()`/`vga_clear()`/
-`vga_set_cursor()`, see "Architecture decisions" below) is commited and
-pushed to `nightly` as `010fe5e`, but **not yet validated in QEMU**.
-Pending before closing 0.22.1:
-
-1. `run selftest` in QEMU, expecting `32/32 passed` (test 32 is new).
-2. The manual test in `docs/testing.md`: run `run selftest` and type a
-   command while it is still printing; no duplicated/vanished line, no
-   command re-running by itself.
-3. Only after both of those: the usual version-close flow (`kernel/
-   version.h` to `0.22.1` with the `-nightly` suffix dropped, CHANGELOG
-   `[Unreleased]` consolidated into `[0.22.1]`, merge `nightly` → `main`,
-   tag `v0.22.1`, push, `make snapshot`, `gh release create`), same as
-   `0.22.0`.
+Current version: **0.22.1** (`kernel/version.h`), a patch on top of the last
+closed phase, **Phase 22** (`unlink()`/`rmdir()`, released as `0.22.0`). The
+patch fixed the VGA console race (see "Architecture decisions"); it is not a
+new phase and `BOOLEOS_PHASE` stays `22`. Tagged `v0.22.1`.
 
 ### Closed phases (one line each; detail in CHANGELOG.md / README.md)
 
@@ -60,7 +43,8 @@ Pending before closing 0.22.1:
 - Phase 22 — `unlink()`/`rmdir()`: `fat16_unlink()`/`fat16_rmdir()` (dirent
   `0xE5` first, then the FAT chain freed), `SYS_UNLINK`/`SYS_RMDIR` (35/36),
   `nos_unlink()`/`nos_rmdir()`, `sys_kill()` now closes fds too; selftest
-  expanded to 31 tests — `0.22.0`.
+  expanded to 31 tests — `0.22.0` (`0.22.1` PATCH: VGA console race fixed,
+  selftest test 32).
 
 ### Next: Phase 23 — Memory/CR3 release in `process_exit()`
 

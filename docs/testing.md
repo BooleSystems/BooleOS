@@ -256,7 +256,7 @@ needing to reproduce the bug by hand first.
 The automated test above forces the race that used to corrupt shared
 console state, but nothing reads the screen back through a syscall, so it
 can't confirm the screen itself looks right. That needs a human looking
-at it. Before closing 0.22.1, run this by hand:
+at it. Run this by hand after any change to the console output path:
 
 ```
 run selftest
