@@ -9,7 +9,7 @@
  | |_) || (_) || (_) || ||  __/| |_| | ___) |
  |____/  \___/  \___/ |_| \___| \___/ |____/ 
 
- BooleOS v0.22.0 - Phase 22: unlink()/rmdir()
+ BooleOS v0.22.1 - Phase 22: unlink()/rmdir()
 ```
 
 ## Overview

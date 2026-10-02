@@ -22,6 +22,25 @@ called out inline rather than silently "corrected", and `[0.11.0]`–
 Phase 10), not a version string that ever actually appeared in the repo
 at the time.
 
+## [Unreleased]
+
+## [0.22.1] - 2026-10-02 - Patch: console output race fixed
+
+### Fixed
+- **Console output race, found while validating Phase 22.** Typing at the shell while a background `run` program kept printing corrupted the screen: characters lost or doubled, a command's name scrambled, and in the worst case what looked like a command running again by itself.
+  - Cause: `vga_putchar()`, `vga_clear()` and `vga_set_cursor()` in `kernel/drivers/vga.c` read and wrote `term_col`, `term_row` and the VGA buffer with nothing stopping a preemption. Any process reaches them through `SYS_WRITE` (the shell's key echo included), `SYS_CLEAR` and `SYS_GOTOXY`. A timer tick landing mid-write left that shared state half-updated for whichever process ran next. A tick inside the roughly 2000-cell copy loop of `vga_scroll()` could tear a whole scroll, duplicating or dropping a line; that was the "command ran again by itself" symptom.
+  - The shell's line buffer and the keyboard ring buffer were checked and are not involved: the first is private to each process and the second has one producer and one consumer.
+  - Fix: the whole body of each of the three functions now runs between `irq_save()` and `irq_restore()`, the same pattern `fat16.c` uses. That is safe here because nothing in `vga.c` waits on an IRQ, unlike disk I/O.
+  - Not changed: two processes that print at the same time still interleave their output line by line, and the echo of what you type mixes with another process's output. That is how a shared terminal behaves. The FAT16 buffers held across blocking disk writes (lock planned for Phase 29) are a separate problem and were not touched.
+
+### Added
+- selftest test 32 (32 tests in total, was 31): four children and the parent each write about 4000 bytes at once, which forces the race above. No syscall reads the screen back, so the test checks what it can: every child is reaped and an unrelated syscall still behaves normally afterwards.
+- A manual test in `docs/testing.md`: type a command while `run selftest` is still printing and check by eye that no line is duplicated or lost and no command runs twice.
+
+### Changed
+- `kernel/version.h` bumped to `0.22.1` (PATCH: no new phase, `BOOLEOS_PHASE` stays `22`); the README banner follows.
+- `docs/hal.md` and `PROGRESS.md` describe the interrupt-off section in `vga.c`; the known issue about typing while a program prints is gone from `docs/TODO.md`.
+
 ## [0.22.0] - 2026-09-28 - Phase 22: unlink()/rmdir()
 
 ### Added
