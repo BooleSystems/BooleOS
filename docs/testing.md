@@ -180,8 +180,8 @@ needing to reproduce the bug by hand first.
     — a file of garbage bytes, the first 100 bytes of a real ELF (valid
     header, program headers pointing past the end of the file) and a name
     that does not exist anywhere must all make `nos_exec()` return -1,
-    without crashing the kernel. (Each failed `exec()` after the page
-    directory was created leaks that page — see "Known limitations".)
+    without crashing the kernel. (A failed `exec()` frees the directory it
+    had already created, since Phase 23-B.)
 21. **The printf family** (Phase 19) — `snprintf`/`sprintf` with `%d %u %x
     %X %s %c %%`, width, zero-padding, left-justify, precision, negative
     numbers and `INT_MIN`, a NULL `%s`, bounded truncation with the C99
@@ -335,9 +335,8 @@ see EOF and exit.
 - Tests 12-13 are single-process; test 16 covers the two-process case.
 - There is no exit-code syscall, so test 17 passes each child's result
   through a pipe.
-- A failed `exec()` does not free the page directory it already created
-  (the same accepted leak as `process_exit()`, Phase 23): test 20 leaks two
-  pages per run, out of ~1000 free at boot.
+- A failed `exec()` frees the page directory and pages it already built
+  (Phase 23-B), so the failing-exec checks of test 20 no longer cost pages.
 - No syscall reads back screen content, so test 32 can only check that
   concurrent console writers don't corrupt kernel state, not that the
   screen displays correctly; that needs the manual test right after the

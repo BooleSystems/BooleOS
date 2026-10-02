@@ -24,16 +24,30 @@ at the time.
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-10-02 - Phase 23: process memory release
+
 ### Added
-- **Phase 23-B, in progress (not yet validated in QEMU): a process's page directory and page tables are freed when it exits.** New `vmm_destroy_directory()` in `kernel/memory/vmm.c` drops the reference to every user page (a page still shared copy-on-write stays allocated), frees each page table of the process (PDE 2 and up, with `VMM_USER`) and then the directory, in one interrupt-off section. If the process is running on the directory being freed, it loads the kernel directory first; that directory maps the same 0–8 MB, so the exit path keeps running on the slot's static kernel stack. The two shared kernel page tables behind PDE 0/1 are never touched. `process_exit()` uses it in the same section that marks the slot unused, so no zombie state or deferred reaper is needed.
-- selftest tests 33 and 34: 30 `fork()`+exit cycles (each child forces a copy-on-write copy) and 20 `exec()`+exit cycles of `cat` must leave the free PMM page count exactly where it was.
-- `pmm_free_page()` of a page that is not allocated (already free, or out of range) now prints `pmm: ERROR free of a page that is not allocated (double free?): 0x...` on the serial port. It used to return without a word.
+- **A process's page directory and page tables are freed when it exits (Phase 23-B).** Until now `process_exit()` released the user data pages (since Phase 21) but kept the page directory and every per-process page table, 3 to 4 pages per process, so each `run`, `fork()` and `exec()` that ended took memory out of the pool for good. The new `vmm_destroy_directory()` in `kernel/memory/vmm.c` does the whole teardown in one interrupt-off section:
+  1. If the directory being freed is the one loaded in CR3, it loads the kernel directory first. That directory has the same PDE 0 and 1 (the identity map of 0–8 MB), so a process that is exiting itself keeps running on its static kernel stack until `scheduler_yield()`, and only loses its user mapping.
+  2. For each PDE from 2 up with `VMM_USER`, it drops one reference to every present user page and frees the page table. A page still shared copy-on-write with another process stays allocated until its last holder lets go.
+  3. It frees the directory page.
+  - PDE 0 and 1 point at the two static kernel page tables, which every directory shares; they are never touched, and a PDE without `VMM_USER` is skipped. The kernel directory itself and 0 are refused.
+  - There is no zombie state and no deferred reaper, because the kernel stack is a static per-slot array and nothing else needs to outlive the exit. `process_exit()` copies and zeroes `cr3`, frees the directory and marks the slot unused in the same section, so a second exit of the same process finds the slot unused and does nothing.
+  - A process killed while blocked on `waitpid`, a pipe or an ATA command is never scheduled again, so nothing walks its freed directory.
+- selftest tests 33 and 34 (34 total, was 32): 30 `fork()`+exit cycles (each child forces a copy-on-write copy) and 20 `exec()`+exit cycles of `cat` must leave the free PMM page count exactly where it was.
+- `pmm_free_page()` of a page that is not allocated (already free, or out of range) prints `pmm: ERROR free of a page that is not allocated (double free?): 0x...` on the serial port. It used to return without a word. Nothing else changes in that case.
+- Documentation: "Freeing a process's address space" and "Double frees" in `docs/memory.md`, "Exit and the CR3 in use" in `docs/scheduler.md`, tests 33 and 34 in `docs/testing.md`.
 
 ### Changed
-- `fork()` and `exec()` failure paths free the half-built directory and its page tables instead of leaking them.
+- `fork()` and `exec()` failure paths (ELF load, user stack, no free slot) free the half-built directory, its page tables and the pages already mapped. They leaked them before.
 - `sys_kill()` of the caller's own pid now leaves the CPU like `sys_exit()`. It used to return to user mode, which only worked because the directory leaked.
-- `kernel/version.h` is `0.23.0-nightly`. `docs/memory.md` and `docs/scheduler.md` describe the teardown and its edge cases, `docs/testing.md` lists tests 33 and 34, and `docs/TODO.md` records three pre-existing issues found along the way: a stale ATA waiter pointer after a kill, a reserved child stuck blocked if its parent dies, and `elf_load()` leaking a frame when two segments share a page.
-- `tools/prev/` now holds the v0.22.1 snapshot (kernel + ramfs built from the `v0.22.1` tag in a clean worktree), so the "previous release" GRUB entry of the next version is v0.22.1.
+- ROADMAP.md: Phase 23 and sub-phases 23-A to 23-C are marked done. The earlier note that Phase 23 would fix the heap/identity-map design was wrong: the fixed 256 KB kernel heap, the 192 KB limit on FAT16 programs that follows from it, and the way the kernel reaches physical frames only through the 0–8 MB identity map were not touched. That work has no phase scheduled and has to happen before the DOOM port (Phase 31). ROADMAP.md, `PROGRESS.md` and `docs/memory.md` say so now.
+- `docs/kernel.md`, `docs/testing.md`, `docs/security.md` and `docs/pipes.md` no longer describe the directory leak as present, and `docs/kernel.md` points at Phase 28 (not 23) for syscall deprecation.
+- `tools/prev/` now holds the v0.22.1 snapshot (kernel + ramfs built from the `v0.22.1` tag in a clean worktree), so the "previous release" GRUB entry of this version is v0.22.1.
+- `kernel/version.h` is `0.23.0`, phase `23` "process memory release"; the README banner and phase table follow.
+
+### Known issues
+- Four older problems are recorded in `docs/TODO.md` and not fixed. The first, seen while validating this release: after killing `selftest` with Ctrl+C during its "file create" test, the kernel heap shrank by 44 bytes (229344 B to 229300 B) and stayed there; the cause is not known. The other three were found while doing this work: a process killed mid ATA command leaves a stale waiter pointer in `kernel/drivers/ata.c` (it can wake the wrong process if the slot is reused, and the ATA gate is never released if the process held it); a child reserved by `fork()` or `SYS_EXEC_PIPE` stays blocked forever if its parent is killed before making it ready; `elf_load()` would leak a frame if two segments of a program shared a page, which no program in the tree does.
 
 ## [0.22.1] - 2026-10-02 - Patch: console output race fixed
 

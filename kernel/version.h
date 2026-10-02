@@ -17,9 +17,9 @@
 #ifndef BOOLEOS_VERSION_H
 #define BOOLEOS_VERSION_H
 
-#define BOOLEOS_VERSION      "0.23.0-nightly"
-#define BOOLEOS_PHASE        "22"
-#define BOOLEOS_PHASE_DESC   "unlink()/rmdir()"
+#define BOOLEOS_VERSION      "0.23.0"
+#define BOOLEOS_PHASE        "23"
+#define BOOLEOS_PHASE_DESC   "process memory release"
 
 // Composed strings so callers don't have to concatenate these by hand.
 #define BOOLEOS_BANNER       "BooleOS v" BOOLEOS_VERSION " - Phase " BOOLEOS_PHASE ": " BOOLEOS_PHASE_DESC

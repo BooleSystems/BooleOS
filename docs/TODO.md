@@ -44,3 +44,11 @@ Found during Phase 23-B, outside its scope (not memory release):
   PT_LOAD segment; two segments sharing a page would map it twice and leak
   the first frame. The current linker script page-aligns the segments, so
   no program in the tree hits it. Related files: kernel/elf.c.
+- TODO later: after killing `selftest` with Ctrl+C during the "file create"
+  test, the kernel heap (the "Heap" field of `fetch`) went from 229344 B to
+  229300 B, 44 bytes less, and did not change after a full selftest. Not
+  investigated, not blocking. Unconfirmed guesses: a kernel structure of a
+  process killed in the middle of a file operation (an open-file or fd
+  structure) is not released by the kill, or it is allocator fragmentation.
+  Related files: kernel/syscall.c (`sys_kill()`, `close_all_fds()`),
+  kernel/fs/fat16.c, kernel/memory/heap.c.
