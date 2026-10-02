@@ -25,6 +25,23 @@ uint32_t pci_config_read32(uint8_t bus, uint8_t device, uint8_t function, uint8_
 uint16_t pci_config_read16(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset);
 uint8_t  pci_config_read8 (uint8_t bus, uint8_t device, uint8_t function, uint8_t offset);
 
+/* Raw configuration space writes. write16 uses a 16-bit access on the
+   matching half of CONFIG_DATA, so writing the command register (0x04)
+   never rewrites the status register (0x06), whose bits are write-1-to-clear. */
+void pci_config_write32(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint32_t value);
+void pci_config_write16(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint16_t value);
+
+/* Command register (offset 0x04) bits. */
+#define PCI_CMD_IO_SPACE     0x0001
+#define PCI_CMD_MEM_SPACE    0x0002
+#define PCI_CMD_BUS_MASTER   0x0004
+
+/* Size in bytes of BAR `index` (0-5) of a type-0 device: memory and I/O
+   decode are turned off, all ones written, the size mask read back, and the
+   BAR and the command register restored. 0 if the BAR is unimplemented.
+   Boot-time only: nothing else may touch the device meanwhile. */
+uint32_t pci_bar_size(uint8_t bus, uint8_t device, uint8_t function, int index);
+
 /* Scans bus 0-255 / device 0-31 / function 0-7 (skipping functions 1-7
    on single-function devices), storing every device found (vendor ID
    != 0xFFFF) in an internal static table. Returns the device count. */

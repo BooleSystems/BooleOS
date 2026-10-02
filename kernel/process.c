@@ -222,6 +222,9 @@ process_t *process_fork(process_t *parent, const uint32_t *saved_frame) {
     uint32_t flags = irq_save();
     for (uint32_t di = 2; di < 1024 && !failed; di++) {
         if (!(parent_pd[di] & VMM_PRESENT)) continue;
+        /* A kernel PDE (MMIO mapped at boot): the child already has it from
+           vmm_create_directory(), and its frames are not PMM pages. */
+        if (!(parent_pd[di] & VMM_USER)) continue;
         uint32_t *parent_pt = (uint32_t *)(parent_pd[di] & 0xFFFFF000);
 
         for (uint32_t ti = 0; ti < 1024; ti++) {

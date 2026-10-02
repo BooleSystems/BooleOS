@@ -60,6 +60,7 @@ C_SRCS   = $(ROOT)/kernel/main.c \
             $(ROOT)/kernel/drivers/vga.c \
             $(ROOT)/kernel/drivers/ata.c \
             $(ROOT)/kernel/drivers/pci.c \
+            $(ROOT)/kernel/drivers/e1000.c \
             $(ROOT)/kernel/fs/fat16.c \
             $(ROOT)/kernel/fs/vfs.c
 
@@ -105,7 +106,7 @@ QEMU_FLAGS = -boot d \
 # `run-reboot-test` to test a real reboot.
 QEMU_FLAGS_RUN = $(QEMU_FLAGS) -no-reboot
 
-.PHONY: all clean run run-reboot-test debug dirs user disk inject snapshot test-elf
+.PHONY: all clean run run-net run-reboot-test debug dirs user disk inject snapshot test-elf
 
 all: dirs user $(KERNEL_ISO) $(DISK_IMG)
 	@echo ""
@@ -239,6 +240,15 @@ inject: $(DISK_IMG)
 
 run: $(KERNEL_ISO) $(DISK_IMG)
 	qemu-system-x86_64 $(QEMU_FLAGS_RUN)
+
+# Same as `run`, with the e1000 NIC and its user-mode (slirp) backend given
+# explicitly, and every frame dumped to build/net.pcap (read it with
+# `tcpdump -nn -e -r ../build/net.pcap`). A -netdev option turns QEMU's
+# default NIC off, so there is still exactly one e1000, at 00:03.0.
+run-net: $(KERNEL_ISO) $(DISK_IMG)
+	qemu-system-x86_64 $(QEMU_FLAGS_RUN) \
+	    -netdev user,id=n0 -device e1000,netdev=n0 \
+	    -object filter-dump,id=f0,netdev=n0,file=$(BUILD)/net.pcap
 
 run-reboot-test: $(KERNEL_ISO) $(DISK_IMG)
 	qemu-system-x86_64 $(QEMU_FLAGS)

@@ -297,6 +297,21 @@ static const char *const g_msgs[] = {
     [MSG_SAFE_CRASH_ACKED] = "acknowledged; it is cleared after the next complete normal boot\n",
     [MSG_SAFE_CRASH_STORED] = "A crash record is stored: press 6 to view it.\n",
     [MSG_CRASH_HALTED] = "  Not restarting, so this screen stays readable. Reset the machine by hand.\n",
+    // network (Phase 24)
+    [MSG_NET_TAG] = "[NET] ",
+    [MSG_NET_NO_E1000] = "no e1000 found\n",
+    [MSG_NET_E1000_MAC] = "e1000: MAC ",
+    [MSG_NET_LINK_UP] = ", link up\n",
+    [MSG_NET_LINK_DOWN] = ", link down (no cable or backend?)\n",
+    [MSG_NET_INIT_FAILED] = "e1000: init failed, continuing without network: ",
+    [MSG_NET_ERR_BAR] = "BAR0 is not a usable 32-bit memory BAR\n",
+    [MSG_NET_ERR_MAP] = "cannot map the device registers\n",
+    [MSG_NET_ERR_RESET] = "device reset timed out\n",
+    [MSG_NET_ERR_EEPROM] = "cannot read the MAC address from the EEPROM\n",
+    [MSG_NET_ERR_NOMEM] = "out of memory for the descriptor rings\n",
+    [MSG_NET_ARP_REPLY] = "ARP reply: 10.0.2.2 is at ",
+    [MSG_NET_NO_ARP_REPLY] = "no ARP reply (no network backend?)\n",
+    [MSG_NET_ARP_NOT_SENT] = "ARP request not sent (transmit timed out)\n",
 };
 
 // Compile-time check: the table must reach exactly MSG_COUNT entries (its

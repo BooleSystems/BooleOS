@@ -11,6 +11,8 @@
 #define VMM_WRITABLE   0x02  // Read/write
 #define VMM_USER       0x04  // Accessible from userland
 #define VMM_KERNEL     (VMM_PRESENT | VMM_WRITABLE)
+#define VMM_PWT        0x08  // Write-through
+#define VMM_PCD        0x10  // Cache disabled (device registers, MMIO)
 // Bit 9, one of the three PTE bits the CPU leaves to the OS: a user page
 // shared copy-on-write after fork(). Always paired with WRITABLE clear. A
 // read-only page WITHOUT this bit is read-only for its own reasons, and a
@@ -37,7 +39,8 @@ uint32_t vmm_get_phys(uint32_t virt);
 // Returns the kernel's page directory (physical)
 uint32_t vmm_get_kernel_directory(void);
 
-// Creates a new page directory cloning the kernel mapping
+// Creates a new page directory cloning every kernel PDE present at that moment
+// (identity map 0-8MB plus kernel mappings made at boot, e.g. MMIO)
 uint32_t vmm_create_directory(void);
 
 // Frees a process's whole address space: drops its reference to every user

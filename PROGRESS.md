@@ -16,6 +16,51 @@ Do not duplicate README/docs content here. `README.md` is a lean index
 Current version: **0.23.0** (`kernel/version.h`). Last closed phase:
 **Phase 23** (process memory release: `process_exit()` frees the page
 directory and page tables), released as `0.23.0`, tagged `v0.23.0`.
+Working on `0.24.0-nightly` (`BOOLEOS_PHASE` stays `23` until Phase 24 closes).
+
+### In progress: 0.24.0 / 24-A (raw e1000 driver)
+
+Status: implemented on `nightly`, **not yet validated in QEMU**. Investigation,
+from the code:
+
+a) **PCI (`kernel/drivers/pci.c`)** had reads only (`pci_config_read32/16/8`),
+   no config writes and no BAR sizing. Added `pci_config_write32/16`
+   (16-bit uses `outw` on `0xCFC + (offset & 2)`, so writing the command
+   register never rewrites the status register's write-1-to-clear bits) and
+   `pci_bar_size()` (memory decode off, write all ones, read, restore).
+   `pci_find_device()` finds a vendor:device in the boot scan table.
+b) **VMM:** `vmm_map_page()` maps into the kernel directory only, with any low
+   flag bits (so PCD 0x10 | PWT 0x08 work). `vmm_create_directory()` copied
+   ONLY PDE 0/1, so a kernel PDE added for MMIO would reach no process. Three
+   things had to change, all in `vmm.c`/`process.c`:
+   - `pt_next` started at `PAGE_TABLE_START` although `vmm_init()` already
+     used the first two tables there (known debt): the first new kernel page
+     table (the MMIO one) would have overwritten the 0–4 MB identity map.
+     Now starts after them.
+   - `vmm_create_directory()` copies every present kernel PDE, not just 0/1.
+     The PDE points at the same kernel page table, so later PTE changes inside
+     it reach every directory; a PDE added to the kernel directory AFTER a
+     directory was created does not. The driver maps at boot, before the
+     first `exec()`, so every process directory gets it.
+   - `process_fork()` walked every present PDE ≥ 2 as user memory: it would
+     have tried `pmm_page_ref()` on MMIO frames and failed every fork. It now
+     skips PDEs without `VMM_USER`. `vmm_destroy_directory()` already skipped
+     them (Phase 23). `vmm_map_user_page_flags()` now refuses a virt whose
+     PDE is present without `VMM_USER`, instead of writing a user PTE into a
+     shared kernel table.
+c) **PMM:** `pmm_alloc_page()` returns frames below 8 MB (`PMM_LIMIT_ADDR`),
+   all identity-mapped, so virt == phys and the frame address goes straight
+   into a DMA descriptor (32-bit, high half 0).
+d) **Boot order (`kernel/main.c`):** `sti` + PIT run from early boot, so
+   `timer_get_ticks()` advances during init. The driver goes right after
+   `pci_scan_bus()`/`pci_print_list()` and before the ramfs/"Loading shell".
+e) **`tools/Makefile`:** `run` = `qemu-system-x86_64` + `QEMU_FLAGS_RUN`
+   (cdrom, IDE disk, 256 MB, serial stdio, sdl, -no-shutdown, -no-reboot), no
+   network option at all, so QEMU's `pc` machine adds its default NIC: an
+   e1000 at 00:03.0 on a user-mode (slirp) backend. `make run` therefore
+   already has the device and, normally, an ARP reply. `run-net` gives the
+   same device explicitly (a `-netdev` option turns the default NIC off) plus
+   a pcap dump.
 
 ### Closed phases (one line each; detail in CHANGELOG.md / README.md)
 
@@ -65,6 +110,13 @@ package manager phase was deliberately decided against — don't add one.
 
 ## Architecture decisions (non-obvious; detail lives in the linked docs)
 
+- **Every process directory copies all kernel PDEs present at creation
+  (24-A), and kernel PDEs never have `VMM_USER`.** That is how a boot-time
+  kernel mapping above 8 MB (the e1000 MMIO window) reaches every process.
+  Code walking a process directory must skip non-`VMM_USER` PDEs
+  (`process_fork()`, `vmm_destroy_directory()`), and kernel mappings above
+  8 MB must be made before the first `exec()`. See `docs/memory.md`,
+  `docs/network.md`.
 - **`vga_putchar()`/`vga_clear()`/`vga_set_cursor()` run with interrupts off
   for their whole body (0.22.1).** Any process can reach them through
   `SYS_WRITE`/`SYS_CLEAR`/`SYS_GOTOXY` (echo included, since `SYS_READ`'s
@@ -232,11 +284,6 @@ package manager phase was deliberately decided against — don't add one.
   processes**; `SYS_GETARG` can read an arg clobbered by another exec.
   `sys_exec_pipe()` clears it (17-C). Needs per-process argument storage;
   `SYS_EXEC_PIPE` also has no argument register left. 
-- **`pt_next` in `kernel/memory/vmm.c` starts at `PAGE_TABLE_START`, but
-  `vmm_init()` writes two page tables there without advancing it.** The
-  first `map_page_early()` creating a NEW page table would overwrite the
-  0–4 MB identity map. Harmless today (heap 4–8 MB is inside the present
-  PDE 1). Fix: init `pt_next` to `PAGE_TABLE_START + 2 * PAGE_SIZE`.
 - **No exit-code syscall:** `SYS_EXIT` ignores its code and `SYS_WAIT`
   returns nothing but 0 (the selftest passes child results through pipes).
 - **`dir_buf`/`sector_buf` in `fat16.c` are global buffers held across

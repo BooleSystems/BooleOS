@@ -45,6 +45,40 @@ uint8_t pci_config_read8(uint8_t bus, uint8_t device, uint8_t function, uint8_t 
     return (uint8_t)(dword >> ((offset & 3) * 8));
 }
 
+static inline void outw(uint16_t port, uint16_t val) {
+    __asm__ volatile ("outw %0, %1" : : "a"(val), "Nd"(port));
+}
+
+void pci_config_write32(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint32_t value) {
+    outl(PCI_CONFIG_ADDRESS, pci_make_address(bus, device, function, offset));
+    outl(PCI_CONFIG_DATA, value);
+}
+
+void pci_config_write16(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint16_t value) {
+    outl(PCI_CONFIG_ADDRESS, pci_make_address(bus, device, function, offset));
+    outw((uint16_t)(PCI_CONFIG_DATA + (offset & 2)), value);
+}
+
+uint32_t pci_bar_size(uint8_t bus, uint8_t device, uint8_t function, int index) {
+    if (index < 0 || index > 5) return 0;
+    uint8_t  off = (uint8_t)(0x10 + index * 4);
+    uint16_t cmd = pci_config_read16(bus, device, function, 0x04);
+    uint32_t old = pci_config_read32(bus, device, function, off);
+
+    /* With decode on, the device would answer at the all-ones address for
+       the moment the BAR holds it. */
+    pci_config_write16(bus, device, function, 0x04,
+                       (uint16_t)(cmd & ~(PCI_CMD_IO_SPACE | PCI_CMD_MEM_SPACE)));
+    pci_config_write32(bus, device, function, off, 0xFFFFFFFFu);
+    uint32_t mask = pci_config_read32(bus, device, function, off);
+    pci_config_write32(bus, device, function, off, old);
+    pci_config_write16(bus, device, function, 0x04, cmd);
+
+    if (mask == 0 || mask == 0xFFFFFFFFu) return 0;
+    mask &= (old & 1) ? 0xFFFFFFFCu : 0xFFFFFFF0u;   /* drop the type bits */
+    return ~mask + 1;
+}
+
 /* ── device table, filled by pci_scan_bus() ─────────────────────── */
 
 static pci_device_t g_devices[PCI_MAX_DEVICES];

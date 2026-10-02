@@ -25,6 +25,7 @@
 #include "drivers/ata.h"
 #include "fs/fat16.h"
 #include "drivers/pci.h"
+#include "drivers/e1000.h"
 
 // ── serial-only boot detail (the "debug" boot argument, g_debug_boot) ──────
 // These write straight to the serial port, never through console_*(): the
@@ -314,6 +315,14 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     print_ok();
     debug_step("PCI scan done");
     pci_print_list();
+
+    // Network card (Phase 24-A). After PCI (it looks the card up in the scan
+    // table) and before the first exec(): its registers are mapped into the
+    // kernel directory, and only PDEs present when a process directory is
+    // created get copied into it. Never fails the boot.
+    if (e1000_init())
+        e1000_boot_selftest();
+    debug_step("network init done");
 
     print_separator();
 

@@ -24,7 +24,18 @@ at the time.
 
 ## [Unreleased]
 
+### Added
+- **Phase 24-A, in progress (not yet validated in QEMU): raw e1000 driver.** `kernel/drivers/e1000.c/h` finds the Intel 82540EM (`8086:100E`, from a table of accepted IDs), turns on Memory Space and Bus Master, maps its 128 KB register window uncached into the kernel, resets it with every interrupt masked, reads the MAC (from `RAL0`/`RAH0`, or the EEPROM through `EERD`), brings the link up and sets up 16-descriptor RX and TX rings in PMM pages. `e1000_send()` and `e1000_poll_rx()` move raw frames by polling; every wait has a timeout and any init failure releases what it took and lets the boot continue without network. At boot it sends one ARP request for 10.0.2.2 and prints the reply's MAC, or that none came. The driver keeps 11 PMM pages (44 KB).
+- `pci_config_write32()`/`pci_config_write16()` (the 16-bit write leaves the status register alone) and `pci_bar_size()` in `kernel/drivers/pci.c`.
+- `make run-net` in `tools/Makefile`: `make run` plus an explicit e1000 on a user-mode backend and a packet dump in `build/net.pcap`. `make run` is unchanged.
+- `docs/network.md` (work in progress), and new sections in `docs/pci.md` and `docs/memory.md`.
+
+### Fixed
+- `pt_next` in `kernel/memory/vmm.c` started on top of the two identity-map page tables, so the first new kernel page table would have overwritten the 0–4 MB map. It never happened because no kernel mapping outside 0–8 MB existed until the e1000 one.
+
 ### Changed
+- `vmm_create_directory()` copies every kernel PDE present at that moment, not only PDE 0/1, so boot-time kernel mappings above 8 MB reach every process. `process_fork()` skips PDEs without `VMM_USER` (it would otherwise have tried to share MMIO frames and failed every fork), and `vmm_map_user_page_flags()` refuses an address whose PDE is a kernel one.
+- `kernel/version.h` is `0.24.0-nightly`.
 - `tools/prev/` now holds the v0.23.0 snapshot (kernel + ramfs built from the `v0.23.0` tag in a clean worktree), so the "previous release" GRUB entry of the next version is v0.23.0.
 
 ## [0.23.0] - 2026-10-02 - Phase 23: process memory release

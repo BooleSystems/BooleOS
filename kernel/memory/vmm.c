@@ -13,7 +13,10 @@ typedef uint32_t pte_t;
 #define PAGE_TABLE_START 0x301000
 #define PAGE_TABLE_END   0x341000
 
-static uint32_t pt_next      = PAGE_TABLE_START;
+/* vmm_init() takes the first two tables of the pool for the 0-8MB identity
+   map; new kernel page tables start after them. (Starting at
+   PAGE_TABLE_START made the first new one overwrite the 0-4MB table.) */
+static uint32_t pt_next      = PAGE_TABLE_START + 2 * PAGE_SIZE;
 static uint8_t  paging_active = 0;
 
 static void zero_4kb(uint32_t addr) {
@@ -135,6 +138,11 @@ int vmm_map_user_page_flags(uint32_t pd_phys, uint32_t virt, uint32_t phys, uint
         }
         zero_4kb(pt_phys);
         pd[di] = pt_phys | VMM_PRESENT | VMM_WRITABLE | VMM_USER;
+    } else if (!(pd[di] & VMM_USER)) {
+        /* A kernel page table shared by every directory (an MMIO mapping,
+           see vmm_create_directory()): a user PTE in it would show up in
+           every process and expose kernel memory. */
+        return VMM_ERR_RANGE;
     }
 
     pte_t *pt = (pte_t *)(pd[di] & 0xFFFFF000);
@@ -220,9 +228,17 @@ uint32_t vmm_create_directory(void) {
     for (int i = 0; i < 1024; i++)
         new_pd[i] = 0;
 
-    /* Clone the two kernel PDEs (first 8MB identity mapping). */
-    new_pd[0] = kernel_pd[0];
-    new_pd[1] = kernel_pd[1];
+    /* Clone every kernel PDE: PDE 0/1 (the 0-8MB identity map) and any
+       kernel mapping made at boot, such as a device's MMIO registers. The
+       PDE points at the kernel's own page table, so a PTE changed in it
+       later is seen by every directory; a kernel PDE created AFTER this
+       directory is not. Kernel mappings above 8MB must therefore be made
+       before the first process is created (drivers map at boot). None of
+       these PDEs has VMM_USER, which is what fork() and
+       vmm_destroy_directory() use to leave them alone. */
+    for (int i = 0; i < 1024; i++)
+        if (kernel_pd[i] & VMM_PRESENT)
+            new_pd[i] = kernel_pd[i];
 
     return pd_phys;
 }

@@ -52,3 +52,24 @@ Found during Phase 23-B, outside its scope (not memory release):
   structure) is not released by the kill, or it is allocator fragmentation.
   Related files: kernel/syscall.c (`sys_kill()`, `close_all_fds()`),
   kernel/fs/fat16.c, kernel/memory/heap.c.
+
+Phase 24-A (raw e1000 driver), left for later:
+
+- WIP: `docs/network.md` is a work in progress until Phase 24 closes; link it
+  from the README documentation list at that point (the README is only touched
+  when a phase closes). Related files: docs/network.md, README.md.
+- TODO later: when the e1000 driver becomes reachable from processes
+  (24-B/C), wrap `e1000_send()`/`e1000_poll_rx()` in `irq_save()`/
+  `irq_restore()` or a lock. Related files: kernel/drivers/e1000.c.
+- TODO later: `e1000_send()` returns -1 on a transmit timeout but the
+  descriptor stays the card's; a later send reuses the single TX buffer while
+  the card may still read it. Harmless while frames are sent one at a time at
+  boot. Related files: kernel/drivers/e1000.c.
+- TODO later: on an init failure after the PCI command register was changed,
+  Memory Space and Bus Master stay on (RX/TX are disabled). Related files:
+  kernel/drivers/e1000.c.
+- TODO later: kernel mappings above 8 MB only reach process directories
+  created after them (`vmm_create_directory()` copies the kernel PDEs present
+  at that moment). Fine for drivers mapped at boot; a mapping made later
+  needs the PDE pushed into every live directory. Related files:
+  kernel/memory/vmm.c.
