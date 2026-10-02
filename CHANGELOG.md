@@ -24,6 +24,9 @@ at the time.
 
 ## [Unreleased]
 
+### Changed
+- `tools/prev/` now holds the v0.22.1 snapshot (kernel + ramfs built from the `v0.22.1` tag in a clean worktree), so the "previous release" GRUB entry of the next version is v0.22.1.
+
 ## [0.22.1] - 2026-10-02 - Patch: console output race fixed
 
 ### Fixed
