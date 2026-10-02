@@ -24,6 +24,9 @@ at the time.
 
 ## [Unreleased]
 
+### Changed
+- `tools/prev/` now holds the v0.23.0 snapshot (kernel + ramfs built from the `v0.23.0` tag in a clean worktree), so the "previous release" GRUB entry of the next version is v0.23.0.
+
 ## [0.23.0] - 2026-10-02 - Phase 23: process memory release
 
 ### Added
