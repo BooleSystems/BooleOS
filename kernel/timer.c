@@ -72,12 +72,18 @@ static uint32_t pit_read_count(void) {
 void timer_poll_delay_ms(uint32_t ms) {
     uint32_t period_ms = tick_freq ? 1000u / tick_freq : 10u;   /* 10 ms at 100 Hz */
     if (period_ms == 0) period_ms = 1;
-    uint32_t wraps = (ms + period_ms - 1) / period_ms;
-    uint32_t guard = wraps * 30000u + 100000u;                  /* reads per period, generously */
+    /* timer_init() programs channel 0 in mode 3 (square wave, command 0x36).
+       In mode 3 the counter runs down from the reload value TWICE per
+       period (once per output half-cycle, decrementing by 2), so one period
+       is two wraps. Counting one wrap per period made every delay half as
+       long as asked (found in 24-B: arp_resolve()'s ~500 ms retry fired
+       after ~250 ms). */
+    uint32_t wraps = 2u * ((ms + period_ms - 1) / period_ms);
+    uint32_t guard = wraps * 30000u + 100000u;                  /* reads per half period, generously */
     uint32_t prev = pit_read_count();
 
-    /* The counter counts DOWN and reloads at the end of each period: a value
-       larger than the previous one is one wrap = one period elapsed. */
+    /* The counter counts DOWN and reloads at the end of each half period: a
+       value larger than the previous one is one wrap. */
     while (wraps && guard--) {
         uint32_t cur = pit_read_count();
         if (cur > prev) wraps--;
