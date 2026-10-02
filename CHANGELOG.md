@@ -24,7 +24,15 @@ at the time.
 
 ## [Unreleased]
 
+### Added
+- **Phase 23-B, in progress (not yet validated in QEMU): a process's page directory and page tables are freed when it exits.** New `vmm_destroy_directory()` in `kernel/memory/vmm.c` drops the reference to every user page (a page still shared copy-on-write stays allocated), frees each page table of the process (PDE 2 and up, with `VMM_USER`) and then the directory, in one interrupt-off section. If the process is running on the directory being freed, it loads the kernel directory first; that directory maps the same 0–8 MB, so the exit path keeps running on the slot's static kernel stack. The two shared kernel page tables behind PDE 0/1 are never touched. `process_exit()` uses it in the same section that marks the slot unused, so no zombie state or deferred reaper is needed.
+- selftest tests 33 and 34: 30 `fork()`+exit cycles (each child forces a copy-on-write copy) and 20 `exec()`+exit cycles of `cat` must leave the free PMM page count exactly where it was.
+- `pmm_free_page()` of a page that is not allocated (already free, or out of range) now prints `pmm: ERROR free of a page that is not allocated (double free?): 0x...` on the serial port. It used to return without a word.
+
 ### Changed
+- `fork()` and `exec()` failure paths free the half-built directory and its page tables instead of leaking them.
+- `sys_kill()` of the caller's own pid now leaves the CPU like `sys_exit()`. It used to return to user mode, which only worked because the directory leaked.
+- `kernel/version.h` is `0.23.0-nightly`. `docs/memory.md` and `docs/scheduler.md` describe the teardown and its edge cases, `docs/testing.md` lists tests 33 and 34, and `docs/TODO.md` records three pre-existing issues found along the way: a stale ATA waiter pointer after a kill, a reserved child stuck blocked if its parent dies, and `elf_load()` leaking a frame when two segments share a page.
 - `tools/prev/` now holds the v0.22.1 snapshot (kernel + ramfs built from the `v0.22.1` tag in a clean worktree), so the "previous release" GRUB entry of the next version is v0.22.1.
 
 ## [0.22.1] - 2026-10-02 - Patch: console output race fixed
