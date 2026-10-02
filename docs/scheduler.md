@@ -33,9 +33,16 @@
 - `SYS_FORK (25)`: after `process_fork()` succeeds, duplicates `fd_table[parent_slot]` into `fd_table[child_slot]` — each fd then tracks its own read/write position independently, not POSIX's shared-offset semantics. Since Phase 16 (pipes), this raw struct copy is followed by `vfs_dup()` on every duplicated entry: `vfs_fd_t` used to be plain data with nothing to refcount, but a pipe end now is — see `docs/pipes.md` for why skipping this would let one process's `close()` drop a pipe's refcount to 0 while the other (the fork duplicate) is still genuinely using it. `vfs_dup()` stays a no-op for ramfs/FAT16 entries, unchanged.
 - `process_t.stdin_redirect`/`stdout_redirect` (Phase 16, both default `-1` = "no redirect") are copied parent→child by `process_fork()` too, for the same reason the rest of the fd table is duplicated — see `docs/pipes.md` for what they do and how `SYS_EXEC_PIPE` sets them on a freshly spawned process instead.
 - Slot exhaustion or a failed mapping mid-walk both return -1 to the parent with no process left behind; the child's references are dropped by walking its own (partially built) directory, since `process_fork()` runs on the caller's small fixed-size kernel stack and can't afford a separate tracking array
-- `process_exit()` drops the process's reference to each user page (a page is freed when the last process mapping it exits). It still never frees the page directory or the page tables (Phase 23-B). The copy that a write triggers assumes physical pages fall in the identity-mapped first 8MB, the same assumption `elf_load()` already makes
+- `process_exit()` frees the whole address space through `vmm_destroy_directory()` (Phase 23-B): one reference per user page (a page is freed when the last process mapping it lets go), the process's page tables and its page directory. See [memory.md](memory.md), "Freeing a process's address space", for the rules and edge cases. The copy that a write triggers assumes physical pages fall in the identity-mapped first 8MB, the same assumption `elf_load()` already makes
 - `exec()`, `elf.c`, and `scheduler_yield()`/`scheduler_block_current()` are unchanged — `fork()` reuses the existing scheduler rather than adding a parallel path
 - `user/forktest.c`: calls `fork()` and prints "I'm the parent, child=PID" or "I'm the child, pid=PID" depending on the return value
+
+## Exit and the CR3 in use (Phase 23-B)
+
+- A process that exits itself runs `process_exit()` on its own directory. `vmm_destroy_directory()` loads the kernel directory before freeing it, inside the same interrupt-off section that marks the slot `PROCESS_UNUSED`. The kernel directory maps the same 0–8 MB, so the exit path keeps running on the slot's static kernel stack until `scheduler_yield()`.
+- From `PROCESS_UNUSED` on, `timer_callback()` no longer preempts it and `scheduler_run_once()` never picks it, so it never resumes. `switch_back_to_scheduler()` loads the kernel directory anyway.
+- `sys_kill()` of the caller's own pid now ends like `sys_exit()` (`scheduler_yield()`, never returns). Returning to user mode would land in an address space that no longer exists.
+- No zombie state: `PROCESS_ZOMBIE` is only a name in `process_state_name()`, and `sys_wait()` only waits for the slot to stop being in use.
 
 ## `waitpid` — real blocking (Phase 16)
 

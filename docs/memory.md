@@ -67,15 +67,39 @@ The kernel writes user memory through the physical address, not through the proc
 
 `vmm_init()` sets `CR0.WP` (bit 16) together with `CR0.PG`. With WP clear, ring 0 can write through a read-only PTE, so a kernel write to a user address of a copy-on-write page would land in the shared frame without faulting. With WP set, that write faults and the same handler resolves it. The kernel's own identity map is writable, so nothing else changes.
 
-### process_exit() and what still leaks
+### Freeing a process's address space (Phase 23-B)
 
-`process_exit()` now calls `release_user_pages()`: one `pmm_free_page()` per present user PTE, so a page goes back to the pool when the last process that maps it exits. It clears `cr3`, marks the slot unused and does all of it in one interrupt-off section. A tick between clearing `cr3` and leaving the running state would let the scheduler switch to the process with CR3 = 0, and two exits of the same process must not both release its pages. A slot claimed by `fork()` or by a spawn starts with `cr3 = 0`, so killing a half-built process releases nothing.
+`vmm_destroy_directory(pd)` (`kernel/memory/vmm.c`) frees a whole address space in one interrupt-off section:
 
-The page directory and the page-table pages are not freed yet. That is Phase 23-B. What leaks is the directory and the page tables, a few pages per process; before Phase 21 every data page leaked too.
+1. If `pd` is the directory loaded in CR3, it loads the kernel directory first. The kernel directory has the same PDE 0 and 1 (the identity map of 0–8 MB), so the caller's kernel code, kernel stack and data stay mapped. It only loses its user pages.
+2. For every PDE from 2 up that is present and has `VMM_USER`: one `pmm_free_page()` per present PTE (it drops one reference, so a page still shared copy-on-write stays allocated), then the page-table page itself.
+3. Frees the directory page.
+
+What may be freed comes from how directories are built. `vmm_create_directory()` copies only PDE 0 and 1 from the kernel directory; they point at the two static kernel page tables at `0x301000` and `0x302000`, inside the 1–4 MB region `pmm_init()` reserves, and they never have `VMM_USER`. Every other page table in a process directory is allocated by `vmm_map_user_page_flags()` for that directory alone, with `VMM_USER` on the PDE, and `fork()` builds the child's tables the same way. So PDE 0 and 1 are never touched, and a PDE from 2 up without `VMM_USER` is skipped. The kernel directory and 0 are refused outright.
+
+`process_exit()` calls it inside its own interrupt-off section: it copies `cr3`, zeroes the field, frees the directory, and marks the slot `PROCESS_UNUSED`. A second exit of the same process sees `PROCESS_UNUSED` and returns, so the directory can't be freed twice. There is no zombie state and no deferred reaper, because nothing needs one:
+
+- The kernel stack is not allocated. It is a static per-slot array (`process_stacks[]` in `process.c`) that the slot's next occupant reuses.
+- A process that exits itself (`sys_exit()`, or `sys_kill()` of its own pid) is running on the directory being freed. Step 1 moves it to the kernel directory first. Once its state is `PROCESS_UNUSED` the timer no longer preempts it (`timer_callback()` only preempts a `RUNNING` process), so it reaches `scheduler_yield()` and is never scheduled again. `sys_kill()` of its own pid used to return to user mode, which only worked because the directory leaked; it now leaves the CPU like `sys_exit()`.
+- A process killed by another one (Ctrl+C, `kill`) is not running. It is ready, sleeping or blocked, and it is never scheduled again once its slot is unused, so nothing walks its directory afterwards.
+
+`fork()`'s failure path and `exec()`'s failure paths (ELF load, user stack, no free slot) call `vmm_destroy_directory()` too. Before 23-B they leaked the half-built directory.
+
+Cases the code handles:
+
+- **Killed while blocked on an ATA command.** The ATA IRQ handler and the ATA gate keep only a `process_t` pointer and wake it only if its state is still `PROCESS_BLOCKED`; they never touch its address space. The sector data goes through FAT16's own kernel buffers, never straight into user pages, so freeing the directory while the command is in flight is safe for memory. (The pointer itself can outlive the process; see `docs/TODO.md`.)
+- **Killed with Ctrl+C.** The shell calls `nos_kill()` on the foreground pid, so this is the "killed by another process" case above.
+- **Parent exits before its child.** BooleOS keeps no parent link and `sys_wait()` reaps nothing; each process frees its own address space when it exits, whatever its parent did.
+- **Child exits with pages still shared copy-on-write with its parent.** The child drops one reference per page. The parent keeps the page; if the count reaches 1, its next write takes it back writable in place with no copy.
+- **The shell.** It is an ordinary process with its own directory, freed only if the shell itself exits (`exit`, or `kill` of its own pid). The kernel directory, which the scheduler and the boot code run on, is never freed.
+
+### Double frees
+
+`pmm_free_page()` on a page that is not allocated (already free, or outside the managed range) changes nothing and prints `pmm: ERROR free of a page that is not allocated (double free?): 0x...` on the serial port only. Before, it returned silently.
 
 ### Tests
 
-`selftest` tests 22 to 24 (see [testing.md](testing.md)) check that writes stay private in both orders with the count at 2 and then 1, that the count follows three generations of live holders, and that four children rewriting four shared pages under preemption leave every page at a count of 1 in the parent.
+`selftest` tests 22 to 24 (see [testing.md](testing.md)) check that writes stay private in both orders with the count at 2 and then 1, that the count follows three generations of live holders, and that four children rewriting four shared pages under preemption leave every page at a count of 1 in the parent. Tests 33 and 34 check that 30 `fork()`+exit and 20 `exec()`+exit cycles leave the free PMM page count exactly where it was.
 
 For the Phase 14 hardening of userland-pointer resolution built on top of the
 VMM (`vmm_get_user_phys_from_dir()`, `user_ptr_valid()`, `copy_from_user()`/

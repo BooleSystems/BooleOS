@@ -26,3 +26,21 @@ Known, intermittent, NOT blocking any phase:
   the next occurrence: when it happens, keep the serial log of that boot and of the
   one before it, look at `altstatus BEFORE soft reset` and the step that failed,
   fix the cause, then REMOVE the trace. Related files: kernel/drivers/ata.c.
+
+Found during Phase 23-B, outside its scope (not memory release):
+
+- TODO later: a process killed while blocked on an ATA command leaves
+  `g_irq_waiter` (or an entry of `g_gate_waiters[]`) in
+  `kernel/drivers/ata.c` pointing at its slot. If the slot is reused by a
+  process that is `PROCESS_BLOCKED` when the IRQ arrives (a spawn reserves a
+  slot as BLOCKED while it builds it), the handler wakes the wrong process.
+  Killed while holding the gate (`g_ata_busy`), it is never released.
+  Pre-existing. Related files: kernel/drivers/ata.c, kernel/process.c.
+- TODO later: if a parent is killed between reserving a child (fork() or
+  `SYS_EXEC_PIPE`'s start-blocked exec()) and making it ready, the child
+  stays `PROCESS_BLOCKED` forever, holding its slot and its address space.
+  Pre-existing. Related files: kernel/process.c, kernel/syscall.c.
+- TODO later: `elf_load()` allocates a fresh frame for every page of every
+  PT_LOAD segment; two segments sharing a page would map it twice and leak
+  the first frame. The current linker script page-aligns the segments, so
+  no program in the tree hits it. Related files: kernel/elf.c.

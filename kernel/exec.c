@@ -90,6 +90,7 @@ process_t *exec(const char *name, uint32_t cwd_cluster, int start_blocked) {
     int loaded = elf_load(cr3, elf_data, elf_size, &entry);
     if (disk_copy) kfree(disk_copy);      /* the segments were copied out (or loading failed) */
     if (loaded != 0) {
+        vmm_destroy_directory(cr3);       /* the pages elf_load() already mapped, the PTs, the PD */
         exec_fail(MSG_EXEC_ELF_LOAD_FAILED, name);
         return 0;
     }
@@ -99,6 +100,7 @@ process_t *exec(const char *name, uint32_t cwd_cluster, int start_blocked) {
         uint32_t va   = USER_STACK_VIRT + i * PAGE_SIZE;
         uint32_t phys = pmm_alloc_page();
         if (!phys) {
+            vmm_destroy_directory(cr3);
             console_set_color(CONSOLE_LIGHT_RED, CONSOLE_BLACK);
             console_puts(msg(MSG_EXEC_OUT_OF_MEMORY_FOR));
             console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
@@ -106,6 +108,7 @@ process_t *exec(const char *name, uint32_t cwd_cluster, int start_blocked) {
         }
         if (vmm_map_user_page(cr3, va, phys) != 0) {
             pmm_free_page(phys);
+            vmm_destroy_directory(cr3);
             console_set_color(CONSOLE_LIGHT_RED, CONSOLE_BLACK);
             console_puts(msg(MSG_EXEC_FAILED_TO_MAP_USER));
             console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);
@@ -117,6 +120,7 @@ process_t *exec(const char *name, uint32_t cwd_cluster, int start_blocked) {
 
     process_t *p = scheduler_spawn_user(name, entry, user_esp, cr3, cwd_cluster, start_blocked);
     if (!p) {
+        vmm_destroy_directory(cr3);       /* no process ever saw this directory */
         console_set_color(CONSOLE_LIGHT_RED, CONSOLE_BLACK);
         console_puts(msg(MSG_EXEC_SCHEDULER_SPAWN_USER_FAILED));
         console_set_color(CONSOLE_LIGHT_GREY, CONSOLE_BLACK);

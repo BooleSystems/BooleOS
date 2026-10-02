@@ -17,7 +17,7 @@
 #ifndef BOOLEOS_VERSION_H
 #define BOOLEOS_VERSION_H
 
-#define BOOLEOS_VERSION      "0.22.1"
+#define BOOLEOS_VERSION      "0.23.0-nightly"
 #define BOOLEOS_PHASE        "22"
 #define BOOLEOS_PHASE_DESC   "unlink()/rmdir()"
 

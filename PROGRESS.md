@@ -13,10 +13,57 @@ Do not duplicate README/docs content here. `README.md` is a lean index
 
 ## Current status
 
-Current version: **0.22.1** (`kernel/version.h`), a patch on top of the last
-closed phase, **Phase 22** (`unlink()`/`rmdir()`, released as `0.22.0`). The
-patch fixed the VGA console race (see "Architecture decisions"); it is not a
-new phase and `BOOLEOS_PHASE` stays `22`. Tagged `v0.22.1`.
+Current version: **0.23.0-nightly** (`kernel/version.h`; `BOOLEOS_PHASE`
+stays `22` until the phase closes, same as `0.22.0-nightly` did). Last
+closed phase: **Phase 22** (`unlink()`/`rmdir()`), last release `0.22.1`
+(patch: VGA console race), tagged `v0.22.1`.
+
+### In progress: 0.23.0 / 23-B (free the page directory and page tables)
+
+Status: implemented on `nightly` (`0.23.0-nightly`), selftest tests 33 and 34 added,
+**not yet validated in QEMU**. Investigation answers, from the code:
+
+a) **Directories and page tables.** `vmm_create_directory()` (`vmm.c`) takes
+   one PMM page for the PD and copies only PDE 0 and 1 from the kernel PD
+   (`0x300000`); those point at the two static kernel page tables
+   `0x301000`/`0x302000` (identity map 0–8 MB, `VMM_KERNEL`, no `VMM_USER`),
+   inside the 1–4 MB region `pmm_init()` reserves with `pmm_mark_used()`.
+   They are the only page tables shared between directories. Every other PT
+   comes from `pmm_alloc_page()` in `vmm_map_user_page_flags()`, one per
+   directory, with `VMM_USER` on the PDE. `process_fork()` gets a fresh PD
+   and, through the same function, fresh PTs for the child; only the data
+   frames are shared (COW refcount). Kernel PDEs ≥ 2 created later by
+   `map_page_early()` exist only in the kernel PD and are never cloned. Rule:
+   free a PT only if its PDE index is ≥ 2 and the PDE has `VMM_USER`.
+b) **Kernel stacks** are static: `process_stacks[PROCESS_MAX][...]` in
+   `process.c`, assigned by slot index, reused by the next occupant of the
+   slot. Nothing to free, ever.
+c) **No zombies exist.** `PROCESS_ZOMBIE` is only a name in
+   `process_state_name()`. `process_exit()` releases the user pages and puts
+   the slot straight to `PROCESS_UNUSED` in one interrupt-off section, then
+   wakes any `sys_wait()` blocked on that pid. `sys_wait()` only waits for the
+   slot to stop being in use; it reaps nothing. There is no parent pointer,
+   so an orphan is no different from any other process. The scheduler runs
+   on the kernel PD: `context_switch()` loads the next process's `cr3`, and
+   `switch_back_to_scheduler()` loads `vmm_get_kernel_directory()`.
+d) **Paths into `process_exit()`:** `sys_exit()` (runs ON the dying CR3,
+   then `scheduler_yield()`); `sys_kill()` from another process (Ctrl+C in
+   the shell is `nos_kill(foreground_pid)`), which runs on the killer's CR3;
+   `sys_kill()` of its own pid, which runs on the dying CR3 and then RETURNED
+   to user mode (only worked because the PD leaked); `sys_exec_pipe()`
+   failure paths on a never-run blocked child. `idt.c`'s exception handler
+   never calls it (a user fault is fatal, Phase 29).
+e) **PMM:** `pmm_free_pages()`, `pmm_page_refcount()`, `pmm_page_ref()`.
+   `pmm_free_page()` on a page that is already free (or out of range)
+   returned silently: detected, not reported.
+f) **`SYS_MEMINFO`** copies `pmm_free_pages()` to userland
+   (`nos_meminfo(&pmm, ...)`); the heap never takes PMM pages after boot.
+
+What changed in the design: no deferred reaper. The kernel stack is static,
+and the dying process can stop using its own PD by loading the kernel PD
+(same 0–8 MB identity map, so its kernel code, stack and data stay mapped)
+inside the same interrupt-off section, before freeing anything. Everything
+is then freed right away in `process_exit()`.
 
 ### Closed phases (one line each; detail in CHANGELOG.md / README.md)
 
@@ -46,10 +93,11 @@ new phase and `BOOLEOS_PHASE` stays `22`. Tagged `v0.22.1`.
   expanded to 31 tests — `0.22.0` (`0.22.1` PATCH: VGA console race fixed,
   selftest test 32).
 
-### Next: Phase 23 — Memory/CR3 release in `process_exit()`
+### Next: close Phase 23 — Memory/CR3 release in `process_exit()`
 
 See ROADMAP.md; the data-page half already landed in Phase 21 (23-A/23-C),
-so what remains is 23-B (page directory + page tables). Release routine
+23-B is implemented above and waits for QEMU validation (selftest 34/34,
+`fetch` before/after ~20 commands showing the same "Mem PMM ... free"). Release routine
 after tagging: `make clean && make && make snapshot` on the tagged tree,
 commit `tools/prev/`, and publish the GitHub Release with the zip (see the
 Definition of Done in CLAUDE.md). Deferred, not blocking: test
@@ -78,6 +126,15 @@ package manager phase was deliberately decided against — don't add one.
   character when both print at once; that's normal shared-terminal
   behavior. See `docs/hal.md`, `docs/testing.md` (test 32 and its manual
   companion).
+- **`process_exit()` frees the whole address space immediately; no zombie,
+  no reaper (23-B).** `vmm_destroy_directory()` loads the kernel directory
+  first if the dying process is running on the one being freed (same 0–8 MB
+  identity map, so its kernel code and static per-slot kernel stack stay
+  mapped), then frees user page references, PTs with `VMM_USER` at PDE ≥ 2,
+  and the PD, all in one interrupt-off section with `PROCESS_UNUSED`. Never
+  free a PDE 0/1 table or one without `VMM_USER` (kernel). `sys_kill()` of
+  one's own pid must not return to user mode. `pmm_free_page()` of a page
+  that isn't allocated reports on serial. See `docs/memory.md`.
 - **exec() is NOT POSIX exec — it spawns a brand-new `process_t`.** Any
   per-process state (cwd, redirects, ...) must be threaded explicitly
   through `syscall → exec()/fork() → scheduler_spawn_user →
@@ -175,8 +232,6 @@ package manager phase was deliberately decided against — don't add one.
 
 ## Known technical debt
 
-- **A failed `exec()` leaks the page directory it already created** (the same
-  accepted leak as `process_exit()`, Phase 23); the selftest leaks two per run.
 - **The heap is virt == phys inside the process page pool (Phase 23).** The
   kernel heap (4–8 MB virtual) is the identity-mapped range that the PMM also
   hands to processes; `heap_expand()` takes the exact physical page at
@@ -194,8 +249,7 @@ package manager phase was deliberately decided against — don't add one.
   (`vmm.c:126`, `:146`). Once the low region is used up that is a kernel page
   fault. **Mitigation (18-A):** the PMM ceiling is 8 MB (`PMM_LIMIT_ADDR`), so
   exhaustion is now a failed allocation, at the cost of ~4 MB of free pages
-  (1024 at boot; `process_exit()` now leaks only the directory and page tables,
-  about 3–4 pages per process). Real fix: stop touching frames by physical
+  (1024 at boot; since 23-B `process_exit()` leaks nothing). Real fix: stop touching frames by physical
   address (a temporary-mapping mechanism, or a kernel direct map at a high
   address) and then lift the cap. The widening is not trivial: user code lives
   at 16 MB and `vmm_map_user_page()` rejects `virt < 0x800000`.
@@ -242,9 +296,6 @@ package manager phase was deliberately decided against — don't add one.
   can't combine with `|` and pass no arguments (`docs/shell.md`).
 - **`SYS_WRITE` chunks at 128 bytes**, each chunk doing its own dirent
   lookup (slow for large redirected output).
-- **`process_exit()` never frees `cr3` or the page tables** (accepted leak,
-  Phase 23-B; slots stay reusable). User data pages ARE released since
-  Phase 21, through the refcount.
 - **No shell command for `unlink`/`rmdir`** (no `rm`/`rmdir` in `shell.c`);
   only programs calling `nos_unlink()`/`nos_rmdir()` can delete.
 - **No syscall exposes `kmalloc()` to userland**, so userland can't test a

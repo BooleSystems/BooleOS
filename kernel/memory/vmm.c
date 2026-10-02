@@ -227,6 +227,44 @@ uint32_t vmm_create_directory(void) {
     return pd_phys;
 }
 
+void vmm_destroy_directory(uint32_t pd_phys) {
+    if (!pd_phys || pd_phys == (uint32_t)PAGE_DIR_ADDR)
+        return;
+
+    /* Interrupts stay off for the whole teardown: a tick in the middle could
+       run a fork() or a copy-on-write break of a sharer while this directory
+       still holds some references and not others, or hand a page freed here
+       to another process while this one still runs on the directory. */
+    uint32_t flags = irq_save();
+
+    /* Never free the directory the CPU is walking. The kernel directory has
+       the same PDE 0/1 (identity map 0-8MB), so the caller keeps running on
+       its kernel stack after the switch; it only loses its own user pages,
+       which a dying process never touches again. */
+    if (read_cr3() == pd_phys)
+        vmm_switch_directory((uint32_t)PAGE_DIR_ADDR);
+
+    pde_t *pd = (pde_t *)pd_phys;
+    for (uint32_t di = 2; di < 1024; di++) {
+        if (!(pd[di] & VMM_PRESENT)) continue;
+        /* Only vmm_map_user_page_flags() creates PDEs from 2 up in a process
+           directory, always with VMM_USER and a PT of its own. A PDE without
+           VMM_USER would be a kernel page table: leave it alone. */
+        if (!(pd[di] & VMM_USER)) continue;
+        pte_t *pt = (pte_t *)(pd[di] & 0xFFFFF000);
+        for (uint32_t ti = 0; ti < 1024; ti++) {
+            if (pt[ti] & VMM_PRESENT)
+                pmm_free_page(pt[ti] & 0xFFFFF000);   /* drops one reference */
+            pt[ti] = 0;
+        }
+        pd[di] = 0;
+        pmm_free_page((uint32_t)pt);
+    }
+    pmm_free_page(pd_phys);
+
+    irq_restore(flags);
+}
+
 void vmm_init(void) {
     uint32_t i;
     uint32_t *pd  = (uint32_t *)PAGE_DIR_ADDR;

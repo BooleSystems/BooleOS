@@ -144,27 +144,6 @@ void process_make_ready(process_t *p) {
         p->state = PROCESS_READY;
 }
 
-/* Drops this address space's reference to every user page mapped in it
-   (PDE 2 and up — PDE 0/1 are the shared kernel identity map, never
-   touched here). pmm_free_page() only returns a page to the pool when its
-   last reference goes, so a page still shared copy-on-write with another
-   process stays allocated. The directory and the page-table pages are NOT
-   freed (accepted leak, Phase 23-B). Interrupts are off for the walk so no
-   fork() or copy-on-write break of a sharer sees half of it. */
-static void release_user_pages(uint32_t cr3) {
-    uint32_t flags = irq_save();
-    uint32_t *pd = (uint32_t *)cr3;
-    for (uint32_t di = 2; di < 1024; di++) {
-        if (!(pd[di] & VMM_PRESENT)) continue;
-        uint32_t *pt = (uint32_t *)(pd[di] & 0xFFFFF000);
-        for (uint32_t ti = 0; ti < 1024; ti++) {
-            if (pt[ti] & VMM_PRESENT)
-                pmm_free_page(pt[ti] & 0xFFFFF000);
-        }
-    }
-    irq_restore(flags);
-}
-
 process_t *process_fork(process_t *parent, const uint32_t *saved_frame) {
     if (!parent || !saved_frame)
         return 0;
@@ -271,11 +250,11 @@ process_t *process_fork(process_t *parent, const uint32_t *saved_frame) {
     }
 
     if (failed) {
-        /* Drops the child's references. Pages the parent already turned
-           read-only stay VMM_COW with a count of 1, so its next write
-           takes them back writable in place (vmm_cow_break()). */
-        release_user_pages(child_cr3);
-        pmm_free_page(child_cr3);
+        /* Drops the child's references and frees its page tables and
+           directory. Pages the parent already turned read-only stay
+           VMM_COW with a count of 1, so its next write takes them back
+           writable in place (vmm_cow_break()). */
+        vmm_destroy_directory(child_cr3);
         irq_restore(flags);
         child->state = PROCESS_UNUSED;
         child->pid   = 0;
@@ -329,25 +308,50 @@ void process_set_current(process_t *process) {
 }
 
 void process_exit(process_t *process) {
-    /* Drops the process's reference to each of its user pages; a page
-       goes back to the pool only when no other process still maps it
-       (copy-on-write sharing after fork()). cr3 == 0 is a slot claimed
-       by fork()/spawn but not built yet (killed in that window), which
-       owns nothing. The directory and page tables are still leaked
-       (Phase 23-B), so a process exiting while running on its own
-       directory keeps a valid CR3 until it switches away.
-       One interrupt-off section from the state check to PROCESS_UNUSED:
-       a tick between clearing cr3 and leaving the READY/RUNNING states
-       would let the scheduler switch to this process with CR3 = 0, and
-       two exits of the same process must not both release its pages. */
+    /* Frees the whole address space right here (Phase 23-B): the process's
+       reference to each user page (a page still shared copy-on-write with
+       another process stays allocated), its page tables and its directory,
+       through vmm_destroy_directory(). There is no zombie state and no
+       deferred reaper, because nothing needs one:
+       - the kernel stack is a static per-slot array (process_stacks[]),
+         reused by the slot's next occupant, never allocated or freed;
+       - when the process exits itself (sys_exit(), or sys_kill() of its own
+         pid) it is running on the directory being freed, and
+         vmm_destroy_directory() loads the kernel directory first. That
+         directory has the same 0-8MB identity map, so the rest of the exit
+         path (kernel code, this kernel stack) keeps running; the only thing
+         it loses is the user mapping, which it never touches again. The
+         CR3 switch, the frees and PROCESS_UNUSED happen in one
+         interrupt-off section, and once the state is PROCESS_UNUSED the
+         timer no longer preempts it (timer_callback() only preempts a
+         RUNNING process), so it reaches scheduler_yield() and never runs
+         again;
+       - a process killed by another one (Ctrl+C, `kill`) is not running:
+         it is READY, SLEEPING or BLOCKED (on sys_wait(), a pipe, or an ATA
+         command), and it is never scheduled again once its slot is
+         PROCESS_UNUSED, so nothing will walk its directory. The ATA IRQ
+         handler and the gate keep only a process_t pointer and check
+         state == PROCESS_BLOCKED before waking it; they never touch the
+         address space.
+       cr3 == 0 is a slot claimed by fork()/spawn but not built yet (killed
+       in that window), which owns nothing. The kernel directory is never
+       freed (vmm_destroy_directory() refuses it): the shell and every
+       other process run on their own directory, so a process exiting can
+       only free its own.
+       One interrupt-off section from the state check to PROCESS_UNUSED: a
+       tick between clearing cr3 and leaving the READY/RUNNING states would
+       let the scheduler switch to this process with CR3 = 0, and two exits
+       of the same process must not both free its directory (the second
+       sees PROCESS_UNUSED and returns). */
     uint32_t flags = irq_save();
     if (!process || process->state == PROCESS_UNUSED) {
         irq_restore(flags);
         return;
     }
-    if (process->cr3 && process->cr3 != vmm_get_kernel_directory())
-        release_user_pages(process->cr3);
-    process->cr3 = 0;
+    uint32_t cr3 = process->cr3;
+    process->cr3 = 0;   /* no stored copy of the freed directory survives */
+    if (cr3 && cr3 != vmm_get_kernel_directory())
+        vmm_destroy_directory(cr3);
 
     uint32_t exited_pid = process->pid;
 
