@@ -58,13 +58,16 @@ Phase 24-A (raw e1000 driver), left for later:
 - WIP: `docs/network.md` is a work in progress until Phase 24 closes; link it
   from the README documentation list at that point (the README is only touched
   when a phase closes). Related files: docs/network.md, README.md.
-- TODO later: when the e1000 driver becomes reachable from processes
-  (24-B/C), wrap `e1000_send()`/`e1000_poll_rx()` in `irq_save()`/
-  `irq_restore()` or a lock. Related files: kernel/drivers/e1000.c.
-- TODO later: `e1000_send()` returns -1 on a transmit timeout but the
-  descriptor stays the card's; a later send reuses the single TX buffer while
-  the card may still read it. Harmless while frames are sent one at a time at
-  boot. Related files: kernel/drivers/e1000.c.
+- TODO later: `e1000_send()`, `e1000_poll_rx()` and `net_poll()` (with the
+  ARP cache and the static frame buffers behind it) have no lock. Today only
+  kmain calls them, at boot. 24-C decides what runs in IRQ context and what a
+  process can reach, and has to add `irq_save()`/`irq_restore()` or a lock
+  then. Related files: kernel/drivers/e1000.c, kernel/net/net.c,
+  kernel/net/arp.c.
+- TODO later: the network boot self-test (`net_boot_selftest()`) costs about
+  1 s of boot time, because QEMU's e1000 holds received frames for ~1 s after
+  RCTL is written. Remove it once `ping` (24-C) can exercise the same path on
+  demand. Related files: kernel/net/net.c, kernel/main.c.
 - TODO later: on an init failure after the PCI command register was changed,
   Memory Space and Bus Master stay on (RX/TX are disabled). Related files:
   kernel/drivers/e1000.c.

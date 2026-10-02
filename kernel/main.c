@@ -26,6 +26,7 @@
 #include "fs/fat16.h"
 #include "drivers/pci.h"
 #include "drivers/e1000.h"
+#include "net/net.h"
 
 // ── serial-only boot detail (the "debug" boot argument, g_debug_boot) ──────
 // These write straight to the serial port, never through console_*(): the
@@ -320,8 +321,10 @@ void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
     // table) and before the first exec(): its registers are mapped into the
     // kernel directory, and only PDEs present when a process directory is
     // created get copied into it. Never fails the boot.
-    if (e1000_init())
-        e1000_boot_selftest();
+    if (e1000_init()) {
+        net_init();
+        net_boot_selftest();   /* ARP (24-B); ~1 s under QEMU, see docs/network.md */
+    }
     debug_step("network init done");
 
     print_separator();

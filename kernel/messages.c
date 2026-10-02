@@ -309,10 +309,14 @@ static const char *const g_msgs[] = {
     [MSG_NET_ERR_RESET] = "device reset timed out\n",
     [MSG_NET_ERR_EEPROM] = "cannot read the MAC address from the EEPROM\n",
     [MSG_NET_ERR_NOMEM] = "out of memory for the descriptor rings\n",
-    [MSG_NET_ARP_REPLY] = "ARP reply: 10.0.2.2 is at ",
-    [MSG_NET_NO_ARP_REPLY] = "no ARP reply received\n",
-    [MSG_NET_ARP_NOT_SENT] = "ARP request not sent (transmit timed out)\n",
     [MSG_NET_DIAG] = "[NET] diag:",
+    [MSG_NET_ARP_PREFIX] = "ARP: ",
+    [MSG_NET_ARP_IS_AT] = " is at ",
+    [MSG_NET_ARP_NO_ANSWER] = " did not answer (3 requests)\n",
+    [MSG_NET_ARP_CACHE_HIT] = "ARP cache hit\n",
+    [MSG_NET_ARP_CACHE_MISS] = "ARP cache: the second resolve sent a request (expected a cache hit)\n",
+    [MSG_NET_ARP_RESPONDER_OK] = "ARP responder: reply sent\n",
+    [MSG_NET_ARP_RESPONDER_FAIL] = "ARP responder: no reply sent\n",
 };
 
 // Compile-time check: the table must reach exactly MSG_COUNT entries (its

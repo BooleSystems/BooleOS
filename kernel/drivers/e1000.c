@@ -1,17 +1,19 @@
 // booleos/kernel/drivers/e1000.c — Intel 8254x (e1000) network driver,
-// Phase 24-A: raw Ethernet frames in and out, by polling.
+// Phase 24-A: raw Ethernet frames in and out, by polling. Protocols (ARP,
+// later IP) live in kernel/net/.
 //
 // Concurrency: in 24-A everything here runs at boot, from kmain, in a single
 // context, before the first process exists, so nothing guards the driver
-// state (ring indexes, the TX buffer) or the register sequences. The card's
-// interrupts are all masked (IMC) and no IRQ handler is installed. Once a
-// process can reach e1000_send()/e1000_poll_rx() (Phase 24-B/C), each call
+// state (ring indexes, the TX buffer) or the register sequences; 24-B's ARP
+// code also only calls it from kmain. The card's interrupts are all masked
+// (IMC) and no IRQ handler is installed. Once a process or an IRQ handler
+// can reach e1000_send()/e1000_poll_rx() (Phase 24-C), each call
 // must run under irq_save()/irq_restore() or a lock: two callers interleaved
 // by the timer would hand the card the same descriptor twice. That is the
 // same mistake as the 0.22.1 VGA race.
 //
 // No struct is laid over hardware memory: descriptors are read and written
-// as 32-bit words at fixed offsets, and network headers byte by byte.
+// as 32-bit words at fixed offsets.
 
 #include "e1000.h"
 #include "pci.h"
@@ -113,12 +115,6 @@ static const struct { uint16_t vendor, device; } e1000_ids[] = {
 #define T_EEPROM      5
 #define T_LINK        100
 #define T_TX          10
-/* How long the boot self-test waits for the ARP reply. Longer than one
-   second on purpose: QEMU's e1000 model refuses to receive for about 1 s
-   (virtual time) after every RCTL write and queues what arrives meanwhile
-   (flush_queue_timer in hw/net/e1000.c), so a reply to a request sent right
-   after init is only delivered once that window ends. */
-#define T_ARP_REPLY   300
 #define SPIN_CAP_PER_TICK 100000u
 
 /* ── state ──────────────────────────────────────────────────────────── */
@@ -135,6 +131,8 @@ static uint32_t g_rx_buf[RX_PAGES];       /* each page holds two RX buffers */
 static uint32_t g_tx_buf = 0;
 static uint32_t g_rx_next = 0;            /* next RX descriptor to look at */
 static uint32_t g_tx_tail = 0;
+static uint32_t g_tx_count = 0;           /* frames handed to the card */
+static uint32_t g_rx_enable_tick = 0;     /* timer tick of the RCTL.EN write */
 
 static uint32_t e1000_rd32(uint32_t reg) {
     return g_mmio[reg / 4];
@@ -283,6 +281,7 @@ static int setup_rings(void) {
     e1000_wr32(REG_RDT, NDESC - 1);   /* every descriptor but one belongs to the card */
     g_rx_next = 0;
     e1000_wr32(REG_RCTL, RCTL_EN | RCTL_BAM | RCTL_BSIZE_2048 | RCTL_SECRC);
+    g_rx_enable_tick = timer_get_ticks();
 
     /* Every TX descriptor points at the one TX buffer: e1000_send() waits
        for each frame to go out before it returns, so at most one is in
@@ -379,6 +378,14 @@ int e1000_ready(void) {
     return g_ready;
 }
 
+uint32_t e1000_tx_count(void) {
+    return g_tx_count;
+}
+
+uint32_t e1000_rx_enable_tick(void) {
+    return g_rx_enable_tick;
+}
+
 void e1000_get_mac(uint8_t mac[6]) {
     for (int i = 0; i < 6; i++) mac[i] = g_mac[i];
 }
@@ -389,11 +396,17 @@ int e1000_send(const uint8_t *frame, uint16_t len) {
     if (!g_ready || !frame || len < 14 || len > E1000_MAX_FRAME || len > TX_BUF_SIZE)
         return -1;
 
-    volatile uint32_t *d = desc(g_tx_ring, g_tx_tail);
-    /* The previous frame went out on the descriptor before this one and
-       e1000_send() waited for it, so this one is free; check anyway. */
-    if (!(d[3] & TXD_STA_DD))
+    /* Every descriptor points at the one TX buffer, so the buffer is free
+       only once the card is done with the LAST frame handed to it, i.e. the
+       descriptor before the tail has DD. After a send that timed out it may
+       still be reading that frame: refuse instead of overwriting the
+       buffer under it. (setup_rings() starts every descriptor with DD set,
+       so the first send passes.) */
+    volatile uint32_t *prev = desc(g_tx_ring, (g_tx_tail + NDESC - 1) % NDESC);
+    if (!(prev[3] & TXD_STA_DD))
         return -1;
+
+    volatile uint32_t *d = desc(g_tx_ring, g_tx_tail);
 
     volatile uint8_t *buf = (volatile uint8_t *)g_tx_buf;
     for (uint16_t i = 0; i < len; i++) buf[i] = frame[i];
@@ -403,6 +416,7 @@ int e1000_send(const uint8_t *frame, uint16_t len) {
     d[2] = (uint32_t)len | ((uint32_t)(TXD_CMD_EOP | TXD_CMD_IFCS | TXD_CMD_RS) << 24);
     d[3] = 0;
     g_tx_tail = (g_tx_tail + 1) % NDESC;
+    g_tx_count++;
     e1000_wr32(REG_TDT, g_tx_tail);
 
     uint32_t start = timer_get_ticks();
@@ -446,20 +460,7 @@ int e1000_poll_rx(uint8_t *out, uint16_t max) {
     return result;
 }
 
-/* ── boot self-test: one ARP request out, one reply back ────────────── */
-
-static void put_be16(uint8_t *p, uint16_t v) {
-    p[0] = (uint8_t)(v >> 8);
-    p[1] = (uint8_t)v;
-}
-
-static uint16_t get_be16(const uint8_t *p) {
-    return (uint16_t)(((uint16_t)p[0] << 8) | p[1]);
-}
-
-static void put_ip(uint8_t *p, uint8_t a, uint8_t b, uint8_t c, uint8_t d) {
-    p[0] = a; p[1] = b; p[2] = c; p[3] = d;
-}
+/* ── RX diagnostics ─────────────────────────────────────────────────── */
 
 static void serial_str(const char *s) {
     while (*s) serial_putchar(*s++);
@@ -486,13 +487,15 @@ static void diag_dec(const char *name, uint32_t v) {
     serial_putchar(' '); serial_str(name); serial_putchar('='); serial_dec(v);
 }
 
-/* One serial line with the RX state, printed when the boot self-test got no
-   reply: did the card take the frame (GPRC), had it no buffer (RNBC/MPC),
-   or was it filtered (nothing counted)? The statistics registers clear on
+/* One serial line with the RX state, for when an expected frame never
+   showed up (the boot self-test prints it when ARP gets no reply): did the
+   card take the frame (GPRC), had it no buffer (RNBC/MPC), or was it
+   filtered (nothing counted)? The statistics registers clear on
    read, so each is read exactly once. The register names are hardware
    mnemonics, not prose, so they stay literals; the prefix goes through
    msg(). */
-static void rx_diag(void) {
+void e1000_rx_diag(void) {
+    if (!g_ready) return;
     volatile uint32_t *d0 = desc(g_rx_ring, 0);
     uint32_t gprc = e1000_rd32(REG_GPRC);
     uint32_t mpc  = e1000_rd32(REG_MPC);
@@ -513,58 +516,4 @@ static void rx_diag(void) {
     diag_dec("MPC",   mpc);
     diag_dec("RNBC",  rnbc);
     serial_putchar('\n');
-}
-
-#define ETH_TYPE_ARP 0x0806
-#define ARP_FRAME_LEN 42   /* 14 Ethernet + 28 ARP */
-
-void e1000_boot_selftest(void) {
-    if (!g_ready) return;
-
-    /* Ethernet: dst ff:ff:ff:ff:ff:ff, src our MAC, type ARP. ARP:
-       Ethernet/IPv4, request, sender 10.0.2.15 (QEMU's guest address),
-       target 10.0.2.2 (QEMU's gateway). */
-    uint8_t f[ARP_FRAME_LEN];
-    for (int i = 0; i < 6; i++) { f[i] = 0xFF; f[6 + i] = g_mac[i]; }
-    put_be16(f + 12, ETH_TYPE_ARP);
-    put_be16(f + 14, 1);        /* htype: Ethernet */
-    put_be16(f + 16, 0x0800);   /* ptype: IPv4 */
-    f[18] = 6;                  /* hlen */
-    f[19] = 4;                  /* plen */
-    put_be16(f + 20, 1);        /* oper: request */
-    for (int i = 0; i < 6; i++) { f[22 + i] = g_mac[i]; f[32 + i] = 0; }
-    put_ip(f + 28, 10, 0, 2, 15);
-    put_ip(f + 38, 10, 0, 2, 2);
-
-    if (e1000_send(f, ARP_FRAME_LEN) != 0) {
-        net_tag();
-        console_puts(msg(MSG_NET_ARP_NOT_SENT));
-        return;
-    }
-
-    /* Between empty polls, timer_poll_delay_ms() waits on the PIT counter
-       itself (no IRQ needed); it rounds up to one timer period (10 ms), so
-       the iteration count bounds the wait to about T_ARP_REPLY ticks even if
-       the tick counter stopped. The old loop stopped after a fixed number of
-       fast RAM-only polls, which could end well before its one-second tick
-       budget. */
-    static uint8_t rx[E1000_MAX_FRAME];
-    uint32_t start = timer_get_ticks();
-    for (uint32_t it = 0; it < T_ARP_REPLY && timer_get_ticks() - start < T_ARP_REPLY; it++) {
-        int n = e1000_poll_rx(rx, sizeof(rx));
-        if (n == 0) { timer_poll_delay_ms(1); continue; }
-        if (n < ARP_FRAME_LEN) continue;   /* dropped, or too short */
-        if (get_be16(rx + 12) != ETH_TYPE_ARP) continue;
-        if (get_be16(rx + 20) != 2) continue;   /* not a reply */
-        if (rx[28] != 10 || rx[29] != 0 || rx[30] != 2 || rx[31] != 2) continue;
-
-        net_tag();
-        console_puts(msg(MSG_NET_ARP_REPLY));
-        put_mac(rx + 22);
-        console_putc('\n');
-        return;
-    }
-    net_tag();
-    console_puts(msg(MSG_NET_NO_ARP_REPLY));
-    rx_diag();
 }

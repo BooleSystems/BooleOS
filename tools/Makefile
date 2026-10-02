@@ -61,6 +61,8 @@ C_SRCS   = $(ROOT)/kernel/main.c \
             $(ROOT)/kernel/drivers/ata.c \
             $(ROOT)/kernel/drivers/pci.c \
             $(ROOT)/kernel/drivers/e1000.c \
+            $(ROOT)/kernel/net/net.c \
+            $(ROOT)/kernel/net/arp.c \
             $(ROOT)/kernel/fs/fat16.c \
             $(ROOT)/kernel/fs/vfs.c
 
@@ -119,6 +121,7 @@ dirs:
 	@mkdir -p $(BUILD)/kernel/drivers
 	@mkdir -p $(BUILD)/kernel/memory
 	@mkdir -p $(BUILD)/kernel/fs
+	@mkdir -p $(BUILD)/kernel/net
 	@mkdir -p $(BUILD)/user
 
 user:

@@ -18,10 +18,18 @@ Current version: **0.23.0** (`kernel/version.h`). Last closed phase:
 directory and page tables), released as `0.23.0`, tagged `v0.23.0`.
 Working on `0.24.0-nightly` (`BOOLEOS_PHASE` stays `23` until Phase 24 closes).
 
-### In progress: 0.24.0 / 24-A (raw e1000 driver)
+### In progress: 0.24.0 / 24-B (ARP)
 
-Status: implemented on `nightly`, **not yet validated in QEMU**. Investigation,
-from the code:
+24-A (raw e1000 driver) is validated in QEMU (init, MAC, link up, TX and RX,
+selftest 34/34, PMM 3760 KB). 24-B adds `kernel/net/` (net.c: config,
+big-endian helpers, `net_poll()`/`net_input()`, boot self-test; arp.c: cache,
+`arp_resolve()`, `arp_input()`) and fixes the TX-buffer reuse after a send
+timeout. **Not yet validated in QEMU.** Non-obvious: the boot self-test waits
+120 ticks after `RCTL.EN` before resolving, because QEMU's e1000 holds RX
+frames ~1 s after an RCTL write and `arp_resolve()`'s 500 ms retry would
+otherwise put a second who-has on the wire (`docs/network.md`).
+
+24-A investigation, from the code:
 
 a) **PCI (`kernel/drivers/pci.c`)** had reads only (`pci_config_read32/16/8`),
    no config writes and no BAR sizing. Added `pci_config_write32/16`

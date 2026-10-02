@@ -35,10 +35,18 @@ int e1000_send(const uint8_t *frame, uint16_t len);
    the descriptor goes back to the card. */
 int e1000_poll_rx(uint8_t *out, uint16_t max);
 
-/* Boot-time check (Phase 24-A): broadcasts an ARP request for 10.0.2.2 (the
-   QEMU user-mode gateway) as 10.0.2.15 and polls up to 300 ticks for the
-   reply, printing what happened (plus a register/counter line on the serial
-   port when no reply came). Never fails the boot. */
-void e1000_boot_selftest(void);
+/* Frames handed to the card since boot (a send that timed out counts too).
+   Lets a caller check whether something was transmitted. */
+uint32_t e1000_tx_count(void);
+
+/* Timer tick at which receiving was enabled (the RCTL.EN write). QEMU's
+   e1000 model holds received frames for about 1 s after that write; see
+   docs/network.md. */
+uint32_t e1000_rx_enable_tick(void);
+
+/* Prints one serial line with the RX registers, descriptor 0 and the
+   GPRC/MPC/RNBC counters (clear-on-read), for when an expected frame never
+   arrived. */
+void e1000_rx_diag(void);
 
 #endif
