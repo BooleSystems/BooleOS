@@ -61,7 +61,7 @@ Since Phase 21, `fork()` maps the parent's user pages into the child at the same
 Known limits:
 
 - A copy-on-write fault with no free frame for the copy takes the fatal path (a crash record, then a reset into Safe Mode), because there is no per-process fault isolation yet (Phase 29). A process that exhausts memory can therefore reset the machine.
-- The page directory and page tables of an exited process are not freed yet (Phase 23-B). That leaks a few frames per process and shares nothing.
+- The page directory and page tables of an exited process are freed since Phase 23-B (`vmm_destroy_directory()`, see [memory.md](memory.md)); only the kernel page tables behind PDE 0/1 are shared, and they are never freed.
 - `SYS_PAGEREF` returns the reference count of a page in the caller's own address space, for the selftest. It returns no physical address.
 
 ## Relevant files

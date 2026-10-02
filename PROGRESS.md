@@ -13,10 +13,9 @@ Do not duplicate README/docs content here. `README.md` is a lean index
 
 ## Current status
 
-Current version: **0.22.1** (`kernel/version.h`), a patch on top of the last
-closed phase, **Phase 22** (`unlink()`/`rmdir()`, released as `0.22.0`). The
-patch fixed the VGA console race (see "Architecture decisions"); it is not a
-new phase and `BOOLEOS_PHASE` stays `22`. Tagged `v0.22.1`.
+Current version: **0.23.0** (`kernel/version.h`). Last closed phase:
+**Phase 23** (process memory release: `process_exit()` frees the page
+directory and page tables), released as `0.23.0`, tagged `v0.23.0`.
 
 ### Closed phases (one line each; detail in CHANGELOG.md / README.md)
 
@@ -45,20 +44,23 @@ new phase and `BOOLEOS_PHASE` stays `22`. Tagged `v0.22.1`.
   `nos_unlink()`/`nos_rmdir()`, `sys_kill()` now closes fds too; selftest
   expanded to 31 tests — `0.22.0` (`0.22.1` PATCH: VGA console race fixed,
   selftest test 32).
+- Phase 23 — Process memory release (23-B): `vmm_destroy_directory()`,
+  `process_exit()` frees the PD and page tables, selftest expanded to 34
+  tests — `0.23.0`. 23-A/23-C had landed in Phase 21.
 
-### Next: Phase 23 — Memory/CR3 release in `process_exit()`
+### Next: Phase 24 — `e1000` driver + minimal TCP/IP
 
-See ROADMAP.md; the data-page half already landed in Phase 21 (23-A/23-C),
-so what remains is 23-B (page directory + page tables). Release routine
-after tagging: `make clean && make && make snapshot` on the tagged tree,
-commit `tools/prev/`, and publish the GitHub Release with the zip (see the
-Definition of Done in CLAUDE.md). Deferred, not blocking: test
-`docs/setup.md` on Windows (Phase 30).
+See ROADMAP.md. Release routine after tagging: `make clean && make &&
+make snapshot` on the tagged tree, commit `tools/prev/`, and publish the
+GitHub Release with the zip (see the Definition of Done in CLAUDE.md).
+Deferred, not blocking: test `docs/setup.md` on Windows (Phase 30). The
+heap/identity-map redesign below has NO phase scheduled and must happen
+before the DOOM port (Phase 31).
 
 ### Future roadmap
 
 See `ROADMAP.md` for the full per-phase breakdown and priority order
-(Phases 23–31, v1.0.0 closes right after Phase 31, the DOOM port). A
+(Phases 24–31, v1.0.0 closes right after Phase 31, the DOOM port). A
 package manager phase was deliberately decided against — don't add one.
 
 ## Architecture decisions (non-obvious; detail lives in the linked docs)
@@ -78,6 +80,15 @@ package manager phase was deliberately decided against — don't add one.
   character when both print at once; that's normal shared-terminal
   behavior. See `docs/hal.md`, `docs/testing.md` (test 32 and its manual
   companion).
+- **`process_exit()` frees the whole address space immediately; no zombie,
+  no reaper (23-B).** `vmm_destroy_directory()` loads the kernel directory
+  first if the dying process is running on the one being freed (same 0–8 MB
+  identity map, so its kernel code and static per-slot kernel stack stay
+  mapped), then frees user page references, PTs with `VMM_USER` at PDE ≥ 2,
+  and the PD, all in one interrupt-off section with `PROCESS_UNUSED`. Never
+  free a PDE 0/1 table or one without `VMM_USER` (kernel). `sys_kill()` of
+  one's own pid must not return to user mode. `pmm_free_page()` of a page
+  that isn't allocated reports on serial. See `docs/memory.md`.
 - **exec() is NOT POSIX exec — it spawns a brand-new `process_t`.** Any
   per-process state (cwd, redirects, ...) must be threaded explicitly
   through `syscall → exec()/fork() → scheduler_spawn_user →
@@ -157,7 +168,7 @@ package manager phase was deliberately decided against — don't add one.
   `docs/safemode.md`.
 - **PMM manages only 0–8 MB (`PMM_LIMIT_ADDR`)** because the kernel touches
   frames by physical address and only 0–8 MB is identity-mapped; a mitigation,
-  not the fix (Phase 23). See `docs/memory.md`.
+  not the fix (no phase scheduled). See `docs/memory.md`.
 - **HAL (`kernel/hal.h`) is a forwarding layer, not a rewrite**: the
   interface is arch-neutral, `hal.c` just calls the existing drivers; the
   exception handler (`idt.c`) and driver bring-up deliberately bypass it.
@@ -175,9 +186,7 @@ package manager phase was deliberately decided against — don't add one.
 
 ## Known technical debt
 
-- **A failed `exec()` leaks the page directory it already created** (the same
-  accepted leak as `process_exit()`, Phase 23); the selftest leaks two per run.
-- **The heap is virt == phys inside the process page pool (Phase 23).** The
+- **The heap is virt == phys inside the process page pool (no phase scheduled; prerequisite of the DOOM port, Phase 31).** The
   kernel heap (4–8 MB virtual) is the identity-mapped range that the PMM also
   hands to processes; `heap_expand()` takes the exact physical page at
   `heap_end` and `heap_init()` pre-grows to 256 KB, but the heap cannot grow
@@ -186,7 +195,7 @@ package manager phase was deliberately decided against — don't add one.
   first `exec()` from FAT16 grew the heap with the lowest free page and
   repointed the identity view of a process's page directory.
 - **The kernel writes to physical pages through the 0–8 MB identity map
-  without checking (pre-existing, real; Phase 23).** The PMM can hand out
+  without checking (pre-existing, real; no phase scheduled).** The PMM can hand out
   frames above 8 MB while only 0–8 MB is identity-mapped, yet `elf.c:54`
   (`memzero8((uint8_t *)phys, ...)`) and `vmm_cow_break()` (the copy-on-write
   copy via `old_phys`/`new_phys`) access a frame by its physical
@@ -194,8 +203,7 @@ package manager phase was deliberately decided against — don't add one.
   (`vmm.c:126`, `:146`). Once the low region is used up that is a kernel page
   fault. **Mitigation (18-A):** the PMM ceiling is 8 MB (`PMM_LIMIT_ADDR`), so
   exhaustion is now a failed allocation, at the cost of ~4 MB of free pages
-  (1024 at boot; `process_exit()` now leaks only the directory and page tables,
-  about 3–4 pages per process). Real fix: stop touching frames by physical
+  (1024 at boot; since 23-B `process_exit()` leaks nothing). Real fix: stop touching frames by physical
   address (a temporary-mapping mechanism, or a kernel direct map at a high
   address) and then lift the cap. The widening is not trivial: user code lives
   at 16 MB and `vmm_map_user_page()` rejects `virt < 0x800000`.
@@ -242,9 +250,6 @@ package manager phase was deliberately decided against — don't add one.
   can't combine with `|` and pass no arguments (`docs/shell.md`).
 - **`SYS_WRITE` chunks at 128 bytes**, each chunk doing its own dirent
   lookup (slow for large redirected output).
-- **`process_exit()` never frees `cr3` or the page tables** (accepted leak,
-  Phase 23-B; slots stay reusable). User data pages ARE released since
-  Phase 21, through the refcount.
 - **No shell command for `unlink`/`rmdir`** (no `rm`/`rmdir` in `shell.c`);
   only programs calling `nos_unlink()`/`nos_rmdir()` can delete.
 - **No syscall exposes `kmalloc()` to userland**, so userland can't test a

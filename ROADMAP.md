@@ -1,8 +1,8 @@
 # BooleOS — Future roadmap
 
 The table below is the granular phase table: one row per phase AND per
-sub-phase, for both completed work (Phases 0–22, detailed in `README.md`,
-`CHANGELOG.md` and `docs/`) and planned work (Phases 23–31, ending at the
+sub-phase, for both completed work (Phases 0–23, detailed in `README.md`,
+`CHANGELOG.md` and `docs/`) and planned work (Phases 24–31, ending at the
 v1.0.0 milestone, detailed in the section further down). Planned
 sub-phases become completed rows as they land.
 
@@ -49,10 +49,10 @@ restructuring after Phase 16) use a hyphen and an uppercase letter
 | **20** | Crash handler leads into Safe Mode (a crash saves a dump, resets, and Safe Mode shows it) | ✅ Done | CHANGELOG `[0.20.0]`, `docs/safemode.md` |
 | **21** | Copy-on-write `fork()` | ✅ Done | CHANGELOG `[0.21.0]`, `docs/memory.md`, `docs/scheduler.md`, `docs/syscalls.md` |
 | **22** | `unlink()`/`rmdir()` | ✅ Done | CHANGELOG `[0.22.0]`, `docs/filesystem.md` |
-| **23** | Memory/CR3 release in `process_exit()` | 🔜 Planned | below |
-| **23-A** | Free the process's physical data pages | 🔜 Planned | below |
-| **23-B** | Free the page directory (CR3) and page tables | 🔜 Planned | below |
-| **23-C** | Page sharing via fork/COW (needs PMM refcount) | 🔜 Planned | below |
+| **23** | Memory/CR3 release in `process_exit()` | ✅ Done | CHANGELOG `[0.23.0]`, `docs/memory.md`, `docs/scheduler.md` |
+| **23-A** | Free the process's physical data pages | ✅ Done | CHANGELOG `[0.21.0]` (done inside Phase 21), `docs/memory.md` |
+| **23-B** | Free the page directory (CR3) and page tables | ✅ Done | CHANGELOG `[0.23.0]`, `docs/memory.md` |
+| **23-C** | Page sharing via fork/COW (needs PMM refcount) | ✅ Done | CHANGELOG `[0.21.0]` (done inside Phase 21), `docs/memory.md` |
 | **24** | `e1000` driver + minimal TCP/IP (ping) | 🔜 Planned | below |
 | **24-A** | Raw driver: BAR mapping, RX/TX rings, one Ethernet frame | 🔜 Planned | below |
 | **24-B** | ARP | 🔜 Planned | below |
@@ -98,7 +98,7 @@ Done; see the table above, CHANGELOG `[0.18.0]`, `docs/hal.md` and `docs/safemod
 
 Done; see the table above, CHANGELOG `[0.19.0]` and `docs/sdk.md`. `exec()` finds programs with `vfs_open()` (ramfs, then FAT16) — no second lookup — the ELF loader validates the file against its real size, libnos has a minimal `printf` family, and `sdk/` plus `docs/sdk.md` let someone write, build and run a program without rebuilding the ISO. Carried over, not done in this phase:
 
-- Programs on FAT16 are limited to 192 KB and are read whole into a fixed 256 KB heap that cannot grow once processes exist (`PROGRESS.md`, Phase 23 fixes the underlying heap/identity-map design); a program bigger than that, such as the DOOM engine of Phase 31, needs that work first.
+- Programs on FAT16 are limited to 192 KB and are read whole into a fixed 256 KB heap that cannot grow once processes exist (`PROGRESS.md`, "Known technical debt"). Phase 23 did not fix the underlying heap/identity-map design, so this limit is still there and that work has no phase scheduled yet; a program bigger than that, such as the DOOM engine of Phase 31, needs it first.
 - `run` passes no arguments to a program (`nos_exec()` can); there is no `argc`/`argv` convention yet.
 - The printf family has no floating point, no 64-bit integers and no `#` flag.
 
@@ -111,21 +111,18 @@ Done; see the table above, CHANGELOG `[0.20.0]` and `docs/safemode.md`. An unhan
 
 ### Phase 21 — Copy-on-write `fork()` (closed in 0.21.0)
 
-Done; see the table above, CHANGELOG `[0.21.0]` and `docs/memory.md`. `fork()` shares the parent's pages read-only with a `VMM_COW` PTE bit and a per-page reference count in the PMM; the first write copies the page. It also took over the data-page part of Phase 23: `process_exit()` drops the process's reference to each user page, so 23-A and the data-page half of 23-C are done. The page directory and page tables still leak (23-B).
+Done; see the table above, CHANGELOG `[0.21.0]` and `docs/memory.md`. `fork()` shares the parent's pages read-only with a `VMM_COW` PTE bit and a per-page reference count in the PMM; the first write copies the page. It also took over the data-page part of Phase 23: `process_exit()` drops the process's reference to each user page, so 23-A and the data-page half of 23-C are done. The page directory and page tables still leaked then (23-B, closed in Phase 23).
 
 ### Phase 22 — `unlink()`/`rmdir()` (closed in 0.22.0)
 
 Done; see the table above, CHANGELOG `[0.22.0]` and `docs/filesystem.md`. `fat16_unlink()`/`fat16_rmdir()` mark the dirent `0xE5` and free the cluster chain in every FAT copy, dirent first. `rmdir` of a non-empty directory is an error, not recursive, matching the approach decided here. `SYS_UNLINK`/`SYS_RMDIR` (35/36), libnos `nos_unlink()`/`nos_rmdir()`, selftest expanded to 31 tests. The directory-sector race under concurrent access (two processes writing the same sector) is documented as known debt, not fixed — still Phase 29's whole-operation FAT16 lock.
 
-### Phase 23 — Memory/CR3 release in `process_exit()`
+### Phase 23 — Memory/CR3 release in `process_exit()` (closed in 0.23.0)
 
-- **Goal:** stop leaking real physical memory every time a process terminates (technical debt since Phase 13).
-- **Main risk:** the most dangerous phase in the roadmap — a real risk of double-free or of freeing a page another process still references.
-- **Depends on:** Phase 21 (COW fork) changes how memory is shared between processes, so 23-C depends on Phase 21 being closed.
+Done; see the table above, CHANGELOG `[0.23.0]` and `docs/memory.md`. 23-A and 23-C (data pages, per-page reference count) had already landed inside Phase 21; 23-B was the rest: `process_exit()` now frees the page directory and the process's page tables through `vmm_destroy_directory()`. The `fork()` and `exec()` failure paths free their half-built directory, `sys_kill()` of the caller's own pid no longer returns to user mode, and `pmm_free_page()` reports a double free on the serial port. Carried over, not done in this phase:
 
-- 23-A: free the process's physical data pages (heap, stack) in `process_exit()` — done as part of Phase 21 (through the refcount)
-- 23-B: free the page directory (CR3) and its associated page tables
-- 23-C: handle page sharing via fork/COW (Phase 21) — needs a per-physical-page refcount in the PMM before really freeing — done as part of Phase 21 for data pages
+- The fixed 256 KB kernel heap and the identity-map design (the heap lives in the 4–8 MB range the PMM also hands to processes, and the kernel reaches physical frames only through the 0–8 MB identity map) were not touched. The 192 KB limit on FAT16 programs follows from them. This work has no phase scheduled and is a prerequisite of the DOOM port (Phase 31).
+- Three older problems found on the way are recorded in `docs/TODO.md` and not fixed: a stale ATA waiter pointer after a process is killed mid-command, a reserved child that stays blocked if its parent dies before making it ready, and `elf_load()` leaking a frame if two segments share a page.
 
 ### Phase 24 — `e1000` driver + minimal TCP/IP
 
@@ -150,7 +147,7 @@ Done; see the table above, CHANGELOG `[0.22.0]` and `docs/filesystem.md`. `fat16
 - **Goal:** keyboard/mouse working over USB — essential for running on modern hardware without a physical PS/2 port.
 - **Approach:** xHCI has its own descriptor structures and considerably more state than AHCI, with a full USB protocol stack on top (device enumeration, descriptors, endpoints, control and interrupt transfers).
 - **Main risk:** by far the largest scope/complexity jump in the entire roadmap — treated as its own sub-roadmap rather than one monolithic phase.
-- **Depends on:** Phase 11 (PCI). Technically independent of Phases 23–25, but recommended to come last among the driver phases since it's the largest complexity jump.
+- **Depends on:** Phase 11 (PCI). Technically independent of Phases 24–25, but recommended to come last among the driver phases since it's the largest complexity jump.
 
 - 26-A: enumerate the xHCI controller
 - 26-B: port reset
@@ -222,11 +219,12 @@ Done; see the table above, CHANGELOG `[0.22.0]` and `docs/filesystem.md`. `fat16
 
 ## Recommended priority order
 
-**Phase 22 → 23 → 24 → 25 → 26 → 27 → 28 → 29 → 30 → 31 → v1.0.0.**
+**Phase 23 → 24 → 25 → 26 → 27 → 28 → 29 → 30 → 31 → v1.0.0.**
 
 Dependency notes:
 
-- Phase 23-C depends on Phase 21 (COW fork), which closed in 0.21.0.
+- Phase 23-C depended on Phase 21 (COW fork), which closed in 0.21.0.
+- The heap/identity-map redesign (a heap that does not share the 4–8 MB pool with processes, and a way to reach physical frames above 8 MB) has no phase scheduled. The DOOM port (Phase 31) needs it first.
 - Phase 29 depends on Phase 18 (HAL).
 - Phase 31 depends on Phase 27 (framebuffer) and on `lseek` from Phase 30.
 

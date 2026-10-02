@@ -50,7 +50,9 @@ Expected output shape (exact wording may evolve as tests are added):
 [PASS] rmdir() refuses a directory that is a live process's cwd
 [PASS] cleanup: every test file and directory deleted
 [PASS] concurrent console writers don't corrupt kernel state (vga race, 0.22.1)
-Selftest: 32/32 passed
+[PASS] fork()+exit x30 returns every page to the PMM (23-B)
+[PASS] exec()+exit x20 returns every page to the PMM (23-B)
+Selftest: 34/34 passed
 ```
 
 A `[FAIL] <name>: <reason>` line pinpoints which subsystem broke without
@@ -58,7 +60,7 @@ needing to reproduce the bug by hand first.
 
 ## What each test checks
 
-**32 tests in total**; the cleanup (31) is a counted test too.
+**34 tests in total**; the cleanup (31) is a counted test too.
 
 1. **Memory** — calls `SYS_MEMINFO` and checks it returns a plausible
    process count. There is no userland-facing syscall that allocates a
@@ -178,8 +180,8 @@ needing to reproduce the bug by hand first.
     — a file of garbage bytes, the first 100 bytes of a real ELF (valid
     header, program headers pointing past the end of the file) and a name
     that does not exist anywhere must all make `nos_exec()` return -1,
-    without crashing the kernel. (Each failed `exec()` after the page
-    directory was created leaks that page — see "Known limitations".)
+    without crashing the kernel. (A failed `exec()` frees the directory it
+    had already created, since Phase 23-B.)
 21. **The printf family** (Phase 19) — `snprintf`/`sprintf` with `%d %u %x
     %X %s %c %%`, width, zero-padding, left-justify, precision, negative
     numbers and `INT_MIN`, a NULL `%s`, bounded truncation with the C99
@@ -250,6 +252,22 @@ needing to reproduce the bug by hand first.
     right after the storm. That checks the more serious failure mode of the
     original bug: `term_row` running past `VGA_ROWS` before being clamped, a
     write past the mapped VGA buffer into unrelated physical memory.
+33. **`fork()` + exit returns every page** (Phase 23-B) — reads the free
+    PMM page count through `SYS_MEMINFO`, then 30 times forks a child that
+    writes a page shared copy-on-write with the parent (forcing a private
+    copy) and exits, each one reaped with `nos_wait()`. After a few
+    `nos_yield()`s the count must be exactly the same as before. Before
+    23-B every exit leaked the child's page directory and page tables. The
+    count is stable because nothing else allocates pages while the test
+    runs: the heap stopped taking PMM pages at boot, pipes and fd tables
+    are static, and the shell allocates nothing while it waits for a key.
+    Typing a command into the shell during this test changes the count and
+    fails it.
+34. **`exec()` + exit returns every page** (Phase 23-B) — the same check
+    over 20 runs of `cat` from the ramfs, started with `nos_exec_pipe()`
+    with a pipe as stdin whose write end the parent closes at once, so
+    `cat` reads EOF and exits. Each run has its own directory, page tables,
+    ELF pages and stack pages.
 
 ## Manual test: typing while a background process prints (0.22.1)
 
@@ -317,9 +335,8 @@ see EOF and exit.
 - Tests 12-13 are single-process; test 16 covers the two-process case.
 - There is no exit-code syscall, so test 17 passes each child's result
   through a pipe.
-- A failed `exec()` does not free the page directory it already created
-  (the same accepted leak as `process_exit()`, Phase 23): test 20 leaks two
-  pages per run, out of ~1000 free at boot.
+- A failed `exec()` frees the page directory and pages it already built
+  (Phase 23-B), so the failing-exec checks of test 20 no longer cost pages.
 - No syscall reads back screen content, so test 32 can only check that
   concurrent console writers don't corrupt kernel state, not that the
   screen displays correctly; that needs the manual test right after the

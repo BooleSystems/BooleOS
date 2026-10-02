@@ -9,7 +9,7 @@
  | |_) || (_) || (_) || ||  __/| |_| | ___) |
  |____/  \___/  \___/ |_| \___| \___/ |____/ 
 
- BooleOS v0.22.1 - Phase 22: unlink()/rmdir()
+ BooleOS v0.23.0 - Phase 23: process memory release
 ```
 
 ## Overview
@@ -45,8 +45,9 @@ See [CHANGELOG.md](CHANGELOG.md) for version history and [ROADMAP.md](ROADMAP.md
 | **20** | Crash handler leads into Safe Mode: an unhandled CPU exception saves a crash record in the boot config sector (polling-only ATA I/O, no heap or scheduler), shows the red screen and resets the machine; the next boot goes to Safe Mode with the reason and a "View last crash details" screen; the `crash <de\|pf\|gpf>` shell command tests the pipeline ([docs/safemode.md](docs/safemode.md)) | ✅ Done |
 | **21** | Copy-on-write `fork()`: the parent's pages are shared read-only with the child (new `VMM_COW` PTE bit, a reference count per physical page in the PMM) and the first write copies the page, from the page-fault handler or from a kernel write into user memory (`vmm_cow_break()`); `CR0.WP` set; `process_exit()` now releases a process's data pages through the refcount; `SYS_PAGEREF`; selftest expanded to 24 tests ([docs/memory.md](docs/memory.md)) | ✅ Done |
 | **22** | `unlink()`/`rmdir()`: `fat16_unlink()`/`fat16_rmdir()` mark the dirent `0xE5` and free the cluster chain in every FAT copy, dirent first so a crash never leaves a live entry on freed clusters; refuse a file open in any process, a non-empty directory, the root, `.`/`..`, and a directory that is any process's cwd; `SYS_UNLINK`/`SYS_RMDIR` (35/36), libnos `nos_unlink()`/`nos_rmdir()`; `sys_kill()` now closes the killed process's fds too; selftest expanded to 31 tests ([docs/filesystem.md](docs/filesystem.md)) | ✅ Done |
+| **23** | Process memory release: `process_exit()` now frees a process's page directory and page tables, not only its data pages. `vmm_destroy_directory()` loads the kernel directory first if the dying process runs on the one being freed, never touches the shared kernel tables behind PDE 0/1, and drops one reference per user page so pages still shared copy-on-write stay allocated; `fork()`/`exec()` failure paths free their half-built directory too; `sys_kill()` of the caller's own pid no longer returns to user mode; `pmm_free_page()` reports a double free on the serial port; selftest expanded to 34 tests ([docs/memory.md](docs/memory.md)) | ✅ Done |
 
-For planned Phases 23–31, see **[ROADMAP.md](ROADMAP.md)**.
+For planned Phases 24–31, see **[ROADMAP.md](ROADMAP.md)**.
 
 ## Documentation
 

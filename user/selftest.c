@@ -103,6 +103,40 @@ static int st_make_file(const char *path, const char *content) {
     return r == 0 ? 0 : -1;
 }
 
+/* ── memory release on exit (Phase 23-B) ─────────────────────────── */
+
+/* Free PMM pages right now, as SYS_MEMINFO reports them. */
+static uint32_t st_pmm_free(void) {
+    uint32_t pmm = 0, heap = 0, nprocs = 0;
+    nos_meminfo(&pmm, &heap, &nprocs);
+    return pmm;
+}
+
+/* Gives every other process a turn, so a process that is still on its way
+   out of the CPU after exiting has finished before the next measurement. */
+static void st_settle(void) {
+    for (int i = 0; i < 8; i++) nos_yield();
+}
+
+static unsigned int st_append(char *dst, unsigned int at, const char *src) {
+    while (*src) dst[at++] = *src++;
+    dst[at] = '\0';
+    return at;
+}
+
+/* Fails `name` with "free PMM pages: <before> before, <after> after". */
+static void st_fail_pages(const char *name, uint32_t before, uint32_t after) {
+    static char why[96];
+    char nbuf[16];
+    unsigned int at = 0;
+    at = st_append(why, at, "free PMM pages: ");
+    at = st_append(why, at, nos_uitoa(before, nbuf, sizeof(nbuf)));
+    at = st_append(why, at, " before, ");
+    at = st_append(why, at, nos_uitoa(after, nbuf, sizeof(nbuf)));
+    st_append(why, at, " after");
+    st_fail(name, why);
+}
+
 /* ── the test suite itself ────────────────────────────────────────── */
 
 void _start(void) {
@@ -1332,6 +1366,70 @@ void _start(void) {
 
         if (why) st_fail(tname, why);
         else     st_pass(tname);
+    }
+
+    /* 33. fork() + exit frees the whole address space (Phase 23-B).
+       Before 23-B, process_exit() released the user pages but leaked the
+       page directory and the page tables, 3-4 pages per process. Each of
+       30 children writes a page shared copy-on-write with this process
+       (so a private copy is made) and exits; after all of them are
+       collected the free page count must be EXACTLY what it was before.
+       Why an exact count is safe here: the only things that move it are
+       page allocations by some process. The kernel heap stopped taking
+       PMM pages at boot, pipes and fd tables are static, and the only
+       other process alive is the shell, which allocates nothing while it
+       waits for a key. This process's own copy-on-write breaks while a
+       child is alive move one of its pages to a fresh frame, but the old
+       frame is freed when the child exits, so the count still balances.
+       Typing a command into the shell while this test runs WILL change
+       the count; don't. */
+    {
+        const char *tname = "fork()+exit x30 returns every page to the PMM (23-B)";
+        const char *why = 0;
+        st_settle();
+        uint32_t before = st_pmm_free();
+        for (int i = 0; i < 30 && !why; i++) {
+            int r = nos_fork();
+            if (r == 0) {
+                g_cow_page[0] = (char)i;     /* forces the copy-on-write copy */
+                g_cow_page[4095] = (char)i;
+                nos_exit(0);
+            }
+            if (r < 0) { why = "fork() failed"; break; }
+            nos_wait(r);
+        }
+        st_settle();
+        uint32_t after = st_pmm_free();
+        if (why)                 st_fail(tname, why);
+        else if (after != before) st_fail_pages(tname, before, after);
+        else                     st_pass(tname);
+    }
+
+    /* 34. exec() + exit frees the whole address space (Phase 23-B). Same
+       idea as 33 with 20 programs started by exec(): `cat` from the ramfs
+       (no disk, no heap buffer), its stdin a pipe whose write end this
+       process closes right away, so it reads EOF and exits at once. Each
+       one has a directory, page tables, ELF and stack pages of its own,
+       all of which must come back. Same exact-count reasoning as 33. */
+    {
+        const char *tname = "exec()+exit x20 returns every page to the PMM (23-B)";
+        const char *why = 0;
+        st_settle();
+        uint32_t before = st_pmm_free();
+        for (int i = 0; i < 20 && !why; i++) {
+            int p[2] = { -1, -1 };
+            if (nos_pipe(p) != 0) { why = "nos_pipe() failed"; break; }
+            int pid = nos_exec_pipe("cat", p[0], -1);
+            nos_close(p[0]);
+            nos_close(p[1]);
+            if (pid < 0) { why = "nos_exec_pipe(\"cat\") failed"; break; }
+            nos_wait(pid);
+        }
+        st_settle();
+        uint32_t after = st_pmm_free();
+        if (why)                 st_fail(tname, why);
+        else if (after != before) st_fail_pages(tname, before, after);
+        else                     st_pass(tname);
     }
 
     st_puts("Selftest: ");

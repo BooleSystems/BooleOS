@@ -40,6 +40,17 @@ uint32_t vmm_get_kernel_directory(void);
 // Creates a new page directory cloning the kernel mapping
 uint32_t vmm_create_directory(void);
 
+// Frees a process's whole address space: drops its reference to every user
+// page (a page shared copy-on-write stays allocated until its last sharer
+// lets go), frees each per-process page table (PDE >= 2 with VMM_USER), then
+// frees the directory page itself. The shared kernel page tables behind PDE
+// 0/1 are never touched. If pd_phys is the directory currently loaded in CR3,
+// CR3 is switched to the kernel directory first (it maps the same 0-8MB, so
+// the caller's kernel code, stack and data stay reachable). One
+// interrupt-off section from start to end. Does nothing for 0 or for the
+// kernel directory. The caller must drop every stored copy of pd_phys.
+void vmm_destroy_directory(uint32_t pd_phys);
+
 // Switches the current page directory
 void vmm_switch_directory(uint32_t cr3);
 

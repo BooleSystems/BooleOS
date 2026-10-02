@@ -4,6 +4,7 @@
 #include "../messages.h"
 #include "../irq.h"
 #include "../process.h"
+#include "../serial.h"
 #include <stdint.h>
 
 // Bitmap at a fixed safe address: 0x202000 (right after the IDT at 0x200000)
@@ -104,10 +105,28 @@ uint32_t pmm_alloc_page_at(uint32_t addr) {
     return addr;
 }
 
+// Reports a free of a page the PMM does not consider allocated (already free,
+// or outside the managed range). Nothing is changed: ignoring it keeps the
+// bitmap and pmm_used consistent, and the report makes a double free visible
+// instead of silent. Serial only, so it never draws over a program's screen.
+static void report_bad_free(uint32_t addr) {
+    static const char hex[] = "0123456789ABCDEF";
+    const char *s = msg(MSG_PMM_ERROR_BAD_FREE);
+    while (*s) serial_putchar(*s++);
+    serial_putchar('0'); serial_putchar('x');
+    for (int shift = 28; shift >= 0; shift -= 4)
+        serial_putchar(hex[(addr >> shift) & 0xF]);
+    serial_putchar('\n');
+}
+
 void pmm_free_page(uint32_t addr) {
     uint32_t page = addr / PAGE_SIZE;
     uint32_t flags = irq_save();
-    if (page >= pmm_total || !bitmap_test(page)) { irq_restore(flags); return; }
+    if (page >= pmm_total || !bitmap_test(page)) {
+        report_bad_free(addr);
+        irq_restore(flags);
+        return;
+    }
     // A used page with a count of 0 was reserved with pmm_mark_used(), never
     // allocated; treat it as a single owner, like before refcounts existed.
     if (pmm_refcount[page] > 1) {

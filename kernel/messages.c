@@ -124,6 +124,7 @@ static const char *const g_msgs[] = {
     [MSG_PMM_TOTAL] = "Total: ",
     [MSG_PMM_KB_FREE] = "KB Free: ",
     [MSG_PMM_KB_NL] = "KB\n",
+    [MSG_PMM_ERROR_BAD_FREE] = "pmm: ERROR free of a page that is not allocated (double free?): ",
 
     // virtual memory manager
     [MSG_VMM_1_ZEROING_PD_AND] = "   vmm: [1] zeroing PD and PTs\n",

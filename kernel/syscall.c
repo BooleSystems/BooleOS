@@ -897,6 +897,14 @@ static uint32_t sys_kill(uint32_t pid) {
         if (p && p->pid == pid && p->state != PROCESS_UNUSED) {
             close_all_fds((int)i);   /* else its files stay "open" and pipe ends never close */
             process_exit(p);
+            /* Killing itself: process_exit() just freed the address space
+               this syscall would return into (and loaded the kernel
+               directory), so there is no user code left to return to.
+               Leave the CPU like sys_exit() does. */
+            if (p == process_current()) {
+                scheduler_yield();
+                for (;;) __asm__ volatile ("hlt");
+            }
             return 0;
         }
     }

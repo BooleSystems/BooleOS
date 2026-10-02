@@ -139,6 +139,7 @@ typedef enum {
     MSG_PMM_TOTAL,
     MSG_PMM_KB_FREE,
     MSG_PMM_KB_NL,
+    MSG_PMM_ERROR_BAD_FREE,
 
     // virtual memory manager
     MSG_VMM_1_ZEROING_PD_AND,
